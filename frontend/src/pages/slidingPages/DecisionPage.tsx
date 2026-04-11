@@ -5,6 +5,7 @@ import Slider from "./Slider";
 import { fetchSlidesQuestions, getRecomendationByAnswers } from "./api";
 import type { Answers } from "./types";
 import { Typography } from "@mui/material";
+import { FullSizeContainer } from "../../components/layouts";
 
 type DecisionStep = 'base' | 'sliding' | 'recommendation';
 
@@ -23,7 +24,11 @@ const DecisionPage: FunctionComponent = () => {
         sliding: <Slider questions={fetchSlidesQuestions()} handleAnswers={handleAnswers} />,
         recommendation: <Typography>{recommendation}</Typography>
     };
-    return (steps[decisionStep]);
+    return (
+        <FullSizeContainer>
+            {steps[decisionStep]}
+        </FullSizeContainer>
+    );
 };
 
 export default DecisionPage;

@@ -1,13 +1,19 @@
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import GroupIcon from '@mui/icons-material/Group';
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import { Box, InputAdornment, TextField, Typography } from '@mui/material';
+import type { ChangeEvent, FunctionComponent } from 'react';
 import { useState } from 'react';
-import type { FunctionComponent, ChangeEvent } from 'react';
-import { Box, Button, TextField, Typography } from '@mui/material';
-import type { SelectionBaseParams } from './types';
+import { PrimeButton } from '../../components/inputs';
 import { FullSizeContainer } from '../../components/layouts';
+import type { SelectionBaseParams } from './types';
+
+const msInTwoHours = 5 * 60 * 60 * 1000;
 
 const DEFAULT_PARAMS: SelectionBaseParams = {
-    place: '',
-    time: new Date(),
-    participantsAmount: 1
+    place: 'Tel Aviv',
+    time: new Date(Date.now() + msInTwoHours),
+    participantsAmount: 2
 };
 
 interface BaseQuestionsProps {
@@ -45,9 +51,9 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onComplet
     };
 
     return (
-        <FullSizeContainer>
-            <Typography sx={{ fontSize: '22px', m: '30px' }}>New Event</Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <FullSizeContainer sx={{ justifyContent: 'space-evenly', alignItems: 'center' }}>
+            <Typography sx={{ fontSize: '30px', m: '30px' }}>New Event</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '300px' }}>
                 <TextField
                     label="Time"
                     type="datetime-local"
@@ -55,6 +61,15 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onComplet
                     onChange={handleTimeChange}
                     error={!isValidTime}
                     helperText={!isValidTime ? "Time must be equal to or later than now" : ""}
+                    slotProps={{
+                        input: {
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <AccessTimeIcon />
+                                </InputAdornment>
+                            ),
+                        }
+                    }}
                 />
                 <TextField
                     label="Place"
@@ -63,6 +78,15 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onComplet
                     onChange={handlePlaceChange}
                     error={!isValidPlace}
                     helperText={!isValidPlace ? "Place cannot be empty" : ""}
+                    slotProps={{
+                        input: {
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <PlaceOutlinedIcon />
+                                </InputAdornment>
+                            ),
+                        }
+                    }}
                 />
                 <TextField
                     label="Participants Amount"
@@ -71,11 +95,20 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onComplet
                     onChange={handleParticipantsChange}
                     error={!isValidAmount}
                     helperText={!isValidAmount ? "Amount must be at least 1" : ""}
+                    slotProps={{
+                        input: {
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <GroupIcon />
+                                </InputAdornment>
+                            ),
+                        }
+                    }}
                 />
             </Box>
-            <Button sx={{ m: '30px' }} onClick={handleSlide} disabled={!isAllValid}>
-                Lets Slide!
-            </Button>
+            <PrimeButton sx={{ m: '30px' }} onClick={handleSlide} disabled={!isAllValid}>
+                Start Sliding!
+            </PrimeButton>
         </FullSizeContainer>
     );
 };
