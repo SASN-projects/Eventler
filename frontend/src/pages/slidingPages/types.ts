@@ -10,3 +10,5 @@ export interface Question {
 }
 
 export type Answers = Record<string, string>;
+
+export type DecisionStep = 'base' | 'sliding' | 'recommendation';

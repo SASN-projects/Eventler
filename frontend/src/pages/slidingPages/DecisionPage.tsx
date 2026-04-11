@@ -1,17 +1,16 @@
 import type { FunctionComponent, ReactElement } from "react";
-import { useState } from "react";
-import BaseQuestions from "./BaseQuestions";
-import Slider from "./Slider";
-import { fetchSlidesQuestions, getRecomendationByAnswers } from "./api";
-import type { Answers } from "./types";
-import { Typography } from "@mui/material";
+import { useEffect, useState } from "react";
 import { FullSizeContainer } from "../../components/layouts";
-
-type DecisionStep = 'base' | 'sliding' | 'recommendation';
+import BaseQuestions from "./BaseQuestions";
+import RecommendationsPage from "./RecommendationsPage";
+import Slider from "./SliderPage";
+import { fetchSlidesQuestions, getRecomendationByAnswers } from "./api";
+import { type Answers, type DecisionStep, type Question } from "./types";
 
 const DecisionPage: FunctionComponent = () => {
     const [decisionStep, setDecisionStep] = useState<DecisionStep>('base');
     const [recommendation, setRecommendation] = useState('');
+    const [slidersQuestions, setSlidersQuestions] = useState<Question[]>([]);
 
     const handleAnswers = async (answers: Answers) => {
         const recsByAnswers = await getRecomendationByAnswers(answers);
@@ -19,11 +18,26 @@ const DecisionPage: FunctionComponent = () => {
         setDecisionStep('recommendation');
     };
 
-    const steps: Record<DecisionStep, ReactElement> = {
-        base: <BaseQuestions onComplete={() => setDecisionStep('sliding')} />,
-        sliding: <Slider questions={fetchSlidesQuestions()} handleAnswers={handleAnswers} />,
-        recommendation: <Typography>{recommendation}</Typography>
+    const onRestart = () => {
+        setDecisionStep('base');
+        setRecommendation('');
     };
+
+    const fetchQuestions = async () => {
+        const questions = await fetchSlidesQuestions();
+        setSlidersQuestions(questions);
+    };
+
+    useEffect(() => {
+        fetchQuestions();
+    }, []);
+
+    const steps: Record<DecisionStep, ReactElement> = {
+        base: <BaseQuestions onBaseComplete={() => setDecisionStep('sliding')} />,
+        sliding: <Slider questions={slidersQuestions} handleAnswers={handleAnswers} />,
+        recommendation: <RecommendationsPage recommendation={recommendation} onRestart={onRestart} />
+    };
+
     return (
         <FullSizeContainer>
             {steps[decisionStep]}

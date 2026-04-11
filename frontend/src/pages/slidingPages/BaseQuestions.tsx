@@ -1,112 +1,82 @@
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import GroupIcon from '@mui/icons-material/Group';
-import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
-import { Box, InputAdornment, TextField, Typography } from '@mui/material';
+import { AccessTime, Group, PlaceOutlined } from '@mui/icons-material';
+import { Box, Typography } from '@mui/material';
 import type { ChangeEvent, FunctionComponent } from 'react';
 import { useState } from 'react';
-import { PrimeButton } from '../../components/inputs';
+import { PrimeButton } from '../../components/buttons';
+import { FieldInput } from '../../components/inputs';
 import { FullSizeContainer } from '../../components/layouts';
+import { DEFAULT_PARAMS } from './consts';
 import type { SelectionBaseParams } from './types';
-
-const msInTwoHours = 5 * 60 * 60 * 1000;
-
-const DEFAULT_PARAMS: SelectionBaseParams = {
-    place: 'Tel Aviv',
-    time: new Date(Date.now() + msInTwoHours),
-    participantsAmount: 2
-};
+import { formatTimeAsText } from './utils';
 
 interface BaseQuestionsProps {
-    onComplete: () => void;
+    onBaseComplete: () => void;
 }
 
-export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onComplete }) => {
+export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseComplete: onComplete }) => {
     const [baseParams, setBaseParams] = useState<SelectionBaseParams>(DEFAULT_PARAMS);
 
-    const handleTimeChange = (e: ChangeEvent<HTMLInputElement>) => {
-        const selectedDate = new Date(e.target.value);
-        setBaseParams(prev => ({ ...prev, time: selectedDate }));
-    };
+    const setParam = <K extends keyof SelectionBaseParams>(key: K, value: SelectionBaseParams[K]) =>
+        setBaseParams(prev => ({ ...prev, [key]: value }));
 
-    const handlePlaceChange = (e: ChangeEvent<HTMLInputElement>) =>
-        setBaseParams(prev => ({ ...prev, place: e.target.value }));
+    const handleTimeChange = ({ target: { value } }: ChangeEvent<HTMLInputElement>) =>
+        setParam('time', new Date(value));
 
-    const handleParticipantsChange = (e: ChangeEvent<HTMLInputElement>) =>
-        setBaseParams(prev => ({ ...prev, participantsAmount: Number(e.target.value) }));
+    const handlePlaceChange = ({ target: { value } }: ChangeEvent<HTMLInputElement>) =>
+        setParam('place', value);
 
-    const timeString = baseParams.time instanceof Date && !isNaN(baseParams.time.getTime())
-        ? baseParams.time.toISOString().slice(0, 16)
-        : '';
+    const handleParticipantsChange = ({ target: { value } }: ChangeEvent<HTMLInputElement>) =>
+        setParam('participantsAmount', Number(value));
 
     const now = new Date();
     now.setSeconds(0, 0);
 
     const isValidTime = baseParams.time >= now;
-    const isValidAmount = baseParams.participantsAmount > 0;
     const isValidPlace = baseParams.place.trim() !== '';
+    const isValidAmount = baseParams.participantsAmount > 0;
     const isAllValid = isValidTime && isValidAmount && isValidPlace;
 
-    const handleSlide = () => {
+    const handleStartSliding = () => {
         if (isAllValid) onComplete();
     };
 
     return (
         <FullSizeContainer sx={{ justifyContent: 'space-evenly', alignItems: 'center' }}>
             <Typography sx={{ fontSize: '30px', m: '30px' }}>New Event</Typography>
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '300px' }}>
-                <TextField
+                <FieldInput
                     label="Time"
+                    icon={AccessTime}
                     type="datetime-local"
-                    value={timeString}
+                    isError={!isValidTime}
                     onChange={handleTimeChange}
-                    error={!isValidTime}
-                    helperText={!isValidTime ? "Time must be equal to or later than now" : ""}
-                    slotProps={{
-                        input: {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <AccessTimeIcon />
-                                </InputAdornment>
-                            ),
-                        }
-                    }}
+                    value={formatTimeAsText(baseParams.time)}
+                    helperText={"Time must be equal to or later than now"}
                 />
-                <TextField
-                    label="Place"
+
+                <FieldInput
                     type="text"
+                    label="Place"
+                    icon={PlaceOutlined}
+                    isError={!isValidPlace}
                     value={baseParams.place}
                     onChange={handlePlaceChange}
-                    error={!isValidPlace}
-                    helperText={!isValidPlace ? "Place cannot be empty" : ""}
-                    slotProps={{
-                        input: {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <PlaceOutlinedIcon />
-                                </InputAdornment>
-                            ),
-                        }
-                    }}
+                    helperText={"Place cannot be empty"}
                 />
-                <TextField
-                    label="Participants Amount"
+
+                <FieldInput
+                    icon={Group}
                     type="number"
-                    value={baseParams.participantsAmount}
+                    isError={!isValidAmount}
+                    label="Participants Amount"
                     onChange={handleParticipantsChange}
-                    error={!isValidAmount}
-                    helperText={!isValidAmount ? "Amount must be at least 1" : ""}
-                    slotProps={{
-                        input: {
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <GroupIcon />
-                                </InputAdornment>
-                            ),
-                        }
-                    }}
+                    value={baseParams.participantsAmount}
+                    helperText={"Amount must be at least 1"}
                 />
             </Box>
-            <PrimeButton sx={{ m: '30px' }} onClick={handleSlide} disabled={!isAllValid}>
+
+            <PrimeButton sx={{ m: '30px' }} onClick={handleStartSliding} disabled={!isAllValid}>
                 Start Sliding!
             </PrimeButton>
         </FullSizeContainer>

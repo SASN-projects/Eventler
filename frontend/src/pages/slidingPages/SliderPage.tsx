@@ -1,12 +1,9 @@
 import type { FunctionComponent } from "react";
 import { useState } from "react";
-import { Box } from "@mui/material";
+import { FullSizeContainer } from "../../components/layouts";
 import Slide from "./Slide";
 import type { Answers, Question } from "./types";
-import { FullSizeContainer } from "../../components/layouts";
-
-const createAnswersObject = (questions: Question[]) =>
-    questions.reduce((acc, q) => ({ ...acc, [q.question]: '' }), {} as Answers);
+import { createAnswersObject } from "./utils";
 
 interface SlidesProps {
     questions: Question[];
@@ -32,7 +29,7 @@ export const Slider: FunctionComponent<SlidesProps> = ({ questions, handleAnswer
     };
 
     return (
-        <FullSizeContainer sx={{ background: 'linear-gradient(to right, #b6e2f9, #D4C4E9)' }}>
+        <FullSizeContainer sx={{ background: 'linear-gradient(to right, #aed9ff, #d2b7f5)' }}>
             <Slide
                 title={questions[currentStepIndex].question}
                 options={['1', '2', '3']}
