@@ -10,6 +10,11 @@ export class RecommendationsController {
     private readonly recommendationsService: RecommendationsService,
   ) {}
 
+  @Get(':eventId')
+  getEventRecommendations(@Param('eventId') eventId: string) {
+    return this.recommendationsService.getEventRecommendations(eventId);
+  }
+
   @Get('feed')
   getFeed() {
     return this.recommendationsService.getFeed();

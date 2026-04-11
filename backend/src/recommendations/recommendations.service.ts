@@ -107,6 +107,7 @@ export class RecommendationsService {
     const recommendations = await this.recommendationRepository.find({
       where: { eventId },
       order: { score: 'DESC' },
+      relations: ['venue'],
     });
 
     return {
