@@ -1,34 +1,58 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Recommendation } from './entities/recommendation.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Recommendation } from "./entities/recommendation.entity";
+import { GenerateRecommendationDTO } from "./dto/generate-recommendation.dto";
+import { GoogleGenerativeAI, SchemaType, ObjectSchema } from "@google/generative-ai";
+
+export interface RecommendationResult {
+  title: string;
+  description: string;
+  address: string;
+  vibe: string;
+  score: number;
+  tags?: string[];
+}
+
+export interface GenerateRecommendationResponse {
+  success: boolean;
+  data?: RecommendationResult;
+  message?: string;
+}
 
 @Injectable()
 export class RecommendationsService {
+  private readonly logger = new Logger(RecommendationsService.name);
+  private readonly genAI: GoogleGenerativeAI;
+
   constructor(
     @InjectRepository(Recommendation)
     private recommendationRepository: Repository<Recommendation>,
-  ) { }
+  ) {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error("GOOGLE_API_KEY is required for Gemini integration.");
+    }
+    this.genAI = new GoogleGenerativeAI(apiKey);
+  }
 
   getFeed() {
-    // This is a stub implementation
-    // In production, this would fetch personalized recommendations
     const mockRecommendations = [
       {
-        id: '1',
-        title: 'Coffee Shop Meet-up',
+        id: "1",
+        title: "Coffee Shop Meet-up",
         score: 0.95,
         rank: 1,
       },
       {
-        id: '2',
-        title: 'Beach Volleyball',
+        id: "2",
+        title: "Beach Volleyball",
         score: 0.88,
         rank: 2,
       },
       {
-        id: '3',
-        title: 'Movie Night',
+        id: "3",
+        title: "Movie Night",
         score: 0.82,
         rank: 3,
       },
@@ -40,59 +64,109 @@ export class RecommendationsService {
     };
   }
 
-  async createForEvent(eventId: string) {
-    // This is a stub implementation
-    // In production, this would analyze event data and user preferences
-    // to generate personalized recommendations
+  async generateRecommendation(input: GenerateRecommendationDTO): Promise<GenerateRecommendationResponse> {
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-    // Delete existing recommendations for this event
-    await this.recommendationRepository.delete({ eventId });
-
-    // Create mock recommendations
-    const mockRecommendations = [
-      {
-        eventId,
-        title: 'Italian Restaurant',
-        score: 0.92,
-        rank: 1,
-      },
-      {
-        eventId,
-        title: 'Rooftop Bar',
-        score: 0.87,
-        rank: 2,
-      },
-      {
-        eventId,
-        title: 'Escape Room',
-        score: 0.81,
-        rank: 3,
-      },
-    ];
-
-    const recommendations = mockRecommendations.map((rec) =>
-      this.recommendationRepository.create(rec),
-    );
-
-    await this.recommendationRepository.save(recommendations);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const prompt = this.buildPrompt(input);
+        const rawResponse = await this.callGeminiModel(prompt);
+        const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
+        return {
+          success: true,
+          data: recommendedEvent,
+        };
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.warn(`Recommendation attempt ${attempt} failed: ${error.message}`);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
 
     return {
-      message: 'Recommendations created successfully',
-      count: recommendations.length,
-      recommendations,
+      success: false,
+      message: `Failed to generate recommendation after ${maxRetries} attempts. Last error: ${lastError?.message}`,
     };
   }
 
-  async getEventRecommendations(eventId: string) {
-    const recommendations = await this.recommendationRepository.find({
-      where: { eventId },
-      order: { rank: 'ASC' },
-    });
+  private buildPrompt(input: GenerateRecommendationDTO): string {
+    return `You are a friendly event planner. Build exactly one structured event recommendation based on the following parameters:
 
-    return {
-      eventId,
-      recommendations,
-      count: recommendations.length,
+- time: ${input.time}
+- location: ${input.location}
+- peopleAmount: ${input.peopleAmount}
+- transportation: ${input.transportation}
+- vibe: ${input.vibe}
+- placeBusiness: ${input.placeBusiness}
+- budget: ${input.budget}
+
+Create a single best event recommendation that fits these criteria.`;
+  }
+
+  private async callGeminiModel(prompt: string): Promise<string> {
+    const modelName = process.env.GOOGLE_GEMINI_MODEL || "gemini-2.5-flash";
+    const model = this.genAI.getGenerativeModel({ model: modelName });
+
+    const responseSchema: ObjectSchema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        recommendedEvent: {
+          type: SchemaType.OBJECT,
+          properties: {
+            title: { type: SchemaType.STRING },
+            description: { type: SchemaType.STRING },
+            address: { type: SchemaType.STRING },
+            vibe: { type: SchemaType.STRING },
+            score: { type: SchemaType.NUMBER },
+            tags: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+            },
+          },
+          required: ["title", "description", "address", "vibe", "score"],
+        },
+      },
+      required: ["recommendedEvent"],
     };
+
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema,
+        },
+      });
+      const response = await result.response;
+      const text = response.text();
+      return text;
+    } catch (error) {
+      this.logger.error(`Gemini API error: ${error.message}`);
+      throw new Error(`Failed to generate recommendation: ${error.message}`);
+    }
+  }
+
+  private parseGeminiResponse(responseText: string, input: GenerateRecommendationDTO): RecommendationResult {
+    try {
+      const parsed = JSON.parse(responseText.trim());
+      if (parsed && parsed.recommendedEvent) {
+        const event = parsed.recommendedEvent;
+        return {
+          title: event.title || `Event for ${input.vibe}`,
+          description: event.description || `A ${input.vibe} event at ${input.location}`,
+          address: event.address || input.location,
+          vibe: event.vibe || input.vibe,
+          score: typeof event.score === "number" ? event.score : 0.85,
+          tags: Array.isArray(event.tags) ? event.tags : undefined,
+        };
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to parse Gemini response as JSON: ${error.message}`);
+    }
+
+    throw new Error("Failed to parse recommendation response from Gemini model");
   }
 }
