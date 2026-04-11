@@ -14,14 +14,21 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 // import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
+import { SlidesService } from 'src/slides/slides.service';
 
 @Controller('events')
 // @UseGuards(JwtAuthGuard)
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) { }
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly slidesService: SlidesService,
+  ) {}
 
   @Post()
-  async create(@Request() req: AuthRequest, @Body() createEventDto: CreateEventDto) {
+  async create(
+    @Request() req: AuthRequest,
+    @Body() createEventDto: CreateEventDto,
+  ) {
     return await this.eventsService.create(req?.user?.sub, createEventDto);
   }
 
@@ -45,12 +52,18 @@ export class EventsController {
   }
 
   @Post('recommendations/:id')
-  async createRecommendations(@Request() req: AuthRequest, @Param('id') id: string) {
+  async createRecommendations(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
     return await this.eventsService.createRecommendations(id, req.user.sub);
   }
 
   @Get('recommendations/:id')
-  async getRecommendations(@Request() req: AuthRequest, @Param('id') id: string) {
+  async getRecommendations(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
     return await this.eventsService.getRecommendations(id, req.user.sub);
   }
 
@@ -62,5 +75,19 @@ export class EventsController {
   @Get('types/:id')
   async getEventTypeById(@Param('id') id: string) {
     return await this.eventsService.getEventTypeById(id);
+  }
+
+  @Get('event-answers/:eventId')
+  async getEventAnswers(
+    @Request() req: AuthRequest,
+    @Param('eventId') eventId: string,
+  ) {
+    const event = await this.eventsService.findOne(
+      eventId,
+      '11111111-1111-1111-1111-111111111111',
+    );
+    const answers = await this.slidesService.getEventAnswers(eventId);
+
+    return { event, answers };
   }
 }

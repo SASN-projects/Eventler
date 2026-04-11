@@ -204,7 +204,6 @@ export class SlidesService {
   async getEventAnswers(eventId: string) {
     const answers = await this.eventResponseRepository.find({
       where: { eventId },
-      relations: ['user'],
     });
 
     return answers;

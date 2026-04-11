@@ -34,4 +34,12 @@ export class SlidesController {
       createSlideAnswersDto,
     );
   }
+
+  @Get('event-answers/:eventId')
+  async getEventAnswers(
+    @Request() req: AuthRequest,
+    @Param('eventId') eventId: string,
+  ) {
+    return await this.slidesService.getEventAnswers(eventId);
+  }
 }
