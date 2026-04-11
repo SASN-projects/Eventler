@@ -1,9 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { Recommendation } from "./entities/recommendation.entity";
-import { GenerateRecommendationDTO } from "./dto/generate-recommendation.dto";
-import { GoogleGenerativeAI, SchemaType, ObjectSchema } from "@google/generative-ai";
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Recommendation } from './entities/recommendation.entity';
+import { GenerateRecommendationDTO } from './dto/generate-recommendation.dto';
+import { GoogleGenerativeAI, SchemaType, ObjectSchema } from '@google/generative-ai';
 
 export interface RecommendationResult {
   title: string;
@@ -31,7 +31,7 @@ export class RecommendationsService {
   ) {
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-      throw new Error("GOOGLE_API_KEY is required for Gemini integration.");
+      throw new Error('GOOGLE_API_KEY is required for Gemini integration.');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
@@ -39,20 +39,20 @@ export class RecommendationsService {
   getFeed() {
     const mockRecommendations = [
       {
-        id: "1",
-        title: "Coffee Shop Meet-up",
+        id: '1',
+        title: 'Coffee Shop Meet-up',
         score: 0.95,
         rank: 1,
       },
       {
-        id: "2",
-        title: "Beach Volleyball",
+        id: '2',
+        title: 'Beach Volleyball',
         score: 0.88,
         rank: 2,
       },
       {
-        id: "3",
-        title: "Movie Night",
+        id: '3',
+        title: 'Movie Night',
         score: 0.82,
         rank: 3,
       },
@@ -107,7 +107,7 @@ Create a single best event recommendation that fits these criteria.`;
   }
 
   private async callGeminiModel(prompt: string): Promise<string> {
-    const modelName = process.env.GOOGLE_GEMINI_MODEL || "gemini-2.5-flash";
+    const modelName = process.env.GOOGLE_GEMINI_MODEL || 'gemini-2.5-flash';
     const model = this.genAI.getGenerativeModel({ model: modelName });
 
     const responseSchema: ObjectSchema = {
@@ -126,17 +126,17 @@ Create a single best event recommendation that fits these criteria.`;
               items: { type: SchemaType.STRING },
             },
           },
-          required: ["title", "description", "address", "vibe", "score"],
+          required: ['title', 'description', 'address', 'vibe', 'score'],
         },
       },
-      required: ["recommendedEvent"],
+      required: ['recommendedEvent'],
     };
 
     try {
       const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          responseMimeType: "application/json",
+          responseMimeType: 'application/json',
           responseSchema,
         },
       });
@@ -159,7 +159,7 @@ Create a single best event recommendation that fits these criteria.`;
           description: event.description || `A ${input.vibe} event at ${input.location}`,
           address: event.address || input.location,
           vibe: event.vibe || input.vibe,
-          score: typeof event.score === "number" ? event.score : 0.85,
+          score: typeof event.score === 'number' ? event.score : 0.85,
           tags: Array.isArray(event.tags) ? event.tags : undefined,
         };
       }
@@ -167,6 +167,6 @@ Create a single best event recommendation that fits these criteria.`;
       this.logger.warn(`Failed to parse Gemini response as JSON: ${error.message}`);
     }
 
-    throw new Error("Failed to parse recommendation response from Gemini model");
+    throw new Error('Failed to parse recommendation response from Gemini model');
   }
 }
