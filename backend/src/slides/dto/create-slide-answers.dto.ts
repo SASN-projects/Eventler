@@ -15,7 +15,7 @@ class SlideAnswerItem {
 
   @IsString()
   @IsNotEmpty()
-    answer: string;
+    answerValue: string;
 
   @IsNumber()
   @IsOptional()

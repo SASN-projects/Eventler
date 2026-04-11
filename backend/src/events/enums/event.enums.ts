@@ -1,4 +1,5 @@
 export enum EventType {
-  SINGLE = 'SINGLE',
-  GROUP = 'GROUP',
+  INDIVIDUAL = 'individual',
+  GROUP = 'group',
+  MANUAL = 'manual',
 }

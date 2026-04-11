@@ -2,12 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
+import { Venue } from 'src/venues/entities/venue.entity';
+import { CreateRecommendationDto } from './dto/create-recommendation.dto';
 
 @Injectable()
 export class RecommendationsService {
   constructor(
     @InjectRepository(Recommendation)
     private recommendationRepository: Repository<Recommendation>,
+    @InjectRepository(Venue)
+    private venueRepository: Repository<Venue>,
   ) { }
 
   getFeed() {
@@ -40,53 +44,70 @@ export class RecommendationsService {
     };
   }
 
-  async createForEvent(eventId: string) {
+  async createForEvent(eventId: string, createRecommendationsDto: CreateRecommendationDto) {
+    const newRecommendations: Recommendation[] = [];
+
+    for (const recommendation of createRecommendationsDto.venues) {
+      const {score, ...venueData} = recommendation;
+      const venue = this.venueRepository.create(venueData);
+      const newVenue = await this.venueRepository.save(venue); // Save venues if they are new
+      const newRecommendation = await this.recommendationRepository.save({
+        eventId,
+        venueId: newVenue.id,
+        score,
+      });
+
+      newRecommendations.push(newRecommendation);
+    }
+
+    return newRecommendations;
     // This is a stub implementation
     // In production, this would analyze event data and user preferences
     // to generate personalized recommendations
 
     // Delete existing recommendations for this event
-    await this.recommendationRepository.delete({ eventId });
+    // await this.recommendationRepository.delete({ eventId });
 
     // Create mock recommendations
-    const mockRecommendations = [
-      {
-        eventId,
-        title: 'Italian Restaurant',
-        score: 0.92,
-        rank: 1,
-      },
-      {
-        eventId,
-        title: 'Rooftop Bar',
-        score: 0.87,
-        rank: 2,
-      },
-      {
-        eventId,
-        title: 'Escape Room',
-        score: 0.81,
-        rank: 3,
-      },
-    ];
+    // const mockRecommendations = [
+    //   {
+    //     eventId,
+    //     title: 'Italian Restaurant',
+    //     score: 0.92,
+    //     rank: 1,
+    //   },
+    //   {
+    //     eventId,
+    //     title: 'Rooftop Bar',
+    //     score: 0.87,
+    //     rank: 2,
+    //   },
+    //   {
+    //     eventId,
+    //     title: 'Escape Room',
+    //     score: 0.81,
+    //     rank: 3,
+    //   },
+    // ];
 
-    const recommendations = mockRecommendations.map((rec) =>
-      this.recommendationRepository.create(rec),
-    );
+    // const recommendations = mockRecommendations.map((rec) =>
+    //   this.recommendationRepository.create(rec),
+    // );
 
-    await this.recommendationRepository.save(recommendations);
+    // await this.recommendationRepository.save(recommendations);
 
-    return {
-      message: 'Recommendations created successfully',
-      count: recommendations.length,
-      recommendations,
-    };
+    // return {
+    //   message: 'Recommendations created successfully',
+    //   count: recommendations.length,
+    //   recommendations,
+    // };
   }
 
   async getEventRecommendations(eventId: string) {
     const recommendations = await this.recommendationRepository.find({
       where: { eventId },
-      order: { rank: 'ASC' },
+      order: { score: 'DESC' },
+      relations: ['venue'],
     });
 
     return {
