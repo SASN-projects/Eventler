@@ -2,13 +2,14 @@
 // import reactLogo from "./assets/react.svg";
 // import viteLogo from "/vite.svg";
 import "./App.css";
-import HomePage from "./pages/homePage/HomePage";
+import DecisionPage from "./pages/slidingPages/DecisionPage";
 
 function App() {
   // const [count, setCount] = useState(0);
 
   return (
-    <HomePage />
+    // <HomePage />
+    <DecisionPage />
     // <>
     //   <div>
     //     <a href="https://vite.dev" target="_blank">
