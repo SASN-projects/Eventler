@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  UpdateDateColumn,
   JoinColumn,
   OneToOne,
   ManyToOne,
@@ -19,26 +20,47 @@ export class UserPreferences {
   @Column({ name: 'user_id' })
     userId: string;
 
-  @Column({ nullable: true })
-    budget: number;
+  @Column('decimal', { name: 'preferred_budget_min', precision: 10, scale: 2 })
+    preferredBudgetMin: number;
 
-  @Column({ nullable: true })
-    location: string;
+  @Column('decimal', { name: 'preferred_budget_max', precision: 10, scale: 2 })
+    preferredBudgetMax: number;
 
-  @Column({ name: 'event_type_id', nullable: true })
-    eventTypeId: string;
+  @Column('text', { name: 'preferred_location' })
+    preferredLocation: string;
 
-  @Column({ type: 'varchar', length: 10, nullable: true })
-    transportation: Transportation;
+  @Column('decimal', { name: 'preferred_radius_km', precision: 6, scale: 2 })
+    preferredRadiusKm: number;
+
+  @Column({ name: 'preferred_transport', type: 'varchar', length: 20 })
+    preferredTransport: Transportation;
+
+  @Column({ name: 'preferred_vibe', length: 50 })
+    preferredVibe: string;
+
+  @Column({ name: 'preferred_time_from', type: 'time' })
+    preferredTimeFrom: string;
+
+  @Column({ name: 'preferred_time_to', type: 'time' })
+    preferredTimeTo: string;
+
+  @Column({ name: 'preferred_event_type' })
+    preferredEventTypeId: string;
+
+  @Column('text', { array: true })
+    interests: string[];
 
   @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+    updatedAt: Date;
 
   @OneToOne(() => User, (user) => user.preferences)
   @JoinColumn({ name: 'user_id' })
     user: User;
 
   @ManyToOne(() => EventType, { nullable: true })
-  @JoinColumn({ name: 'event_type_id' })
+  @JoinColumn({ name: 'preferred_event_type' })
     eventType: EventType;
 }

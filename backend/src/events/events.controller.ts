@@ -6,23 +6,23 @@ import {
   Delete,
   Body,
   Param,
-  UseGuards,
+  // UseGuards,
   Request,
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
 
 @Controller('events')
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 export class EventsController {
   constructor(private readonly eventsService: EventsService) { }
 
   @Post()
   async create(@Request() req: AuthRequest, @Body() createEventDto: CreateEventDto) {
-    return await this.eventsService.create(req.user.sub, createEventDto);
+    return await this.eventsService.create(req?.user?.sub, createEventDto);
   }
 
   @Get(':id')

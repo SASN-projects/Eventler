@@ -86,7 +86,7 @@ export class RecommendationsService {
   async getEventRecommendations(eventId: string) {
     const recommendations = await this.recommendationRepository.find({
       where: { eventId },
-      order: { rank: 'ASC' },
+      order: { score: 'DESC' },
     });
 
     return {
