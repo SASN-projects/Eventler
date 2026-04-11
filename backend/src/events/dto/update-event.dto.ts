@@ -1,20 +1,15 @@
-import {
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsDateString,
-} from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsDateString } from 'class-validator';
 
 export class UpdateEventDto {
   @IsDateString()
   @IsOptional()
-    date?: string;
+  date?: string;
 
   @IsString()
   @IsOptional()
-    location?: string;
+  location?: string;
 
   @IsNumber()
   @IsOptional()
-    budget?: number;
+  budget?: number;
 }
