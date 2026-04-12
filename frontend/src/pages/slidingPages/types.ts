@@ -4,11 +4,33 @@ export interface SelectionBaseParams {
     participantsAmount: number;
 }
 
+export interface Option {
+    id: string;
+    value: string;
+    createdAt: Date;
+    question: Object;
+    questionId: string;
+}
+
 export interface Question {
-    question: string;
-    type: 'number' | 'text' | 'choice';
+    id: string;
+    code: string;
+    label: string;
+    createdAt: Date;
+    description: string;
+    answerMode: 'NUMBER' | 'TEXT' | 'CHOICE';
+    options: Option[];
 }
 
 export type Answers = Record<string, string>;
 
 export type DecisionStep = 'base' | 'sliding' | 'recommendation';
+
+export interface Recommendation {
+    name: string;
+    // city: string;
+    // address: string;
+    // country: string;
+    // category: string;
+    description: string;
+}

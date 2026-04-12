@@ -1,6 +1,6 @@
 import type { SelectionBaseParams } from "./types";
 
-const msInTwoHours = 5 * 60 * 60 * 1000;
+export const msInTwoHours = 5 * 60 * 60 * 1000;
 
 export const DEFAULT_PARAMS: SelectionBaseParams = {
     place: 'Tel Aviv',

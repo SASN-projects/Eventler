@@ -3,10 +3,11 @@ import { Box, Typography } from '@mui/material';
 import type { FunctionComponent } from 'react';
 import { PrimeButton } from '../../components/buttons';
 import { FullSizeContainer } from '../../components/layouts';
+import type { Recommendation } from './types';
 
 interface RecommendationsProps {
-    recommendation: string;
     onRestart: () => void;
+    recommendation: Recommendation;
 }
 
 export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendation, onRestart }) => (
@@ -19,6 +20,7 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
             m: '30px',
             padding: '40px',
             display: 'flex',
+            flexDirection: 'column',
             borderRadius: '16px',
             alignItems: 'center',
             backgroundColor: '#fff8b5',
@@ -26,7 +28,10 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
         }}>
             <VerifiedIcon sx={{ color: '#edb53c' }} />
             <Typography sx={{ color: '#edb53c', fontSize: '24px' }}>
-                {recommendation}
+                {recommendation.name}
+            </Typography>
+            <Typography sx={{ fontSize: '17px' }}>
+                {recommendation.description}
             </Typography>
         </Box>
 

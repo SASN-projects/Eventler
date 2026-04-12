@@ -11,14 +11,14 @@ interface SlidesProps {
 }
 
 export const Slider: FunctionComponent<SlidesProps> = ({ questions, handleAnswers }) => {
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
     const [answers, setAnswers] = useState<Answers>(createAnswersObject(questions));
 
     const handleNext = (answer: string) => {
         if (answer !== '')
             setAnswers(prev => ({
                 ...prev,
-                [questions[currentStepIndex].question]: answer
+                [questions[currentStepIndex].id]: answer
             }));
 
         if (currentStepIndex < questions.length - 1)
@@ -31,8 +31,8 @@ export const Slider: FunctionComponent<SlidesProps> = ({ questions, handleAnswer
     return (
         <FullSizeContainer sx={{ background: 'linear-gradient(to right, #aed9ff, #d2b7f5)' }}>
             <Slide
-                title={questions[currentStepIndex].question}
-                options={['1', '2', '3']}
+                title={questions[currentStepIndex].label}
+                options={questions[currentStepIndex].options.map(option => option.value)}
                 onNext={handleNext}
             />
         </FullSizeContainer>
