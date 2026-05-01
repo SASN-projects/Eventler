@@ -199,7 +199,7 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     // }
 };
 
-export const getRecomendationById = async (eventId: string) => {
+export const getRecomendationById = (eventId: string) => {
     // try {
     //     const { data } = await api.get(`/recommendations/for-event/${eventId}`);
     //     return data;

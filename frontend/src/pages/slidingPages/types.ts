@@ -28,9 +28,11 @@ export type DecisionStep = 'base' | 'sliding' | 'recommendation';
 
 export interface Recommendation {
     name: string;
-    // city: string;
-    // address: string;
-    // country: string;
-    // category: string;
+    city: string;
+    rating: string;
+    address: string;
+    country: string;
+    category: string;
+    priceLevel: string;
     description: string;
 }

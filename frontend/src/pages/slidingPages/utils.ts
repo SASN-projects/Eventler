@@ -8,23 +8,38 @@ export const formatTimeAsText = (time: Date) =>
 export const createAnswersObject = (questions: Question[]) =>
     questions.reduce((acc, q) => ({ ...acc, [q.id]: '' }), {} as Answers);
 
+export const EMPTY_RECOMMENDATION: Recommendation = ({
+    name: '',
+    city: '',
+    rating: '',
+    address: '',
+    country: '',
+    category: '',
+    priceLevel: '',
+    description: ''
+});
+
 // change by req types later
 export const extractRecommendation = ({ recommendations }: any): Recommendation => {
     const { venue: {
         name,
-        // city, 
-        // address, 
-        // country, 
-        // category,
-        description
+        city,
+        rating,
+        address,
+        country,
+        category,
+        priceLevel,
+        description,
     } } = recommendations[0];
 
     return ({
         name,
-        // city,
-        // address,
-        // country,
-        // category,
+        city,
+        rating,
+        address,
+        country,
+        category,
+        priceLevel,
         description
     });
 };

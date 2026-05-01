@@ -5,10 +5,8 @@ import BaseQuestions from "./BaseQuestions";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
 import { fetchSlidesQuestions, getRecomendationById, submitAnswers } from "./apiWithMockups";
-import { type Recommendation, type Answers, type DecisionStep, type Question } from "./types";
-import { extractRecommendation } from "./utils";
-
-const EMPTY_RECOMMENDATION: Recommendation = { name: '', description: '' };
+import { type Answers, type DecisionStep, type Question, type Recommendation } from "./types";
+import { EMPTY_RECOMMENDATION, extractRecommendation } from "./utils";
 
 const DecisionPage: FunctionComponent = () => {
     const [eventId, setEventId] = useState('');
@@ -17,7 +15,7 @@ const DecisionPage: FunctionComponent = () => {
     const [recommendation, setRecommendation] = useState<Recommendation>(EMPTY_RECOMMENDATION);
 
     const fetchQuestions = async () => {
-        const questions = await fetchSlidesQuestions(); 
+        const questions = await fetchSlidesQuestions();
         setSlidersQuestions(questions);
     };
 
