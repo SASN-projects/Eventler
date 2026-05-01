@@ -14,8 +14,14 @@ export class Recommendation {
   @PrimaryGeneratedColumn('uuid')
     id: string;
 
-  @Column({ name: 'event_id' })
-    eventId: string;
+  @Column()
+    title: string;
+
+  @Column({ type: 'text' })
+    description: string;
+
+  @Column()
+    address: string;
 
   @Column({ name: 'venue_id', nullable: true })
     venueId: string;
