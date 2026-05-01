@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS favorite_venues (
     PRIMARY KEY (user_id, venue_id)
 );
 
+CREATE TABLE IF NOT EXISTS recommendations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    score NUMERIC(8,4) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_event_venue UNIQUE (event_id, venue_id)
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(200) NOT NULL,
@@ -149,17 +157,7 @@ CREATE TABLE IF NOT EXISTS event_responses (
     CONSTRAINT uq_event_user_question UNIQUE (event_id, user_id, question)
 );
 
-CREATE TABLE IF NOT EXISTS recommendations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
-    score NUMERIC(8,4) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_event_venue UNIQUE (event_id, venue_id)
-);
-
 CREATE INDEX IF NOT EXISTS index_events_created_by ON events(created_by);
 CREATE INDEX IF NOT EXISTS index_events_group_id ON events(group_id);
 CREATE INDEX IF NOT EXISTS index_events_selected_venue_id ON events(selected_venue_id);
 CREATE INDEX IF NOT EXISTS index_event_responses_event_id ON event_responses(event_id);
-CREATE INDEX IF NOT EXISTS index_recommendations_event_id ON recommendations(event_id);

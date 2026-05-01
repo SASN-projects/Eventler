@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from '../../auth/entities/user.entity';
 import { Group } from '../../groups/entities/group.entity';
+import { Recommendation } from '../../recommendations/entities/recommendation.entity';
 // import { EventType } from './event-type.entity';
 import { Venue } from '../../venues/entities/venue.entity';
 // import { Transportation } from '../../users/enums/transportation.enum';
@@ -76,9 +77,6 @@ export class Event {
   @Column({ name: 'selected_venue_id' })
   selectedVenueId: string;
 
-  @Column({ name: 'recommendation_id', nullable: true })
-  recommendationId: string;
-
   @Column({ name: 'finalized_at', type: 'timestamp' })
   finalizedAt: Date;
 
@@ -95,6 +93,10 @@ export class Event {
   @ManyToOne(() => Group)
   @JoinColumn({ name: 'group_id' })
   group: Group;
+
+  @ManyToOne(() => Recommendation, { nullable: true })
+  @JoinColumn({ name: 'recommendation_id' })
+  recommendation: Recommendation;
 
   // @ManyToOne(() => EventType)
   // @JoinColumn({ name: 'event_type_id' })

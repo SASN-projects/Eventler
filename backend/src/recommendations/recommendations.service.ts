@@ -102,7 +102,7 @@ export class RecommendationsService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
-        console.log(prompt)
+        console.log(prompt);
         const rawResponse = await this.callGeminiModel(prompt);
         const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
         console.log('recommendedEvent', recommendedEvent);
@@ -114,7 +114,7 @@ export class RecommendationsService {
         });
 
         const savedRecommendation = await this.recommendationRepository.save(recommendation);
-        event.recommendationId = savedRecommendation.id;
+        event.recommendation.id = savedRecommendation.id;
         await this.eventRepository.save(event);
 
         return {
