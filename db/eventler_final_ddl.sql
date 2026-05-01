@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS events (
     -- transportation_method transportation_enum,
     -- preferred_vibe VARCHAR(50),
     selected_venue_id UUID REFERENCES venues(id) ON DELETE SET NULL,
+    recommendation_id UUID REFERENCES recommendations(id) ON DELETE SET NULL,
     finalized_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
