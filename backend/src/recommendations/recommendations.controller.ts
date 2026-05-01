@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { RecommendationsService } from './recommendations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { GenerateRecommendationDTO } from './dto/generate-recommendation.dto';
 
 @Controller('recommendations')
+@UseGuards(JwtAuthGuard)
 export class RecommendationsController {
   constructor(private readonly recommendationsService: RecommendationsService) {}
 
@@ -12,8 +12,8 @@ export class RecommendationsController {
     return this.recommendationsService.getFeed();
   }
 
-  @Post('generate')
-  async generateRecommendation(@Body() body: GenerateRecommendationDTO) {
-    return await this.recommendationsService.generateRecommendation(body);
+  @Post('events/:eventId/generate')
+  async generateRecommendation(@Param('eventId') eventId: string) {
+    return await this.recommendationsService.generateRecommendation(eventId);
   }
 }

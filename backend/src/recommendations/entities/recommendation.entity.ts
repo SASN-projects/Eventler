@@ -1,29 +1,28 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { Event } from '../../events/entities/event.entity';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('recommendations')
 export class Recommendation {
   @PrimaryGeneratedColumn('uuid')
-    id: string;
+  id: string;
 
   @Column()
-    title: string;
+  title: string;
 
   @Column({ type: 'text' })
-    description: string;
+  description: string;
 
   @Column()
-    address: string;
+  address: string;
 
   @Column()
-    vibe: string;
+  vibe: string;
 
   @Column({ type: 'decimal', nullable: true })
-    score: number;
+  score: number;
 
   @Column({ nullable: true })
-    rank: number;
+  rank: number;
 
   @Column({ type: 'json', nullable: true })
-    tags: string[];
+  tags: string[];
 }

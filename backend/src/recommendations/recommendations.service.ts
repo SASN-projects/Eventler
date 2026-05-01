@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
-import { GenerateRecommendationDTO } from './dto/generate-recommendation.dto';
+import { Event } from '../events/entities/event.entity';
 import { GoogleGenerativeAI, SchemaType, ObjectSchema } from '@google/generative-ai';
 
 export interface RecommendationResult {
@@ -28,6 +28,8 @@ export class RecommendationsService {
   constructor(
     @InjectRepository(Recommendation)
     private recommendationRepository: Repository<Recommendation>,
+    @InjectRepository(Event)
+    private eventRepository: Repository<Event>,
   ) {
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
@@ -64,7 +66,29 @@ export class RecommendationsService {
     };
   }
 
-  async generateRecommendation(input: GenerateRecommendationDTO): Promise<GenerateRecommendationResponse> {
+  async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
+    const event = await this.eventRepository.findOne({
+      where: { id: eventId },
+      relations: ['eventType'],
+    });
+
+    if (!event) {
+      return {
+        success: false,
+        message: `Event with id ${eventId} not found`,
+      };
+    }
+
+    const input = {
+      time: event.date ? event.date.toISOString() : 'flexible',
+      location: event.location || 'local area',
+      peopleAmount: event.participantCount || 1,
+      transportation: 'car',
+      vibe: event.eventType?.name || 'casual',
+      placeBusiness: event.eventType?.name || 'venue',
+      budget: event.budget ? `$${event.budget}` : 'moderate',
+    };
+
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -73,6 +97,21 @@ export class RecommendationsService {
         const prompt = this.buildPrompt(input);
         const rawResponse = await this.callGeminiModel(prompt);
         const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
+
+        const recommendation = this.recommendationRepository.create({
+          title: recommendedEvent.title,
+          description: recommendedEvent.description,
+          address: recommendedEvent.address,
+          vibe: recommendedEvent.vibe,
+          score: recommendedEvent.score,
+          tags: recommendedEvent.tags,
+          rank: 1,
+        });
+
+        const savedRecommendation = await this.recommendationRepository.save(recommendation);
+        event.recommendationId = savedRecommendation.id;
+        await this.eventRepository.save(event);
+
         return {
           success: true,
           data: recommendedEvent,
@@ -92,7 +131,15 @@ export class RecommendationsService {
     };
   }
 
-  private buildPrompt(input: GenerateRecommendationDTO): string {
+  private buildPrompt(input: {
+    time: string;
+    location: string;
+    peopleAmount: number;
+    transportation: string;
+    vibe: string;
+    placeBusiness: string;
+    budget: string;
+  }): string {
     return `You are a friendly event planner. Build exactly one structured event recommendation based on the following parameters:
 
 - time: ${input.time}
@@ -149,7 +196,18 @@ Create a single best event recommendation that fits these criteria.`;
     }
   }
 
-  private parseGeminiResponse(responseText: string, input: GenerateRecommendationDTO): RecommendationResult {
+  private parseGeminiResponse(
+    responseText: string,
+    input: {
+      time: string;
+      location: string;
+      peopleAmount: number;
+      transportation: string;
+      vibe: string;
+      placeBusiness: string;
+      budget: string;
+    },
+  ): RecommendationResult {
     try {
       const parsed = JSON.parse(responseText.trim());
       if (parsed && parsed.recommendedEvent) {
