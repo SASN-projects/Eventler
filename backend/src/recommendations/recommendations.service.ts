@@ -4,7 +4,9 @@ import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { GoogleGenerativeAI, SchemaType, ObjectSchema } from '@google/generative-ai';
-import { Venue } from 'src/venues/entities/venue.entity';
+import { Venue } from '../venues/entities/venue.entity';
+import { SlideAnswer } from 'src/slides/entities/slide-answer.entity';
+import { SlidesService } from 'src/slides/slides.service';
 
 export interface RecommendationResult {
   title: string;
@@ -33,6 +35,8 @@ export class RecommendationsService {
     private eventRepository: Repository<Event>,
     @InjectRepository(Venue)
     private venueRepository: Repository<Venue>,
+    // @InjectRepository(SlideAnswer)
+    private slideAnswerService: SlidesService,
   ) {
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
@@ -70,17 +74,23 @@ export class RecommendationsService {
   }
 
   async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
+    console.log('here');
+    
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
-      relations: ['eventType'],
+      relations: [],
     });
-
+    console.log(event);
+    
+    
     if (!event) {
       return {
         success: false,
         message: `Event with id ${eventId} not found`,
       };
     }
+    const eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
+    console.log(eventAnswers);
 
     // const input = {
     //   time: event.date ? event.date.toISOString() : 'flexible',
@@ -96,9 +106,9 @@ export class RecommendationsService {
       location: event.locationCity || 'local area',
       peopleAmount: event.participantCount || 1,
       transportation: 'car',
-      vibe: event.eventType?.name || 'casual',
-      placeBusiness: event.eventType?.name || 'venue',
-      budget: event.budget ? `$${event.budget}` : 'moderate',
+      vibe: 'casual',
+      placeBusiness: 'venue',
+      budget: 'moderate',
     };
 
     const maxRetries = 3;
@@ -109,20 +119,21 @@ export class RecommendationsService {
         const prompt = this.buildPrompt(input);
         const rawResponse = await this.callGeminiModel(prompt);
         const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
+        console.log('recommendedEvent', recommendedEvent);
 
-        const recommendation = this.recommendationRepository.create({
-          title: recommendedEvent.title,
-          description: recommendedEvent.description,
-          address: recommendedEvent.address,
-          vibe: recommendedEvent.vibe,
-          score: recommendedEvent.score,
-          tags: recommendedEvent.tags,
-          rank: 1,
-        });
+        // const recommendation = this.recommendationRepository.create({
+        //   title: recommendedEvent.title,
+        //   description: recommendedEvent.description,
+        //   address: recommendedEvent.address,
+        //   vibe: recommendedEvent.vibe,
+        //   score: recommendedEvent.score,
+        //   tags: recommendedEvent.tags,
+        //   rank: 1,
+        // });
 
-        const savedRecommendation = await this.recommendationRepository.save(recommendation);
-        event.recommendationId = savedRecommendation.id;
-        await this.eventRepository.save(event);
+        // const savedRecommendation = await this.recommendationRepository.save(recommendation);
+        // event.recommendationId = savedRecommendation.id;
+        // await this.eventRepository.save(event);
 
         return {
           success: true,
