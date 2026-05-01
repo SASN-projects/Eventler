@@ -6,7 +6,7 @@ export const formatTimeAsText = (time: Date) =>
         : '';
 
 export const createAnswersObject = (questions: Question[]) =>
-    questions.reduce((acc, q) => ({ ...acc, [q.id]: '' }), {} as Answers);
+    questions.reduce((acc, q) => ({ ...acc, [q.label]: '' }), {} as Answers);
 
 export const EMPTY_RECOMMENDATION: Recommendation = ({
     name: '',

@@ -15,7 +15,7 @@ export const Slider: FunctionComponent<SlidesProps> = ({ questions, handleAnswer
     const [answers, setAnswers] = useState<Answers>(createAnswersObject(questions));
 
     const handleNext = (answer: string) => {
-        const updatedAnswers = { ...answers, [questions[currentStepIndex].id]: answer };
+        const updatedAnswers = { ...answers, [questions[currentStepIndex].label]: answer };
 
         if (answer !== '') {
             setAnswers(updatedAnswers);
