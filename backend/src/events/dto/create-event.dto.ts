@@ -1,32 +1,73 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsDateString, IsUUID, IsInt, Min } from 'class-validator';
-import { ProcessType } from '../enums/process-type.enum';
+import {
+  IsEnum,
+  // IsNumber,
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsUUID,
+  IsInt,
+  Min,
+} from 'class-validator';
+// import { Transportation } from '../../users/enums/transportation.enum';
+import { EventStatus } from '../enums/event-status.enum';
+import { EventType } from '../enums/event.enums';
 
 export class CreateEventDto {
-  @IsEnum(ProcessType)
-  processType: ProcessType;
+  @IsString()
+    title: string;
+
+  @IsString()
+    description: string;
+
+  @IsEnum(EventStatus)
+    status: EventStatus;
 
   @IsUUID()
   @IsOptional()
-  groupId?: string;
+    groupId: string;
 
-  @IsUUID()
-  @IsOptional()
-  eventTypeId?: string;
+  @IsEnum(EventType)
+    eventType: EventType;
+
+  @IsDateString()
+    targetDate: string;
+
+  @IsDateString()
+    targetDateFrom: string;
+
+  @IsDateString()
+    targetDateTo: string;
+
+  @IsDateString()
+    deadlineAt: string;
 
   @IsInt()
   @Min(1)
+    participantCount: number;
+
+  // @IsNumber()
+  //   budgetMin: number;
+
+  // @IsNumber()
+  //   budgetMax: number;
+
+  @IsString()
+    locationCity: string;
+
+  @IsString()
+    locationCountry: string;
+
+  // @IsEnum(Transportation)
+  //   transportationMethod: Transportation;
+
+  // @IsString()
+  //   preferredVibe: string;
+
+  @IsUUID()
   @IsOptional()
-  participantCount?: number;
+    selectedVenueId: string;
 
   @IsDateString()
   @IsOptional()
-  date?: string;
-
-  @IsString()
-  @IsOptional()
-  location?: string;
-
-  @IsNumber()
-  @IsOptional()
-  budget?: number;
+    finalizedAt?: string;
 }

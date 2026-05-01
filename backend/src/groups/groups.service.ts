@@ -25,7 +25,7 @@ export class GroupsService {
 
     const group = this.groupRepository.create({
       ...createGroupDto,
-      inviteLink,
+      inviteLinkToken: inviteLink,
     });
 
     await this.groupRepository.save(group);

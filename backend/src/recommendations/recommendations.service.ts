@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { GoogleGenerativeAI, SchemaType, ObjectSchema } from '@google/generative-ai';
+import { Venue } from 'src/venues/entities/venue.entity';
 
 export interface RecommendationResult {
   title: string;
@@ -30,6 +31,8 @@ export class RecommendationsService {
     private recommendationRepository: Repository<Recommendation>,
     @InjectRepository(Event)
     private eventRepository: Repository<Event>,
+    @InjectRepository(Venue)
+    private venueRepository: Repository<Venue>,
   ) {
     const apiKey = process.env.GOOGLE_API_KEY;
     if (!apiKey) {
@@ -79,9 +82,18 @@ export class RecommendationsService {
       };
     }
 
+    // const input = {
+    //   time: event.date ? event.date.toISOString() : 'flexible',
+    //   location: event.location || 'local area',
+    //   peopleAmount: event.participantCount || 1,
+    //   transportation: 'car',
+    //   vibe: event.eventType?.name || 'casual',
+    //   placeBusiness: event.eventType?.name || 'venue',
+    //   budget: event.budget ? `$${event.budget}` : 'moderate',
+    // };
     const input = {
-      time: event.date ? event.date.toISOString() : 'flexible',
-      location: event.location || 'local area',
+      time: event.targetDate ? event.targetDate.toString() : 'flexible',
+      location: event.locationCity || 'local area',
       peopleAmount: event.participantCount || 1,
       transportation: 'car',
       vibe: event.eventType?.name || 'casual',
@@ -116,7 +128,7 @@ export class RecommendationsService {
           success: true,
           data: recommendedEvent,
         };
-      } catch (error) {
+      } catch (error: any) {
         lastError = error as Error;
         this.logger.warn(`Recommendation attempt ${attempt} failed: ${error.message}`);
         if (attempt < maxRetries) {
@@ -190,7 +202,7 @@ Create a single best event recommendation that fits these criteria.`;
       const response = await result.response;
       const text = response.text();
       return text;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Gemini API error: ${error.message}`);
       throw new Error(`Failed to generate recommendation: ${error.message}`);
     }
@@ -221,7 +233,7 @@ Create a single best event recommendation that fits these criteria.`;
           tags: Array.isArray(event.tags) ? event.tags : undefined,
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(`Failed to parse Gemini response as JSON: ${error.message}`);
     }
 

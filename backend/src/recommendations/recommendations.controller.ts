@@ -1,11 +1,19 @@
-import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body } from '@nestjs/common';
 import { RecommendationsService } from './recommendations.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateRecommendationDto } from './dto/create-recommendation.dto';
 
 @Controller('recommendations')
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 export class RecommendationsController {
-  constructor(private readonly recommendationsService: RecommendationsService) {}
+  constructor(
+    private readonly recommendationsService: RecommendationsService,
+  ) {}
+
+  @Get('for-event/:eventId')
+  getEventRecommendations(@Param('eventId') eventId: string) {
+    return this.recommendationsService.getEventRecommendations(eventId);
+  }
 
   @Get('feed')
   getFeed() {
@@ -15,5 +23,17 @@ export class RecommendationsController {
   @Post('events/:eventId/generate')
   async generateRecommendation(@Param('eventId') eventId: string) {
     return await this.recommendationsService.generateRecommendation(eventId);
+  }
+
+
+  @Post('for-event/:eventId')
+  async createForEvent(
+    @Param('eventId') eventId: string,
+    @Body() createRecommendationsDto: CreateRecommendationDto,
+  ) {
+    return await this.recommendationsService.createForEvent(
+      eventId,
+      createRecommendationsDto,
+    );
   }
 }
