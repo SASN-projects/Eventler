@@ -12,9 +12,6 @@ export interface RecommendationResult {
   title: string;
   description: string;
   address: string;
-  vibe: string;
-  score: number;
-  tags?: string[];
 }
 
 export interface GenerateRecommendationResponse {
@@ -75,14 +72,13 @@ export class RecommendationsService {
 
   async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
     console.log('here');
-    
+
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
     });
     console.log(event);
-    
-    
+
     if (!event) {
       return {
         success: false,
@@ -92,23 +88,12 @@ export class RecommendationsService {
     const eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
     console.log(eventAnswers);
 
-    // const input = {
-    //   time: event.date ? event.date.toISOString() : 'flexible',
-    //   location: event.location || 'local area',
-    //   peopleAmount: event.participantCount || 1,
-    //   transportation: 'car',
-    //   vibe: event.eventType?.name || 'casual',
-    //   placeBusiness: event.eventType?.name || 'venue',
-    //   budget: event.budget ? `$${event.budget}` : 'moderate',
-    // };
     const input = {
-      time: event.targetDate ? event.targetDate.toString() : 'flexible',
-      location: event.locationCity || 'local area',
-      peopleAmount: event.participantCount || 1,
-      transportation: 'car',
-      vibe: 'casual',
-      placeBusiness: 'venue',
-      budget: 'moderate',
+      targetDate: event.targetDate || 'flexible',
+      locationCity: event.locationCity || 'local area',
+      locationCountry: event.locationCountry || 'local area',
+      participantCount: event.participantCount || 1,
+      eventType: event.eventType || 'casual',
     };
 
     const maxRetries = 3;
@@ -116,24 +101,21 @@ export class RecommendationsService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const prompt = this.buildPrompt(input);
+        const prompt = this.buildPrompt(input, eventAnswers);
+        console.log(prompt);
         const rawResponse = await this.callGeminiModel(prompt);
         const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
         console.log('recommendedEvent', recommendedEvent);
 
-        // const recommendation = this.recommendationRepository.create({
-        //   title: recommendedEvent.title,
-        //   description: recommendedEvent.description,
-        //   address: recommendedEvent.address,
-        //   vibe: recommendedEvent.vibe,
-        //   score: recommendedEvent.score,
-        //   tags: recommendedEvent.tags,
-        //   rank: 1,
-        // });
+        const recommendation = this.recommendationRepository.create({
+          title: recommendedEvent.title,
+          description: recommendedEvent.description,
+          address: recommendedEvent.address,
+        });
 
-        // const savedRecommendation = await this.recommendationRepository.save(recommendation);
-        // event.recommendationId = savedRecommendation.id;
-        // await this.eventRepository.save(event);
+        const savedRecommendation = await this.recommendationRepository.save(recommendation);
+        event.recommendation = savedRecommendation;
+        await this.eventRepository.save(event);
 
         return {
           success: true,
@@ -154,26 +136,29 @@ export class RecommendationsService {
     };
   }
 
-  private buildPrompt(input: {
-    time: string;
-    location: string;
-    peopleAmount: number;
-    transportation: string;
-    vibe: string;
-    placeBusiness: string;
-    budget: string;
-  }): string {
-    return `You are a friendly event planner. Build exactly one structured event recommendation based on the following parameters:
+  private buildPrompt(
+    input: {
+      targetDate: string;
+      locationCity: string;
+      locationCountry: string;
+      participantCount: number;
+      eventType: string;
+    },
+    eventAnswers: any[] = [],
+  ): string {
+    const slideAnswersText = eventAnswers.map((answer) => `- ${answer.question}: ${answer.answerValue}`).join('\n');
 
-- time: ${input.time}
-- location: ${input.location}
-- peopleAmount: ${input.peopleAmount}
-- transportation: ${input.transportation}
-- vibe: ${input.vibe}
-- placeBusiness: ${input.placeBusiness}
-- budget: ${input.budget}
+    return `You are a friendly event planner. Build exactly one structured event recommendation based on the following event details:
 
-Create a single best event recommendation that fits these criteria.`;
+- Event Type: ${input.eventType}
+- Target Date: ${input.targetDate}
+- Location: ${input.locationCity}, ${input.locationCountry}
+- Number of Participants: ${input.participantCount}
+
+User Preferences (from slide answers):
+${slideAnswersText || 'No preferences provided'}
+
+Create a single best event recommendation that fits these criteria and user preferences.`;
   }
 
   private async callGeminiModel(prompt: string): Promise<string> {
@@ -189,14 +174,8 @@ Create a single best event recommendation that fits these criteria.`;
             title: { type: SchemaType.STRING },
             description: { type: SchemaType.STRING },
             address: { type: SchemaType.STRING },
-            vibe: { type: SchemaType.STRING },
-            score: { type: SchemaType.NUMBER },
-            tags: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
           },
-          required: ['title', 'description', 'address', 'vibe', 'score'],
+          required: ['title', 'description', 'address'],
         },
       },
       required: ['recommendedEvent'],
@@ -222,13 +201,11 @@ Create a single best event recommendation that fits these criteria.`;
   private parseGeminiResponse(
     responseText: string,
     input: {
-      time: string;
-      location: string;
-      peopleAmount: number;
-      transportation: string;
-      vibe: string;
-      placeBusiness: string;
-      budget: string;
+      targetDate: string;
+      locationCity: string;
+      locationCountry: string;
+      participantCount: number;
+      eventType: string;
     },
   ): RecommendationResult {
     try {
@@ -236,12 +213,11 @@ Create a single best event recommendation that fits these criteria.`;
       if (parsed && parsed.recommendedEvent) {
         const event = parsed.recommendedEvent;
         return {
-          title: event.title || `Event for ${input.vibe}`,
-          description: event.description || `A ${input.vibe} event at ${input.location}`,
-          address: event.address || input.location,
-          vibe: event.vibe || input.vibe,
-          score: typeof event.score === 'number' ? event.score : 0.85,
-          tags: Array.isArray(event.tags) ? event.tags : undefined,
+          title: event.title || `${input.eventType} Event on ${input.targetDate}`,
+          description:
+            event.description ||
+            `A ${input.eventType} event for ${input.participantCount} people in ${input.locationCity}`,
+          address: event.address || `${input.locationCity}, ${input.locationCountry}`,
         };
       }
     } catch (error: any) {

@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS favorite_venues (
     PRIMARY KEY (user_id, venue_id)
 );
 
+CREATE TABLE IF NOT EXISTS recommendations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    address TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(200) NOT NULL,
@@ -100,6 +108,7 @@ CREATE TABLE IF NOT EXISTS events (
     -- transportation_method transportation_enum,
     -- preferred_vibe VARCHAR(50),
     selected_venue_id UUID REFERENCES venues(id) ON DELETE SET NULL,
+    recommendation_id UUID REFERENCES recommendations(id) ON DELETE SET NULL,
     finalized_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -148,17 +157,7 @@ CREATE TABLE IF NOT EXISTS event_responses (
     CONSTRAINT uq_event_user_question UNIQUE (event_id, user_id, question)
 );
 
-CREATE TABLE IF NOT EXISTS recommendations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
-    score NUMERIC(8,4) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_event_venue UNIQUE (event_id, venue_id)
-);
-
 CREATE INDEX IF NOT EXISTS index_events_created_by ON events(created_by);
 CREATE INDEX IF NOT EXISTS index_events_group_id ON events(group_id);
 CREATE INDEX IF NOT EXISTS index_events_selected_venue_id ON events(selected_venue_id);
 CREATE INDEX IF NOT EXISTS index_event_responses_event_id ON event_responses(event_id);
-CREATE INDEX IF NOT EXISTS index_recommendations_event_id ON recommendations(event_id);
