@@ -114,7 +114,7 @@ export class RecommendationsService {
         });
 
         const savedRecommendation = await this.recommendationRepository.save(recommendation);
-        event.recommendation.id = savedRecommendation.id;
+        event.recommendation = savedRecommendation;
         await this.eventRepository.save(event);
 
         return {
