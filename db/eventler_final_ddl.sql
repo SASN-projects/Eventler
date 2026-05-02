@@ -82,10 +82,10 @@ CREATE TABLE IF NOT EXISTS favorite_venues (
 
 CREATE TABLE IF NOT EXISTS recommendations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
-    score NUMERIC(8,4) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_event_venue UNIQUE (event_id, venue_id)
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    address TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS events (
