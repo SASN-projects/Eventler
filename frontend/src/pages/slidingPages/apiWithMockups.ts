@@ -49,38 +49,12 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     }
 };
 
-export const getRecomendationById = (eventId: string) => {
-    // try {
-    //     const { data } = await api.get(`/recommendations/for-event/${eventId}`);
-    //     return data;
-    // } catch {
-    return ({
-        "eventId": "57f82b8f-9ca2-4646-a18f-276c87de80f9",
-        "recommendations": [
-            {
-                "id": "a26c1f57-fa87-4f23-bcca-cb896a142e00",
-                "eventId": "57f82b8f-9ca2-4646-a18f-276c87de80f9",
-                "venueId": "95213b5b-66f2-4e4b-b5a0-8ced5b45a008",
-                "score": "45.6000",
-                "createdAt": "2026-04-11T19:11:16.355Z",
-                "venue": {
-                    "id": "95213b5b-66f2-4e4b-b5a0-8ced5b45a008",
-                    "name": "Cafe Mocha",
-                    "category": "Coffee Shop",
-                    "description": "A cozy place to enjoy great coffee and pastries.",
-                    "address": "123 Main Street",
-                    "city": "New York",
-                    "country": "USA",
-                    "priceLevel": 2,
-                    "rating": "4.50",
-                    "source": "Internal",
-                    "externalSourceId": "cafe-mocha-123",
-                    "createdAt": "2026-04-11T19:11:16.339Z",
-                    "updatedAt": "2026-04-11T19:11:16.339Z"
-                }
-            }
-        ],
-        "count": 1
-    });
-    // }
+export const getRecomendationById = async (eventId: string) => {
+    try {
+        const { data } = await api.post(`/recommendations/events/${eventId}/generate`);
+        return data;
+    } catch {
+        console.log('failing to fetch recommendation');
+        return null;
+    }
 };
