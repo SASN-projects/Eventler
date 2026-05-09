@@ -1,14 +1,18 @@
 // import { useState } from "react";
 // import reactLogo from "./assets/react.svg";
 // import viteLogo from "/vite.svg";
+import { Box } from "@mui/material";
 import "./App.css";
-import HomePage from "./pages/homePage/HomePage";
+import DecisionPage from "./pages/slidingPages/DecisionPage";
 
 function App() {
   // const [count, setCount] = useState(0);
 
   return (
-    <HomePage />
+    <Box sx={{ height: '100vh', width: '100vw' }}>
+      {/* <HomePage /> */}
+      <DecisionPage />
+    </Box>
     // <>
     //   <div>
     //     <a href="https://vite.dev" target="_blank">

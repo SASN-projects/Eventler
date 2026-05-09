@@ -1,23 +1,27 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
 import { Group } from './group.entity';
 import { User } from '../../auth/entities/user.entity';
+import { GroupRole } from '../enums/group-role.enum';
 
 @Entity('group_members')
 export class GroupMember {
-  @PrimaryGeneratedColumn('uuid')
-    id: string;
-
-  @Column({ name: 'group_id' })
+  @PrimaryColumn({ name: 'group_id' })
     groupId: string;
 
-  @Column({ name: 'user_id' })
+  @PrimaryColumn({ name: 'user_id' })
     userId: string;
+
+  @Column({ type: 'varchar', length: 20, default: GroupRole.MEMBER })
+    role: GroupRole;
+
+  @Column({ name: 'joined_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    joinedAt: Date;
 
   @ManyToOne(() => Group, (group) => group.members)
   @JoinColumn({ name: 'group_id' })

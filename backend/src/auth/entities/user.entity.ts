@@ -6,23 +6,32 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
     id: string;
 
+  @Column({ name: 'first_name', length: 100 })
+    firstName: string;
+
+  @Column({ name: 'last_name', length: 100 })
+    lastName: string;
+
   @Column({ unique: true })
     email: string;
 
   @Column({ unique: true })
     username: string;
 
-  @Column()
+  @Column({ name: 'password_hash' })
     password: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 120 })
     city: string;
 
-  @Column({ nullable: true })
-    age: number;
+  @Column({ length: 120 })
+    country: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 255 })
     occupation: string;
+
+  @Column({ name: 'date_of_birth', type: 'date' })
+    dateOfBirth: string;
 
   @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

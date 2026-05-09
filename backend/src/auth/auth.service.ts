@@ -20,7 +20,17 @@ export class AuthService {
   ) { }
 
   async register(registerDto: RegisterDto) {
-    const { email, username, password, city, age, occupation } = registerDto;
+    const {
+      email,
+      username,
+      password,
+      firstName,
+      lastName,
+      city,
+      country,
+      dateOfBirth,
+      occupation,
+    } = registerDto;
 
     const existingUser = await this.userRepository.findOne({
       where: [{ email }, { username }],
@@ -36,8 +46,11 @@ export class AuthService {
       email,
       username,
       password: hashedPassword,
+      firstName,
+      lastName,
       city,
-      age,
+      country,
+      dateOfBirth,
       occupation,
     });
 

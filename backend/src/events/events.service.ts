@@ -22,11 +22,16 @@ export class EventsService {
     private groupMemberRepository: Repository<GroupMember>,
   ) { }
 
-  async create(userId: string, createEventDto: CreateEventDto) {
+  async create(userId: string = '11111111-1111-1111-1111-111111111111', createEventDto: CreateEventDto) {
     const event = this.eventRepository.create({
       ...createEventDto,
-      creatorId: userId,
-      date: createEventDto.date ? new Date(createEventDto.date) : undefined,
+      createdById: userId,
+      deadlineAt: createEventDto.deadlineAt
+        ? new Date(createEventDto.deadlineAt)
+        : undefined,
+      finalizedAt: createEventDto.finalizedAt
+        ? new Date(createEventDto.finalizedAt)
+        : undefined,
     });
 
     await this.eventRepository.save(event);
@@ -44,7 +49,7 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    if (event.creatorId !== userId && event.groupId) {
+    if (event.creator.id !== userId && event.groupId) {
       const groupMember = await this.groupMemberRepository.findOne({
         where: {
           groupId: event.groupId,
@@ -61,13 +66,16 @@ export class EventsService {
   }
 
   async update(id: string, userId: string, updateEventDto: UpdateEventDto) {
-    const event = await this.eventRepository.findOne({ where: { id } });
+    const event = await this.eventRepository.findOne({
+      where: { id },
+      relations: ['creator'],
+    });
 
     if (!event) {
       throw new NotFoundException('Event not found');
     }
 
-    if (event.creatorId !== userId) {
+    if (event.creator.id !== userId) {
       throw new ForbiddenException(
         'Only the event creator can update this event',
       );
@@ -75,7 +83,21 @@ export class EventsService {
 
     Object.assign(event, {
       ...updateEventDto,
-      date: updateEventDto.date ? new Date(updateEventDto.date) : event.date,
+      targetDate: updateEventDto.targetDate
+        ? new Date(updateEventDto.targetDate)
+        : event.targetDate,
+      targetDateFrom: updateEventDto.targetDateFrom
+        ? new Date(updateEventDto.targetDateFrom)
+        : event.targetDateFrom,
+      targetDateTo: updateEventDto.targetDateTo
+        ? new Date(updateEventDto.targetDateTo)
+        : event.targetDateTo,
+      deadlineAt: updateEventDto.deadlineAt
+        ? new Date(updateEventDto.deadlineAt)
+        : event.deadlineAt,
+      finalizedAt: updateEventDto.finalizedAt
+        ? new Date(updateEventDto.finalizedAt)
+        : event.finalizedAt,
     });
 
     await this.eventRepository.save(event);
@@ -84,13 +106,16 @@ export class EventsService {
   }
 
   async remove(id: string, userId: string) {
-    const event = await this.eventRepository.findOne({ where: { id } });
+    const event = await this.eventRepository.findOne({
+      where: { id },
+      relations: ['creator'],
+    });
 
     if (!event) {
       throw new NotFoundException('Event not found');
     }
 
-    if (event.creatorId !== userId) {
+    if (event.creator.id !== userId) {
       throw new ForbiddenException(
         'Only the event creator can delete this event',
       );
