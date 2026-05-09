@@ -1,7 +1,6 @@
-import { Box, Typography } from "@mui/material";
 import { useEffect, useState, type FunctionComponent } from "react";
 import { PrimeButton } from "../../components/buttons";
-import { FullSizeContainer } from "../../components/layouts";
+import { OptionBox, OptionsContainer, OptionText, SlideContainer, SlideTitle } from './styles';
 
 interface SlideProps {
     title: string;
@@ -17,40 +16,27 @@ const Slide: FunctionComponent<SlideProps> = ({ title, options, onNext }) => {
     }, [title]);
 
     const renderOption = (value: string) => (
-        <Box
+        <OptionBox
             key={value}
             onClick={() => setAnswer(value)}
-            sx={{
-                margin: '8px',
-                cursor: 'pointer',
-                textAlign: 'center',
-                padding: '16px 32px',
-                borderRadius: '16px',
-                backgroundColor: '#FFFFFF',
-                boxShadow: '0px 2px 10px rgba(0,0,0,0.05)',
-                border: answer === value ? '3px solid #50a4ff' : '3px solid transparent',
-                transition: 'border-color 0.2s',
-                '&:hover': {
-                    filter: 'brightness(0.98)'
-                }
-            }}
+            selected={answer === value}
         >
-            <Typography sx={{ color: '#50a4ff', fontSize: '18px', fontWeight: 500 }}>{value}</Typography>
-        </Box>
+            <OptionText>{value}</OptionText>
+        </OptionBox>
     );
 
     return (
-        <FullSizeContainer sx={{ justifyContent: 'center', alignItems: 'center', gap: 1 }}>
-            <Typography sx={{ fontSize: '30px', m: '30px', color: '#FFFFFF' }}>{title}</Typography>
+        <SlideContainer>
+            <SlideTitle>{title}</SlideTitle>
 
-            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
+            <OptionsContainer>
                 {options.map(renderOption)}
-            </Box>
+            </OptionsContainer>
 
             <PrimeButton sx={{ m: '30px' }} onClick={() => onNext(answer)} disabled={answer === ''}>
                 Next
             </PrimeButton>
-        </FullSizeContainer>
+        </SlideContainer>
     );
 };
 

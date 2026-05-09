@@ -1,12 +1,18 @@
 import { AccessTime, Group, PlaceOutlined } from '@mui/icons-material';
-import { Box, Typography } from '@mui/material';
 import type { ChangeEvent, FunctionComponent } from 'react';
 import { useState } from 'react';
 import { PrimeButton } from '../../components/buttons';
 import { FieldInput } from '../../components/inputs';
-import { FullSizeContainer } from '../../components/layouts';
 import { postNewEvent } from './apiWithMockups';
-import { DEFAULT_PARAMS } from './consts';
+import {
+    AMOUNT_ERROR_MSG,
+    DEFAULT_PARAMS,
+    NEW_EVENT_TITLE,
+    PLACE_ERROR_MSG,
+    START_SLIDING_BTN,
+    TIME_ERROR_MSG
+} from './consts';
+import { BaseQuestionsContainer, BaseQuestionsTitle, InputsContainer } from './styles';
 import type { SelectionBaseParams } from './types';
 import { formatTimeAsText } from './utils';
 
@@ -46,10 +52,10 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
 
 
     return (
-        <FullSizeContainer sx={{ justifyContent: 'space-evenly', alignItems: 'center' }}>
-            <Typography sx={{ fontSize: '30px', m: '30px' }}>New Event</Typography>
+        <BaseQuestionsContainer>
+            <BaseQuestionsTitle>{NEW_EVENT_TITLE}</BaseQuestionsTitle>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '300px' }}>
+            <InputsContainer>
                 <FieldInput
                     label="Time"
                     icon={AccessTime}
@@ -57,7 +63,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
                     isError={!isValidTime}
                     onChange={handleTimeChange}
                     value={formatTimeAsText(baseParams.time)}
-                    helperText={"Time must be equal to or later than now"}
+                    helperText={TIME_ERROR_MSG}
                 />
 
                 <FieldInput
@@ -67,7 +73,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
                     isError={!isValidPlace}
                     value={baseParams.place}
                     onChange={handlePlaceChange}
-                    helperText={"Place cannot be empty"}
+                    helperText={PLACE_ERROR_MSG}
                 />
 
                 <FieldInput
@@ -77,14 +83,14 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
                     label="Participants Amount"
                     onChange={handleParticipantsChange}
                     value={baseParams.participantsAmount}
-                    helperText={"Amount must be at least 1"}
+                    helperText={AMOUNT_ERROR_MSG}
                 />
-            </Box>
+            </InputsContainer>
 
             <PrimeButton sx={{ m: '30px' }} onClick={handleStartSliding} disabled={!isAllValid}>
-                Start Sliding!
+                {START_SLIDING_BTN}
             </PrimeButton>
-        </FullSizeContainer>
+        </BaseQuestionsContainer>
     );
 };
 

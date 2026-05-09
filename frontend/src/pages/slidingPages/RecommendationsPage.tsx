@@ -1,11 +1,13 @@
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import StarIcon from '@mui/icons-material/Star';
 import VerifiedIcon from '@mui/icons-material/Verified';
-import { Box, Typography } from '@mui/material';
+import { Typography } from '@mui/material';
 import type { FunctionComponent } from 'react';
 import { PrimeButton } from '../../components/buttons';
-import { FullSizeContainer } from '../../components/layouts';
+import { GOOD_MATCH_SUBTITLE, SLIDING_COMPLETED_TITLE, START_NEW_EVENT_BTN } from './consts';
+import { DetailsContainer, LocationContainer, PriceText, RatingContainer, RatingText, RecommendationCard, RecommendationCategory, RecommendationContainer, RecommendationDescription, RecommendationName } from './styles';
 import type { Recommendation } from './types';
+import { parsePriceLevel } from './utils';
 
 interface RecommendationsProps {
     onRestart: () => void;
@@ -13,51 +15,41 @@ interface RecommendationsProps {
 }
 
 export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendation, onRestart }) => {
-    const price = parseInt(recommendation.priceLevel, 10) || 0;
+    const price = parsePriceLevel(recommendation.priceLevel);
 
     return (
-        <FullSizeContainer sx={{ justifyContent: 'center', alignItems: 'center', gap: 2 }}>
-            <Typography sx={{ fontSize: '20px' }}>Sliding Completed</Typography>
-            <Typography sx={{ fontSize: '30px' }}>Looks like this can be a good match!</Typography>
+        <RecommendationContainer>
+            <Typography sx={{ fontSize: '20px' }}>{SLIDING_COMPLETED_TITLE}</Typography>
+            <Typography sx={{ fontSize: '30px' }}>{GOOD_MATCH_SUBTITLE}</Typography>
 
-            <Box sx={{
-                gap: 2,
-                m: '30px',
-                padding: '40px',
-                display: 'flex',
-                flexDirection: 'column',
-                borderRadius: '16px',
-                alignItems: 'center',
-                backgroundColor: '#fff8b5',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-            }}>
+            <RecommendationCard>
                 <VerifiedIcon sx={{ color: '#edb53c' }} />
-                <Typography sx={{ color: '#edb53c', fontSize: '24px', fontWeight: 'bold' }}>
+                <RecommendationName>
                     {recommendation.name}
-                </Typography>
+                </RecommendationName>
                 
-                <Typography sx={{ fontSize: '16px', fontStyle: 'italic', color: 'text.secondary' }}>
+                <RecommendationCategory>
                     {recommendation.category}
-                </Typography>
+                </RecommendationCategory>
 
-                <Typography sx={{ fontSize: '17px', textAlign: 'center' }}>
+                <RecommendationDescription>
                     {recommendation.description}
-                </Typography>
+                </RecommendationDescription>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <LocationContainer>
                     <LocationOnIcon />
                     <Typography sx={{ fontSize: '16px' }}>
                         {`${recommendation.address}, ${recommendation.city}, ${recommendation.country}`}
                     </Typography>
-                </Box>
+                </LocationContainer>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 4, mt: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography sx={{ fontSize: '18px', fontWeight: 'bold' }}>{recommendation.rating}</Typography>
+                <DetailsContainer>
+                    {/* <RatingContainer>
+                        <RatingText>{recommendation.rating}</RatingText>
                         <StarIcon sx={{ color: '#edb53c' }} />
-                    </Box>
+                    </RatingContainer> */}
 
-                    <Typography sx={{ fontSize: '18px', letterSpacing: 2 }}>
+                    {/* <PriceText>
                         {[...Array(4)].map((_, i) => (
                             <span 
                                 key={i} 
@@ -69,14 +61,14 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
                                 $
                             </span>
                         ))}
-                    </Typography>
-                </Box>
-            </Box>
+                    </PriceText> */}
+                </DetailsContainer>
+            </RecommendationCard>
 
             <PrimeButton onClick={onRestart}>
-                Start New Event
+                {START_NEW_EVENT_BTN}
             </PrimeButton>
-        </FullSizeContainer>
+        </RecommendationContainer>
     );
 };
 

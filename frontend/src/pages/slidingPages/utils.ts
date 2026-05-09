@@ -65,3 +65,5 @@ export const extractRecommendation = (response: any): Recommendation => {
 
     return EMPTY_RECOMMENDATION;
 };
+
+export const parsePriceLevel = (priceLevel: string): number => parseInt(priceLevel, 10) || 0;

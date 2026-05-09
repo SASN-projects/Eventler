@@ -1,21 +1,14 @@
 import type { FunctionComponent, ReactElement } from "react";
 import { useEffect, useState } from "react";
-import { Box, CircularProgress, Typography } from "@mui/material";
+import { CircularProgress } from "@mui/material";
 import { FullSizeContainer } from "../../components/layouts";
+import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
+import { LoadingContainer, LoadingSubtitle, LoadingTextContainer, LoadingTitle } from "./styles";
 import BaseQuestions from "./BaseQuestions";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
-import {
-  fetchSlidesQuestions,
-  getRecomendationById,
-  submitAnswers,
-} from "./apiWithMockups";
-import {
-  type Answers,
-  type DecisionStep,
-  type Question,
-  type Recommendation,
-} from "./types";
+import { fetchSlidesQuestions, getRecomendationById, submitAnswers } from "./apiWithMockups";
+import { type Answers, type DecisionStep, type Question, type Recommendation } from "./types";
 import { EMPTY_RECOMMENDATION, extractRecommendation } from "./utils";
 
 const DecisionPage: FunctionComponent = () => {
@@ -58,19 +51,17 @@ const DecisionPage: FunctionComponent = () => {
   }, []);
 
   const loadingScreen = (
-    <FullSizeContainer
-      sx={{ justifyContent: "center", alignItems: "center", gap: 2 }}
-    >
+    <LoadingContainer>
       <CircularProgress />
-      <Box sx={{ textAlign: "center" }}>
-        <Typography sx={{ fontSize: "20px", fontWeight: "bold" }}>
-          Generating recommendation
-        </Typography>
-        <Typography sx={{ fontSize: "16px", color: "text.secondary" }}>
-          This may take a moment.
-        </Typography>
-      </Box>
-    </FullSizeContainer>
+      <LoadingTextContainer>
+        <LoadingTitle>
+          {LOADING_TITLE}
+        </LoadingTitle>
+        <LoadingSubtitle>
+          {LOADING_SUBTITLE}
+        </LoadingSubtitle>
+      </LoadingTextContainer>
+    </LoadingContainer>
   );
 
   const steps: Record<DecisionStep, ReactElement> = {
