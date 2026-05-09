@@ -3,7 +3,7 @@ import type { ChangeEvent, FunctionComponent } from 'react';
 import { useState } from 'react';
 import { PrimeButton } from '../../components/buttons';
 import { FieldInput } from '../../components/inputs';
-import { postNewEvent } from './apiWithMockups';
+import { postNewEvent } from './api';
 import {
     AMOUNT_ERROR_MSG,
     DEFAULT_PARAMS,
