@@ -9,6 +9,7 @@ import { SlideAnswer } from 'src/slides/entities/slide-answer.entity';
 import { SlidesService } from 'src/slides/slides.service';
 
 export interface RecommendationResult {
+  id: string;
   title: string;
   description: string;
   address: string;
@@ -116,11 +117,16 @@ export class RecommendationsService {
           }),
         );
 
-        await this.recommendationRepository.save(recommendationsToSave);
+        const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
 
         return {
           success: true,
-          data: recommendedEvents,
+          data: savedRecommendations.map((savedRecommendation) => ({
+            id: savedRecommendation.id,
+            title: savedRecommendation.title,
+            description: savedRecommendation.description,
+            address: savedRecommendation.address,
+          })),
         };
       } catch (error: any) {
         lastError = error as Error;
