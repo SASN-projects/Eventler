@@ -6,9 +6,7 @@ import { RecommendationsService } from './recommendations.service';
 @Controller('recommendations')
 // @UseGuards(JwtAuthGuard)
 export class RecommendationsController {
-  constructor(
-    private readonly recommendationsService: RecommendationsService,
-  ) {}
+  constructor(private readonly recommendationsService: RecommendationsService) {}
 
   // @Get('for-event/:eventId')
   // getEventRecommendations(@Param('eventId') eventId: string) {
@@ -25,6 +23,10 @@ export class RecommendationsController {
     return await this.recommendationsService.generateRecommendation(eventId);
   }
 
+  @Post('events/:eventId/select/:recommendationId')
+  async selectRecommendation(@Param('eventId') eventId: string, @Param('recommendationId') recommendationId: string) {
+    return await this.recommendationsService.selectRecommendation(eventId, recommendationId);
+  }
 
   // @Post('for-event/:eventId')
   // async createForEvent(

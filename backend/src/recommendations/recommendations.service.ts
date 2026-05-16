@@ -16,7 +16,7 @@ export interface RecommendationResult {
 
 export interface GenerateRecommendationResponse {
   success: boolean;
-  data?: RecommendationResult;
+  data?: RecommendationResult[];
   message?: string;
 }
 
@@ -104,22 +104,23 @@ export class RecommendationsService {
         const prompt = this.buildPrompt(input, eventAnswers);
         console.log(prompt);
         const rawResponse = await this.callGeminiModel(prompt);
-        const recommendedEvent = this.parseGeminiResponse(rawResponse, input);
-        console.log('recommendedEvent', recommendedEvent);
+        const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
+        console.log('recommendedEvents', recommendedEvents);
 
-        const recommendation = this.recommendationRepository.create({
-          title: recommendedEvent.title,
-          description: recommendedEvent.description,
-          address: recommendedEvent.address,
-        });
+        // Persist the generated recommendations
+        const recommendationsToSave = recommendedEvents.map((recommendation) =>
+          this.recommendationRepository.create({
+            title: recommendation.title,
+            description: recommendation.description,
+            address: recommendation.address,
+          }),
+        );
 
-        const savedRecommendation = await this.recommendationRepository.save(recommendation);
-        event.recommendation = savedRecommendation;
-        await this.eventRepository.save(event);
+        await this.recommendationRepository.save(recommendationsToSave);
 
         return {
           success: true,
-          data: recommendedEvent,
+          data: recommendedEvents,
         };
       } catch (error: any) {
         lastError = error as Error;
@@ -136,6 +137,45 @@ export class RecommendationsService {
     };
   }
 
+  async selectRecommendation(eventId: string, recommendationId: string): Promise<GenerateRecommendationResponse> {
+    const event = await this.eventRepository.findOne({
+      where: { id: eventId },
+      relations: [],
+    });
+
+    if (!event) {
+      return {
+        success: false,
+        message: `Event with id ${eventId} not found`,
+      };
+    }
+
+    const recommendation = await this.recommendationRepository.findOne({
+      where: { id: recommendationId },
+    });
+
+    if (!recommendation) {
+      return {
+        success: false,
+        message: `Recommendation with id ${recommendationId} not found`,
+      };
+    }
+
+    event.recommendation = recommendation;
+    await this.eventRepository.save(event);
+
+    return {
+      success: true,
+      data: [
+        {
+          title: recommendation.title,
+          description: recommendation.description,
+          address: recommendation.address,
+        },
+      ],
+    };
+  }
+
   private buildPrompt(
     input: {
       targetDate: string;
@@ -148,17 +188,17 @@ export class RecommendationsService {
   ): string {
     const slideAnswersText = eventAnswers.map((answer) => `- ${answer.question}: ${answer.answerValue}`).join('\n');
 
-    return `You are a friendly event planner. Build exactly one structured event recommendation based on the following event details:
+    return `You are a friendly event planner. Build exactly three (3) distinct structured event recommendations (as JSON array under key \"recommendedEvents\") based on the following event details:
 
-- Event Type: ${input.eventType}
-- Target Date: ${input.targetDate}
-- Location: ${input.locationCity}, ${input.locationCountry}
-- Number of Participants: ${input.participantCount}
+  - Event Type: ${input.eventType}
+  - Target Date: ${input.targetDate}
+  - Location: ${input.locationCity}, ${input.locationCountry}
+  - Number of Participants: ${input.participantCount}
 
-User Preferences (from slide answers):
-${slideAnswersText || 'No preferences provided'}
+  User Preferences (from slide answers):
+  ${slideAnswersText || 'No preferences provided'}
 
-Create a single best event recommendation that fits these criteria and user preferences.`;
+  Return JSON with key \"recommendedEvents\" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
   }
 
   private async callGeminiModel(prompt: string): Promise<string> {
@@ -168,17 +208,20 @@ Create a single best event recommendation that fits these criteria and user pref
     const responseSchema: ObjectSchema = {
       type: SchemaType.OBJECT,
       properties: {
-        recommendedEvent: {
-          type: SchemaType.OBJECT,
-          properties: {
-            title: { type: SchemaType.STRING },
-            description: { type: SchemaType.STRING },
-            address: { type: SchemaType.STRING },
+        recommendedEvents: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              title: { type: SchemaType.STRING },
+              description: { type: SchemaType.STRING },
+              address: { type: SchemaType.STRING },
+            },
+            required: ['title', 'description', 'address'],
           },
-          required: ['title', 'description', 'address'],
         },
       },
-      required: ['recommendedEvent'],
+      required: ['recommendedEvents'],
     };
 
     try {
@@ -207,18 +250,17 @@ Create a single best event recommendation that fits these criteria and user pref
       participantCount: number;
       eventType: string;
     },
-  ): RecommendationResult {
+  ): RecommendationResult[] {
     try {
       const parsed = JSON.parse(responseText.trim());
-      if (parsed && parsed.recommendedEvent) {
-        const event = parsed.recommendedEvent;
-        return {
+      if (parsed && Array.isArray(parsed.recommendedEvents)) {
+        return parsed.recommendedEvents.map((event: any) => ({
           title: event.title || `${input.eventType} Event on ${input.targetDate}`,
           description:
             event.description ||
             `A ${input.eventType} event for ${input.participantCount} people in ${input.locationCity}`,
           address: event.address || `${input.locationCity}, ${input.locationCountry}`,
-        };
+        }));
       }
     } catch (error: any) {
       this.logger.warn(`Failed to parse Gemini response as JSON: ${error.message}`);
