@@ -174,6 +174,7 @@ export class RecommendationsService {
       success: true,
       data: [
         {
+          id: recommendation.id,
           title: recommendation.title,
           description: recommendation.description,
           address: recommendation.address,
