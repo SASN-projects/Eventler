@@ -5,7 +5,10 @@ import type { Answers, Question } from "./types";
 export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     try {
         const { data } = await api.get('/slides');
-        return data;
+        return data.map((question: any) => ({
+            ...question,
+            imageUrl: question.image_url ?? question.imageUrl,
+        }));
     } catch {
         console.log('fetching slides failed');
         return [];
