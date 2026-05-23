@@ -24,26 +24,32 @@ export const InputsContainer = styled(Box)({
 export const RecommendationContainer = styled(FullSizeContainer)({
     justifyContent: 'center',
     alignItems: 'center',
-    gap: '16px'
+    gap: '8px',
+    padding: '16px 0'
 });
 
-export const RecommendationCard = styled(Box)({
-    gap: '16px',
-    margin: '30px',
-    padding: '40px',
+export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
+    gap: '8px',
+    margin: '4px 16px',
+    padding: '16px 24px',
     display: 'flex',
     flexDirection: 'column',
     borderRadius: '16px',
     alignItems: 'center',
-    backgroundColor: '#fff8b5',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-});
+    backgroundColor: $isSelected ? '#fff8b5' : '#e3f2fd',
+    border: $isSelected ? '4px solid #edb53c' : '4px solid transparent',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+    cursor: 'pointer',
+    transition: 'all 0.4s ease-in-out',
+    width: '90%',
+    maxWidth: '700px'
+}));
 
-export const RecommendationName = styled(Typography)({
-    color: '#edb53c',
+export const RecommendationName = styled(Typography)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
     fontSize: '24px',
-    fontWeight: 'bold'
-});
+    fontWeight: $isSelected  ? 'bold' : 'normal',
+    color: $isSelected ? '#edb53c' : '#1976d2',
+}));
 
 export const RecommendationCategory = styled(Typography)(({ theme }) => ({
     fontSize: '16px',

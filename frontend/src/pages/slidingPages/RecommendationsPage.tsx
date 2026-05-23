@@ -1,71 +1,149 @@
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import StarIcon from '@mui/icons-material/Star';
-import VerifiedIcon from '@mui/icons-material/Verified';
-import { Typography } from '@mui/material';
-import type { FunctionComponent } from 'react';
+import { Box, CircularProgress, Fade, Typography } from '@mui/material';
+import { type FunctionComponent, useState } from 'react';
 import { PrimeButton } from '../../components/buttons';
 import { GOOD_MATCH_SUBTITLE, SLIDING_COMPLETED_TITLE, START_NEW_EVENT_BTN } from './consts';
-import { DetailsContainer, LocationContainer, PriceText, RatingContainer, RatingText, RecommendationCard, RecommendationCategory, RecommendationContainer, RecommendationDescription, RecommendationName } from './styles';
+import { LocationContainer, RecommendationCard, RecommendationContainer, RecommendationDescription, RecommendationName } from './styles';
 import type { Recommendation } from './types';
-import { parsePriceLevel } from './utils';
+import { postSelectedRecommendation } from './api';
 
 interface RecommendationsProps {
+    eventId: string;
     onRestart: () => void;
-    recommendation: Recommendation;
+    recommendations: Recommendation[];
 }
 
-export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendation, onRestart }) => {
-    const price = parsePriceLevel(recommendation.priceLevel);
+export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendations, onRestart, eventId }) => {
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
+
+    const handleSubmitSelection = async (recommendationId: string) => {
+        setIsSubmitting(true);
+        try {
+            await postSelectedRecommendation(eventId, recommendationId);
+            setIsSubmitting(false);
+            setIsSuccess(true);
+            setTimeout(() => {
+                onRestart();
+            }, 2000);
+        } catch (error) {
+            console.error(error);
+            setIsSubmitting(false);
+        }
+    };
+
+    if (isSubmitting || isSuccess) {
+        return (
+            <RecommendationContainer>
+                {isSubmitting && (
+                    <Fade in={isSubmitting}>
+                        <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
+                            <CircularProgress size={60} sx={{ color: '#edb53c' }} />
+                            <Typography sx={{ fontSize: '20px', fontWeight: 'bold', color: '#1976d2' }}>
+                                Saving your event...
+                            </Typography>
+                        </Box>
+                    </Fade>
+                )}
+                {isSuccess && (
+                    <Fade in={isSuccess} timeout={500}>
+                        <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
+                            <CheckCircleIcon sx={{ fontSize: 80, color: '#4caf50' }} />
+                            <Typography sx={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>
+                                Event Created!
+                            </Typography>
+                        </Box>
+                    </Fade>
+                )}
+            </RecommendationContainer>
+        );
+    }
+
+    const renderRecommendation = (recommendation: Recommendation, index: number) => {
+        const isSelected = selectedIndex === index;
+        const isFocused = hoveredIndex === index;
+
+        return (
+            <RecommendationCard
+                key={index}
+                $isSelected={isSelected}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onClick={() => setSelectedIndex(index)}
+            >
+                <RecommendationName $isSelected={isSelected}>
+                    {recommendation.title}
+                </RecommendationName>
+
+                <Box
+                    sx={{
+                        maxHeight: isFocused ? '500px' : '0px',
+                        opacity: isFocused ? 1 : 0,
+                        overflow: 'hidden',
+                        transition: 'all 0.4s ease-in-out',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        marginTop: isFocused ? '8px' : '0px'
+                    }}
+                >
+                    <Box
+                        sx={{
+                            maxHeight: isFocused ? '200px' : '0px',
+                            opacity: isFocused ? 1 : 0,
+                            overflow: 'hidden',
+                            transition: 'all 0.4s ease-in-out',
+                            width: '100%'
+                        }}
+                    >
+                        <RecommendationDescription sx={{ fontSize: '15px' }}>
+                            {recommendation.description}
+                        </RecommendationDescription>
+                    </Box>
+
+                    <LocationContainer>
+                        <LocationOnIcon fontSize="small" />
+                        <Typography sx={{ fontSize: '14px' }}>
+                            {recommendation.address}
+                        </Typography>
+                    </LocationContainer>
+
+                    <Box
+                        sx={{
+                            maxHeight: isSelected ? '100px' : '0px',
+                            opacity: isSelected ? 1 : 0,
+                            overflow: 'hidden',
+                            transition: 'all 0.4s ease-in-out',
+                            width: '100%',
+                            display: 'flex',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        <PrimeButton
+                            onClick={() => handleSubmitSelection(recommendation.id)}
+                            sx={{ marginTop: '8px', padding: '8px 16px', fontSize: '14px' }}
+                        >
+                            that's my event
+                        </PrimeButton>
+                    </Box>
+                </Box>
+            </RecommendationCard>
+        );
+    };
 
     return (
         <RecommendationContainer>
-            <Typography sx={{ fontSize: '20px' }}>{SLIDING_COMPLETED_TITLE}</Typography>
-            <Typography sx={{ fontSize: '30px' }}>{GOOD_MATCH_SUBTITLE}</Typography>
+            <Typography sx={{ fontSize: '18px', margin: 0 }}>{SLIDING_COMPLETED_TITLE}</Typography>
+            <Typography sx={{ fontSize: '24px', margin: 0, mb: 1 }}>{GOOD_MATCH_SUBTITLE}</Typography>
 
-            <RecommendationCard>
-                <VerifiedIcon sx={{ color: '#edb53c' }} />
-                <RecommendationName>
-                    {recommendation.name}
-                </RecommendationName>
-                
-                <RecommendationCategory>
-                    {recommendation.category}
-                </RecommendationCategory>
+            {recommendations.map((rec, index) => renderRecommendation(rec, index))}
 
-                <RecommendationDescription>
-                    {recommendation.description}
-                </RecommendationDescription>
-
-                <LocationContainer>
-                    <LocationOnIcon />
-                    <Typography sx={{ fontSize: '16px' }}>
-                        {`${recommendation.address}, ${recommendation.city}, ${recommendation.country}`}
-                    </Typography>
-                </LocationContainer>
-
-                <DetailsContainer>
-                    {/* <RatingContainer>
-                        <RatingText>{recommendation.rating}</RatingText>
-                        <StarIcon sx={{ color: '#edb53c' }} />
-                    </RatingContainer> */}
-
-                    {/* <PriceText>
-                        {[...Array(4)].map((_, i) => (
-                            <span 
-                                key={i} 
-                                style={{ 
-                                    fontWeight: i < price ? 'bold' : 'normal', 
-                                    color: i < price ? 'inherit' : '#aaa' 
-                                }}
-                            >
-                                $
-                            </span>
-                        ))}
-                    </PriceText> */}
-                </DetailsContainer>
-            </RecommendationCard>
-
-            <PrimeButton onClick={onRestart}>
+            <PrimeButton onClick={onRestart} sx={{ marginTop: '16px', padding: '8px 24px' }}>
                 {START_NEW_EVENT_BTN}
             </PrimeButton>
         </RecommendationContainer>

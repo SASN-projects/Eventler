@@ -27,12 +27,11 @@ export type Answers = Record<string, string>;
 export type DecisionStep = 'base' | 'sliding' | 'recommendation';
 
 export interface Recommendation {
-    name: string;
-    city: string;
-    rating: string;
+    id: string;
+    title: string;
+    rating?: string;
     address: string;
-    country: string;
-    category: string;
-    priceLevel: string;
+    category?: string;
+    priceLevel?: string;
     description: string;
 }

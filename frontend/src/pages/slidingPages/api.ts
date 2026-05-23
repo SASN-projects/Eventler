@@ -12,7 +12,6 @@ export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     }
 };
 
-
 export const postNewEvent = async (time: Date, place: string, participantAmount: number) => {
     const eventDetails = {
         "title": "",
@@ -49,7 +48,7 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     }
 };
 
-export const getRecomendationById = async (eventId: string) => {
+export const getRecomendationsById = async (eventId: string) => {
     try {
         const { data } = await api.post(`/recommendations/events/${eventId}/generate`);
         return data;
@@ -58,3 +57,6 @@ export const getRecomendationById = async (eventId: string) => {
         return null;
     }
 };
+
+export const postSelectedRecommendation = async (eventId: string, recommendationId: string) =>
+    await api.post(`/recommendations/events/${eventId}/select/${recommendationId}`);
