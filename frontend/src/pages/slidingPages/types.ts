@@ -28,6 +28,7 @@ export type Answers = Record<string, string>;
 export type DecisionStep = 'base' | 'sliding' | 'recommendation';
 
 export interface Recommendation {
+    id: string;
     title: string;
     rating?: string;
     address: string;
