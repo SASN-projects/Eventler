@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -22,7 +23,6 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const {
       email,
-      username,
       password,
       firstName,
       lastName,
@@ -30,21 +30,27 @@ export class AuthService {
       country,
       dateOfBirth,
       occupation,
+      username,
     } = registerDto;
 
     const existingUser = await this.userRepository.findOne({
-      where: [{ email }, { username }],
+      where: { email },
     });
 
     if (existingUser) {
-      throw new ConflictException('Email or username already exists');
+      throw new ConflictException('Email already exists');
+    }
+
+    if (password !== registerDto.confirmPassword) {
+      throw new BadRequestException('Passwords do not match');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const generatedUsername = username || email.split('@')[0];
 
     const user = this.userRepository.create({
       email,
-      username,
+      username: generatedUsername,
       password: hashedPassword,
       firstName,
       lastName,
@@ -62,17 +68,18 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
       },
       ...tokens,
     };
   }
 
   async login(loginDto: LoginDto) {
-    const { identifier, password } = loginDto;
+    const { email, password } = loginDto;
 
     const user = await this.userRepository.findOne({
-      where: [{ email: identifier }, { username: identifier }],
+      where: { email },
     });
 
     if (!user) {
@@ -91,7 +98,8 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
       },
       ...tokens,
     };
@@ -107,7 +115,8 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
-      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
       createdAt: user.createdAt,
     };
   }
@@ -135,15 +144,7 @@ export class AuthService {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async logout(refreshToken: string) {
-    // todo: Implement token revocation logic here
-    // 1. Add the token to a blacklist/revoked tokens table
-    // 2. Remove it from a whitelist if you're maintaining one
-    // 3. Clear any server-side session data
-
-    // The client should delete the token on their side
-
     return { message: 'Logged out successfully', refreshToken };
   }
 
@@ -151,7 +152,8 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
     };
 
     const accessToken = this.jwtService.sign(payload);

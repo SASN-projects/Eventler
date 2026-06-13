@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsDateString, IsInt, Min, Max } from 'class-validator';
+import { IsPasswordsMatching } from '../decorators/match-password.decorator';
 
 export class RegisterDto {
   @IsEmail()
@@ -7,12 +8,25 @@ export class RegisterDto {
 
   @IsString()
   @IsNotEmpty()
-    username: string;
+    firstName: string;
+
+  @IsString()
+  @IsNotEmpty()
+    lastName: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(6)
     password: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsPasswordsMatching()
+    confirmPassword: string;
+
+  @IsOptional()
+  @IsString()
+    username?: string;
 
   @IsOptional()
   @IsString()
@@ -23,14 +37,6 @@ export class RegisterDto {
   @Min(13)
   @Max(120)
     age?: number;
-
-  @IsOptional()
-  @IsString()
-    firstName?: string;
-
-  @IsOptional()
-  @IsString()
-    lastName?: string;
 
   @IsOptional()
   @IsString()
