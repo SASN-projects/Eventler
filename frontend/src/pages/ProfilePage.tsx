@@ -1,6 +1,5 @@
 import {
   AppBar,
-  Avatar,
   Box,
   Button,
   Container,
@@ -14,33 +13,67 @@ import {
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useEffect, useState } from "react";
+import api from "../config/api";
 
 type User = {
-  name: string;
+  username?: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  company?: string;
-  phone?: string;
+  city?: string;
+  country?: string;
+  dateOfBirth?: string; // ISO date string
+  occupation?: string;
 };
 
 export default function ProfilePage({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState(false);
   const [user, setUser] = useState<User>({
-    name: "",
+    username: "",
+    firstName: "",
+    lastName: "",
     email: "",
-    company: "",
-    phone: "",
+    city: "",
+    country: "",
+    dateOfBirth: "",
+    occupation: "",
   });
 
   useEffect(() => {
-    const raw = localStorage.getItem("eventler_user");
-    if (raw) setUser(JSON.parse(raw));
-    else
-      setUser({
-        name: "John Doe",
-        email: "john.doe@example.com",
-        company: "Eventler",
-        phone: "+1 555 123 4567",
-      });
+    const fetchUser = async () => {
+      try {
+        const { data } = await api.get("/dev/users/me");
+        // adapt backend user fields to frontend shape
+        setUser({
+          username: data.username || "",
+          firstName: data.firstName || "",
+          lastName: data.lastName || "",
+          email: data.email || "",
+          city: data.city || "",
+          country: data.country || "",
+          dateOfBirth: data.dateOfBirth || "",
+          occupation: data.occupation || "",
+        });
+      } catch (err) {
+        const raw = localStorage.getItem("eventler_user");
+        if (raw) {
+          const local = JSON.parse(raw);
+          setUser({
+            username: local.username || local.username || "",
+            firstName: local.firstName || local.name?.split(" ")[0] || "",
+            lastName:
+              local.lastName || local.name?.split(" ").slice(1).join(" ") || "",
+            email: local.email || "",
+            city: local.city || "",
+            country: local.country || "",
+            dateOfBirth: local.dateOfBirth || "",
+            occupation: local.occupation || "",
+          });
+        }
+      }
+    };
+
+    fetchUser();
   }, []);
 
   const handleChange =
@@ -48,18 +81,36 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
       setUser((s) => ({ ...s, [field]: e.target.value }));
     };
 
-  const handleSave = () => {
-    localStorage.setItem("eventler_user", JSON.stringify(user));
-    setEditing(false);
+  const handleSave = async () => {
+    try {
+      await api.put("/dev/users/me", {
+        // backend expects UpdateUserDto fields; map accordingly
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        city: user.city,
+        country: user.country,
+        dateOfBirth: user.dateOfBirth,
+        occupation: user.occupation,
+      });
+      // Optionally update other fields via additional APIs if available
+      setEditing(false);
+    } catch (err) {
+      // fallback: save locally
+      localStorage.setItem("eventler_user", JSON.stringify(user));
+      setEditing(false);
+    }
   };
 
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        height: "100vh",
         display: "flex",
         flexDirection: "column",
         bgcolor: "background.default",
+        overflow: "hidden",
       }}
     >
       <AppBar position="static" elevation={1} color="primary">
@@ -92,13 +143,23 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Paper elevation={2} sx={{ p: { xs: 2, md: 4 } }}>
+      <Container maxWidth="md" sx={{ py: 4, overflowY: 'auto', maxHeight: 'calc(100vh - 64px)' }}>
+        <Paper elevation={2} sx={{ p: { xs: 2, md: 4 }, boxSizing: 'border-box' }}>
           <Stack spacing={3}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                {user.name}
-              </Typography>
+              {editing ? (
+                <TextField
+                  label="Username"
+                  value={user.username}
+                  onChange={handleChange("username")}
+                  fullWidth
+                  InputProps={{ sx: { fontSize: '1.5rem', fontWeight: 700 } }}
+                />
+              ) : (
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  {user.username ? `@${user.username}` : `${user.firstName} ${user.lastName}`.trim()}
+                </Typography>
+              )}
               <Typography color="text.secondary">{user.email}</Typography>
             </Box>
 
@@ -110,12 +171,20 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
               </Typography>
               {editing ? (
                 <Stack spacing={2}>
-                  <TextField
-                    label="Full name"
-                    value={user.name}
-                    onChange={handleChange("name")}
-                    fullWidth
-                  />
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextField
+                      label="First name"
+                      value={user.firstName}
+                      onChange={handleChange("firstName")}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Last name"
+                      value={user.lastName}
+                      onChange={handleChange("lastName")}
+                      fullWidth
+                    />
+                  </Stack>
                   <TextField
                     label="Email"
                     value={user.email}
@@ -127,7 +196,8 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
               ) : (
                 <Box>
                   <Typography>
-                    <strong>Full name:</strong> {user.name}
+                    <strong>Full name:</strong>{" "}
+                    {`${user.firstName} ${user.lastName}`.trim()}
                   </Typography>
                   <Typography>
                     <strong>Email:</strong> {user.email}
@@ -138,30 +208,52 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
 
             <Box>
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Work
+                Details
               </Typography>
               {editing ? (
                 <Stack spacing={2}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextField
+                      label="City"
+                      value={user.city}
+                      onChange={handleChange("city")}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Country"
+                      value={user.country}
+                      onChange={handleChange("country")}
+                      fullWidth
+                    />
+                  </Stack>
                   <TextField
-                    label="Company"
-                    value={user.company}
-                    onChange={handleChange("company")}
+                    label="Date of birth"
+                    value={user.dateOfBirth}
+                    onChange={handleChange("dateOfBirth")}
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
                     fullWidth
                   />
                   <TextField
-                    label="Phone"
-                    value={user.phone}
-                    onChange={handleChange("phone")}
+                    label="Occupation"
+                    value={user.occupation}
+                    onChange={handleChange("occupation")}
                     fullWidth
                   />
                 </Stack>
               ) : (
                 <Box>
                   <Typography>
-                    <strong>Company:</strong> {user.company}
+                    <strong>City:</strong> {user.city}
                   </Typography>
                   <Typography>
-                    <strong>Phone:</strong> {user.phone}
+                    <strong>Country:</strong> {user.country}
+                  </Typography>
+                  <Typography>
+                    <strong>Date of birth:</strong> {user.dateOfBirth}
+                  </Typography>
+                  <Typography>
+                    <strong>Occupation:</strong> {user.occupation}
                   </Typography>
                 </Box>
               )}

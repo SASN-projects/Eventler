@@ -21,7 +21,19 @@ export class UsersService {
   async getMe(userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: ['id', 'email', 'username', 'createdAt', 'updatedAt'],
+      select: [
+        'id',
+        'email',
+        'username',
+        'firstName',
+        'lastName',
+        'city',
+        'country',
+        'occupation',
+        'dateOfBirth',
+        'createdAt',
+        'updatedAt',
+      ],
     });
 
     if (!user) {
@@ -39,13 +51,19 @@ export class UsersService {
     }
 
     Object.assign(user, updateUserDto);
-    await this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
 
     return {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      updatedAt: user.updatedAt,
+      id: saved.id,
+      email: saved.email,
+      username: saved.username,
+      firstName: saved.firstName,
+      lastName: saved.lastName,
+      city: saved.city,
+      country: saved.country,
+      occupation: saved.occupation,
+      dateOfBirth: saved.dateOfBirth,
+      updatedAt: saved.updatedAt,
     };
   }
 
