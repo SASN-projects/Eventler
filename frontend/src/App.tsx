@@ -1,40 +1,72 @@
-// import { useState } from "react";
-// import reactLogo from "./assets/react.svg";
-// import viteLogo from "/vite.svg";
-import { Box } from "@mui/material";
-import "./App.css";
-import DecisionPage from "./pages/slidingPages/DecisionPage";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Box } from '@mui/material';
+import './App.css';
+import DecisionPage from './pages/slidingPages/DecisionPage';
+import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { useAuth } from './hooks/useAuth';
 
-function App() {
-  // const [count, setCount] = useState(0);
+const AppContent = () => {
+  const { isAuthenticated, loading, logout } = useAuth();
+
+  if (loading) {
+    return <Box sx={{ height: '100vh', width: '100vw' }} />;
+  }
 
   return (
-    <Box sx={{ height: '100vh', width: '100vw' }}>
-      {/* <HomePage /> */}
-      <DecisionPage />
-    </Box>
-    // <>
-    //   <div>
-    //     <a href="https://vite.dev" target="_blank">
-    //       <img src={viteLogo} className="logo" alt="Vite logo" />
-    //     </a>
-    //     <a href="https://react.dev" target="_blank">
-    //       <img src={reactLogo} className="logo react" alt="React logo" />
-    //     </a>
-    //   </div>
-    //   <h1>Vite + React</h1>
-    //   <div className="card">
-    //     <button onClick={() => setCount((count) => count + 1)}>
-    //       count is {count}
-    //     </button>
-    //     <p>
-    //       Edit <code>src/App.tsx</code> and save to test HMR
-    //     </p>
-    //   </div>
-    //   <p className="read-the-docs">
-    //     Click on the Vite and React logos to learn more
-    //   </p>
-    // </>
+    <Routes>
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={isAuthenticated ? <Navigate to="/" replace /> : <RegisterPage />}
+      />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Box sx={{ position: 'relative' }}>
+              <Box
+                onClick={logout}
+                sx={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  padding: '8px 16px',
+                  backgroundColor: '#ff3e6b',
+                  color: 'white',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  zIndex: 10,
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  '&:hover': {
+                    backgroundColor: '#ff1f4a',
+                  },
+                }}
+              >
+                Logout
+              </Box>
+              <DecisionPage />
+            </Box>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
