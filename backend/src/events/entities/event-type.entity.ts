@@ -3,16 +3,16 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-} from "typeorm";
+} from 'typeorm';
 
-@Entity("event_types")
+@Entity('event_types')
 export class EventType {
-  @PrimaryGeneratedColumn("uuid")
-  id: string;
+  @PrimaryGeneratedColumn('uuid')
+    id: string;
 
   @Column({ unique: true, length: 100 })
-  name: string;
+    name: string;
 
-  @CreateDateColumn({ name: "created_at" })
-  createdAt: Date;
+  @CreateDateColumn({ name: 'created_at' })
+    createdAt: Date;
 }
