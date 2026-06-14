@@ -18,7 +18,8 @@ export interface Question {
     label: string;
     createdAt: Date;
     description: string;
-    answerMode: 'NUMBER' | 'TEXT' | 'CHOICE';
+    answerMode: 'options' | 'value' | 'NUMBER' | 'TEXT' | 'CHOICE';
+    imageUrl?: string;
     options: Option[];
 }
 

@@ -25,6 +25,9 @@ export class SliderQuestion {
   @Column({ name: 'answer_mode', type: 'varchar', length: 50 })
     answerMode: AnswerMode;
 
+  @Column('text', { name: 'image_url', nullable: true })
+    imageUrl?: string;
+
   @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

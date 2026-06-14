@@ -95,7 +95,11 @@ export const PriceText = styled(Typography)({
 export const SlideContainer = styled(FullSizeContainer)({
     justifyContent: 'center',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    padding: '24px',
+    backgroundColor: 'rgba(0, 0, 0, 0.36)',
+    backdropFilter: 'blur(8px)',
+    minHeight: '100%',
 });
 
 export const SlideTitle = styled(Typography)({
