@@ -14,6 +14,11 @@ export class DevUsersController {
     return this.usersService.getMe(this.FIXED_USER_ID);
   }
 
+  @Get('events')
+  async getEvents() {
+    return this.usersService.getUserEvents(this.FIXED_USER_ID);
+  }
+
   @Put('me')
   async updateMe(@Body() updateUserDto: UpdateUserDto) {
     return this.usersService.updateMe(this.FIXED_USER_ID, updateUserDto);

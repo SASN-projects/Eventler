@@ -106,7 +106,7 @@ export class UsersService {
   async getUserEvents(userId: string) {
     const events = await this.eventRepository.find({
       where: { createdById: userId },
-      relations: ['eventType', 'group'],
+      relations: ['group', 'recommendation'],
       order: { createdAt: 'DESC' },
     });
 
