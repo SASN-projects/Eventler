@@ -1,40 +1,55 @@
-// import { useState } from "react";
-// import reactLogo from "./assets/react.svg";
-// import viteLogo from "/vite.svg";
-import { Box } from "@mui/material";
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import HomeIcon from "@mui/icons-material/Home";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PersonIcon from "@mui/icons-material/Person";
+import AddIcon from "@mui/icons-material/Add";
 import "./App.css";
 import DecisionPage from "./pages/slidingPages/DecisionPage";
+import ProfilePage from "./pages/ProfilePage";
+import { useState, type FunctionComponent } from "react";
+import { AppContainer, MainContentArea, BottomNavPaper, HomeIconButton, PlusIconButton, ProfileIconButton } from "./pages/slidingPages/profile.styles";
 
-function App() {
-  // const [count, setCount] = useState(0);
+const App: FunctionComponent = () => {
+  const [showProfile, setShowProfile] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+
+  const handleHomeClick = () => {
+    setShowProfile(false);
+  };
+
+  const handleProfileClick = () => {
+    setShowProfile(true);
+  };
+
+  const handlePlusClick = () => {
+    setShowProfile(false);
+    setResetKey((prev) => prev + 1);
+  };
 
   return (
-    <Box sx={{ height: '100vh', width: '100vw' }}>
-      {/* <HomePage /> */}
-      <DecisionPage />
-    </Box>
-    // <>
-    //   <div>
-    //     <a href="https://vite.dev" target="_blank">
-    //       <img src={viteLogo} className="logo" alt="Vite logo" />
-    //     </a>
-    //     <a href="https://react.dev" target="_blank">
-    //       <img src={reactLogo} className="logo react" alt="React logo" />
-    //     </a>
-    //   </div>
-    //   <h1>Vite + React</h1>
-    //   <div className="card">
-    //     <button onClick={() => setCount((count) => count + 1)}>
-    //       count is {count}
-    //     </button>
-    //     <p>
-    //       Edit <code>src/App.tsx</code> and save to test HMR
-    //     </p>
-    //   </div>
-    //   <p className="read-the-docs">
-    //     Click on the Vite and React logos to learn more
-    //   </p>
-    // </>
+    <AppContainer>
+      <MainContentArea>
+        {showProfile ? (
+          <ProfilePage onClose={() => setShowProfile(false)} />
+        ) : (
+          <DecisionPage key={resetKey} />
+        )}
+      </MainContentArea>
+
+      <BottomNavPaper elevation={4}>
+        <HomeIconButton onClick={handleHomeClick} $active={!showProfile}>
+          {!showProfile ? <HomeIcon sx={{ fontSize: 26 }} /> : <HomeOutlinedIcon sx={{ fontSize: 26 }} />}
+        </HomeIconButton>
+
+        <PlusIconButton onClick={handlePlusClick}>
+          <AddIcon sx={{ fontSize: 30 }} />
+        </PlusIconButton>
+
+        <ProfileIconButton onClick={handleProfileClick} $active={showProfile}>
+          {showProfile ? <PersonIcon sx={{ fontSize: 26 }} /> : <PersonOutlineIcon sx={{ fontSize: 26 }} />}
+        </ProfileIconButton>
+      </BottomNavPaper>
+    </AppContainer>
   );
 }
 

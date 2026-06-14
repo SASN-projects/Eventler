@@ -141,7 +141,7 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
             <Typography sx={{ fontSize: '18px', margin: 0 }}>{SLIDING_COMPLETED_TITLE}</Typography>
             <Typography sx={{ fontSize: '24px', margin: 0, mb: 1 }}>{GOOD_MATCH_SUBTITLE}</Typography>
 
-            {recommendations.map((rec, index) => renderRecommendation(rec, index))}
+            {(recommendations || []).map((rec, index) => renderRecommendation(rec, index))}
 
             <PrimeButton onClick={onRestart} sx={{ marginTop: '16px', padding: '8px 24px' }}>
                 {START_NEW_EVENT_BTN}
