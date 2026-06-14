@@ -1,0 +1,51 @@
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material";
+import type { ChangeEvent, FunctionComponent } from "react";
+import type { User } from "./slidingPages/profile.types";
+
+interface EditProfileDialogProps {
+  user: User;
+  open: boolean;
+  onSave: () => void;
+  onClose: () => void;
+  onChange: (field: keyof User) => (e: ChangeEvent<HTMLInputElement>) => void;
+}
+
+const EditProfileDialog: FunctionComponent<EditProfileDialogProps> = ({ open, onClose, user, onChange, onSave }) => (
+  <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: "24px", p: 1.5 } }}>
+    <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Edit Profile Details</DialogTitle>
+    <DialogContent>
+      <Stack spacing={2.5} sx={{ mt: 1 }}>
+        <TextField label="Username" value={user.username || ""} onChange={onChange("username")} fullWidth size="small" />
+        <Stack direction="row" spacing={2}>
+          <TextField label="First Name" value={user.firstName} onChange={onChange("firstName")} fullWidth size="small" />
+          <TextField label="Last Name" value={user.lastName} onChange={onChange("lastName")} fullWidth size="small" />
+        </Stack>
+        <TextField label="Email" value={user.email} onChange={onChange("email")} fullWidth size="small" />
+        <Stack direction="row" spacing={2}>
+          <TextField label="City" value={user.city || ""} onChange={onChange("city")} fullWidth size="small" />
+          <TextField label="Country" value={user.country || ""} onChange={onChange("country")} fullWidth size="small" />
+        </Stack>
+        <TextField
+          label="Date of Birth"
+          value={user.dateOfBirth ? user.dateOfBirth.substring(0, 10) : ""}
+          onChange={onChange("dateOfBirth")}
+          type="date"
+          InputLabelProps={{ shrink: true }}
+          fullWidth
+          size="small"
+        />
+        <TextField label="Occupation" value={user.occupation || ""} onChange={onChange("occupation")} fullWidth size="small" />
+      </Stack>
+    </DialogContent>
+    <DialogActions sx={{ px: 3, pb: 2 }}>
+      <Button onClick={onClose} sx={{ textTransform: "none", color: "text.secondary", fontWeight: 700 }}>
+        Cancel
+      </Button>
+      <Button onClick={onSave} variant="contained" color="secondary" sx={{ textTransform: "none", borderRadius: "12px", fontWeight: 700, px: 3 }}>
+        Save Changes
+      </Button>
+    </DialogActions>
+  </Dialog>
+);
+
+export default EditProfileDialog;
