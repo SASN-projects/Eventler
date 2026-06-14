@@ -1,7 +1,6 @@
 import type { FunctionComponent } from 'react';
 import { useState } from 'react';
-import { Box, Typography, Alert, CircularProgress, Button, Stack } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import { Alert, CircularProgress, Stack } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
@@ -11,70 +10,21 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import WorkIcon from '@mui/icons-material/Work';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { FieldInput } from '../../components/inputs';
-import { PrimeButton } from '../../components/buttons';
-
-const RegisterContainer = styled(Box)({
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'center',
-  alignItems: 'center',
-  minHeight: '100vh',
-  padding: '20px',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-});
-
-const FormContainer = styled(Box)({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '24px',
-  width: '100%',
-  maxWidth: '400px',
-  padding: '40px',
-  borderRadius: '20px',
-  backgroundColor: 'white',
-  boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)',
-  maxHeight: '90vh',
-  overflowY: 'auto',
-});
-
-const Title = styled(Typography)({
-  fontSize: '28px',
-  fontWeight: 'bold',
-  marginBottom: '16px',
-  textAlign: 'center',
-  color: '#333',
-});
-
-const LinkText = styled(Typography)({
-  textAlign: 'center',
-  marginTop: '16px',
-  color: '#666',
-  fontSize: '14px',
-  '& a': {
-    color: '#667eea',
-    textDecoration: 'none',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    '&:hover': {
-      textDecoration: 'underline',
-    },
-  },
-});
-
-const StepHint = styled(Typography)({
-  textAlign: 'center',
-  color: '#666',
-  marginTop: '-8px',
-  marginBottom: '8px',
-  fontSize: '14px',
-});
-
-const TextButton = styled(Button)({
-  textTransform: 'none',
-  color: '#666',
-  fontWeight: 600,
-});
+import {
+  AuthPageBackground,
+  AuthPhoneFrame,
+  AuthPhoneNotch,
+  AuthHero,
+  AuthFooter,
+  AuthContent,
+  AuthTitle,
+  AuthStepText,
+  AuthLinkText,
+  AuthForm,
+  AuthTextField,
+  AuthButton,
+  AuthOutlineButton,
+} from '../../components/auth/AuthScreen';
 
 const RegisterPage: FunctionComponent = () => {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
@@ -97,13 +47,8 @@ const RegisterPage: FunctionComponent = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'First name is required';
-    }
-
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Last name is required';
-    }
+    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
 
     if (!formData.email) {
       newErrors.email = 'Email is required';
@@ -130,7 +75,8 @@ const RegisterPage: FunctionComponent = () => {
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
-      const { [field]: _, ...rest } = errors;
+      const { [field]: removedError, ...rest } = errors;
+      void removedError;
       setErrors(rest);
     }
   };
@@ -143,21 +89,10 @@ const RegisterPage: FunctionComponent = () => {
       occupation?: string;
     } = {};
 
-    if (formData.city.trim()) {
-      payload.city = formData.city.trim();
-    }
-
-    if (formData.country.trim()) {
-      payload.country = formData.country.trim();
-    }
-
-    if (formData.dateOfBirth) {
-      payload.dateOfBirth = formData.dateOfBirth;
-    }
-
-    if (formData.occupation.trim()) {
-      payload.occupation = formData.occupation.trim();
-    }
+    if (formData.city.trim()) payload.city = formData.city.trim();
+    if (formData.country.trim()) payload.country = formData.country.trim();
+    if (formData.dateOfBirth) payload.dateOfBirth = formData.dateOfBirth;
+    if (formData.occupation.trim()) payload.occupation = formData.occupation.trim();
 
     return payload;
   };
@@ -181,8 +116,10 @@ const RegisterPage: FunctionComponent = () => {
         includeOptionalProfile ? buildOptionalProfilePayload() : undefined,
       );
       navigate('/');
-    } catch (error: any) {
-      const message = error?.response?.data?.message || 'Registration failed. Please try again.';
+    } catch (error: unknown) {
+      const message = error && typeof error === 'object' && 'response' in error
+        ? ((error as { response?: { data?: { message?: string } } }).response?.data?.message || 'Registration failed. Please try again.')
+        : 'Registration failed. Please try again.';
       setErrors({ general: message });
     } finally {
       setLoading(false);
@@ -205,140 +142,123 @@ const RegisterPage: FunctionComponent = () => {
   };
 
   return (
-    <RegisterContainer>
-      <FormContainer>
-        <Title>Create Account</Title>
-        <StepHint>
-          {currentStep === 1 ? 'Step 1 of 2: Account details' : 'Step 2 of 2: Optional profile details'}
-        </StepHint>
+    <AuthPageBackground>
+      <AuthPhoneFrame>
+        <AuthPhoneNotch />
+        <AuthHero>
+          <AuthContent>
+            <AuthTitle>Eventler</AuthTitle>
+            <AuthStepText>{currentStep === 1 ? 'Create your account' : 'Complete your profile (optional)'}</AuthStepText>
 
-        {errors.general && <Alert severity="error">{errors.general}</Alert>}
+            {errors.general && <Alert severity="error" sx={{ width: '100%' }}>{errors.general}</Alert>}
 
-        {currentStep === 1 ? (
-          <form onSubmit={handleContinueToProfile} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <FieldInput
-              label="First Name"
-              value={formData.firstName}
-              isError={!!errors.firstName}
-              helperText={errors.firstName || ''}
-              type="text"
-              icon={PersonIcon}
-              onChange={(e) => handleChange('firstName', e.target.value)}
-            />
+            {currentStep === 1 ? (
+              <AuthForm onSubmit={handleContinueToProfile}>
+                <AuthTextField
+                  placeholder="First Name"
+                  value={formData.firstName}
+                  type="text"
+                  icon={PersonIcon}
+                  error={errors.firstName}
+                  onChange={(e) => handleChange('firstName', e.target.value)}
+                />
 
-            <FieldInput
-              label="Last Name"
-              value={formData.lastName}
-              isError={!!errors.lastName}
-              helperText={errors.lastName || ''}
-              type="text"
-              icon={PersonIcon}
-              onChange={(e) => handleChange('lastName', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Last Name"
+                  value={formData.lastName}
+                  type="text"
+                  icon={PersonIcon}
+                  error={errors.lastName}
+                  onChange={(e) => handleChange('lastName', e.target.value)}
+                />
 
-            <FieldInput
-              label="Email"
-              value={formData.email}
-              isError={!!errors.email}
-              helperText={errors.email || ''}
-              type="email"
-              icon={EmailIcon}
-              onChange={(e) => handleChange('email', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Email"
+                  value={formData.email}
+                  type="email"
+                  icon={EmailIcon}
+                  error={errors.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                />
 
-            <FieldInput
-              label="Password"
-              value={formData.password}
-              isError={!!errors.password}
-              helperText={errors.password || ''}
-              type="password"
-              icon={LockIcon}
-              onChange={(e) => handleChange('password', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Password"
+                  value={formData.password}
+                  type="password"
+                  icon={LockIcon}
+                  error={errors.password}
+                  onChange={(e) => handleChange('password', e.target.value)}
+                />
 
-            <FieldInput
-              label="Confirm Password"
-              value={formData.confirmPassword}
-              isError={!!errors.confirmPassword}
-              helperText={errors.confirmPassword || ''}
-              type="password"
-              icon={LockIcon}
-              onChange={(e) => handleChange('confirmPassword', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Confirm Password"
+                  value={formData.confirmPassword}
+                  type="password"
+                  icon={LockIcon}
+                  error={errors.confirmPassword}
+                  onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                />
 
-            <PrimeButton type="submit" fullWidth disabled={loading}>
-              Continue
-            </PrimeButton>
-          </form>
-        ) : (
-          <form onSubmit={handleCompleteRegistration} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <FieldInput
-              label="City (Optional)"
-              value={formData.city}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={LocationCityIcon}
-              onChange={(e) => handleChange('city', e.target.value)}
-            />
+                <AuthButton type="submit" disabled={loading}>
+                  {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Continue'}
+                </AuthButton>
+              </AuthForm>
+            ) : (
+              <AuthForm onSubmit={handleCompleteRegistration}>
+                <AuthTextField
+                  placeholder="City"
+                  value={formData.city}
+                  type="text"
+                  icon={LocationCityIcon}
+                  onChange={(e) => handleChange('city', e.target.value)}
+                />
 
-            <FieldInput
-              label="Country (Optional)"
-              value={formData.country}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={PublicIcon}
-              onChange={(e) => handleChange('country', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Country"
+                  value={formData.country}
+                  type="text"
+                  icon={PublicIcon}
+                  onChange={(e) => handleChange('country', e.target.value)}
+                />
 
-            <FieldInput
-              label="Date of Birth (Optional)"
-              value={formData.dateOfBirth}
-              isError={false}
-              helperText=""
-              type="date"
-              icon={CalendarMonthIcon}
-              onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Date of Birth"
+                  value={formData.dateOfBirth}
+                  type="date"
+                  icon={CalendarMonthIcon}
+                  onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                />
 
-            <FieldInput
-              label="Occupation (Optional)"
-              value={formData.occupation}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={WorkIcon}
-              onChange={(e) => handleChange('occupation', e.target.value)}
-            />
+                <AuthTextField
+                  placeholder="Occupation"
+                  value={formData.occupation}
+                  type="text"
+                  icon={WorkIcon}
+                  onChange={(e) => handleChange('occupation', e.target.value)}
+                />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <TextButton
-                fullWidth
-                onClick={() => setCurrentStep(1)}
-                disabled={loading}
-              >
-                Back
-              </TextButton>
-            </Stack>
+                <Stack direction="row" spacing={2}>
+                  <AuthOutlineButton type="button" onClick={() => setCurrentStep(1)} disabled={loading}>
+                    Back
+                  </AuthOutlineButton>
+                  <AuthButton type="submit" disabled={loading}>
+                    {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Finish'}
+                  </AuthButton>
+                </Stack>
+              </AuthForm>
+            )}
 
-            <PrimeButton type="submit" fullWidth disabled={loading}>
-              {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Complete registration'}
-            </PrimeButton>
-          </form>
-        )}
-
-        <LinkText>
-          Already have an account?{' '}
-          <span
-            onClick={() => navigate('/login')}
-            style={{ cursor: 'pointer', color: '#667eea' }}
-          >
-            Log in here
-          </span>
-        </LinkText>
-      </FormContainer>
-    </RegisterContainer>
+            <AuthLinkText>
+              Already have an account?{' '}
+              <span className="auth-link" onClick={() => navigate('/login')}>
+                Login
+              </span>
+            </AuthLinkText>
+          </AuthContent>
+        </AuthHero>
+        <AuthFooter />
+      </AuthPhoneFrame>
+    </AuthPageBackground>
   );
 };
 
