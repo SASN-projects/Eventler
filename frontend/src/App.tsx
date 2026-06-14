@@ -37,7 +37,7 @@ const App: FunctionComponent = () => {
       </MainContentArea>
 
       <BottomNavPaper elevation={4}>
-        <HomeIconButton onClick={handleHomeClick} active={!showProfile}>
+        <HomeIconButton onClick={handleHomeClick} $active={!showProfile}>
           {!showProfile ? <HomeIcon sx={{ fontSize: 26 }} /> : <HomeOutlinedIcon sx={{ fontSize: 26 }} />}
         </HomeIconButton>
 
@@ -45,7 +45,7 @@ const App: FunctionComponent = () => {
           <AddIcon sx={{ fontSize: 30 }} />
         </PlusIconButton>
 
-        <ProfileIconButton onClick={handleProfileClick} active={showProfile}>
+        <ProfileIconButton onClick={handleProfileClick} $active={showProfile}>
           {showProfile ? <PersonIcon sx={{ fontSize: 26 }} /> : <PersonOutlineIcon sx={{ fontSize: 26 }} />}
         </ProfileIconButton>
       </BottomNavPaper>

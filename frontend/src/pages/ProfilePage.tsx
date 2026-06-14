@@ -62,9 +62,9 @@ const ProfilePage: FunctionComponent<{ onClose: () => void; }> = ({ onClose }) =
       <ProfileHeader user={user} onClose={onClose} onEditClick={() => setOpenEdit(true)} />
       <Container maxWidth="md" sx={{ flex: 1, display: "flex", flexDirection: "column", mt: -2.5, pb: 2, overflow: "hidden", zIndex: 2 }}>
         <Stack direction="row" spacing={1.5} sx={{ mb: 2, justifyContent: "center" }}>
-          <TabButton onClick={() => setActiveTab("history")} active={activeTab === "history"} startIcon={<RestoreIcon />}>History</TabButton>
-          <TabButton onClick={() => setActiveTab("favorites")} active={activeTab === "favorites"} startIcon={<FavoriteBorderIcon />}>Favorites</TabButton>
-          <TabButton onClick={() => setActiveTab("groups")} active={activeTab === "groups"} startIcon={<PeopleOutlineIcon />}>Groups</TabButton>
+          <TabButton onClick={() => setActiveTab("history")} $active={activeTab === "history"} startIcon={<RestoreIcon />}>History</TabButton>
+          <TabButton onClick={() => setActiveTab("favorites")} $active={activeTab === "favorites"} startIcon={<FavoriteBorderIcon />}>Favorites</TabButton>
+          <TabButton onClick={() => setActiveTab("groups")} $active={activeTab === "groups"} startIcon={<PeopleOutlineIcon />}>Groups</TabButton>
         </Stack>
         <Box sx={{ flex: 1, overflowY: "auto", px: 1, pb: 2 }}>
           {activeTab === "history" && (

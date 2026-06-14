@@ -29,10 +29,10 @@ export const BottomNavPaper = styled(Paper)({
   zIndex: 1000,
 });
 
-export const HomeIconButton = styled(IconButton)<{ active: boolean }>(({ active }) => ({
-  background: active ? "linear-gradient(45deg, #ffe5d9 0%, #ffd6db 100%)" : "transparent",
+export const HomeIconButton = styled(IconButton)<{ $active: boolean }>(({ $active }) => ({
+  background: $active ? "linear-gradient(45deg, #ffe5d9 0%, #ffd6db 100%)" : "transparent",
   borderRadius: "16px",
-  color: active ? "#ff5876" : "#757575",
+  color: $active ? "#ff5876" : "#757575",
   padding: "10px",
   transition: "all 0.25s ease",
   "&:hover": { transform: "scale(1.05)" },
@@ -53,10 +53,10 @@ export const PlusIconButton = styled(IconButton)({
   },
 });
 
-export const ProfileIconButton = styled(IconButton)<{ active: boolean }>(({ active }) => ({
-  background: active ? "linear-gradient(45deg, #ffe5d9 0%, #ffd6db 100%)" : "transparent",
+export const ProfileIconButton = styled(IconButton)<{ $active: boolean }>(({ $active }) => ({
+  background: $active ? "linear-gradient(45deg, #ffe5d9 0%, #ffd6db 100%)" : "transparent",
   borderRadius: "16px",
-  color: active ? "#ff5876" : "#757575",
+  color: $active ? "#ff5876" : "#757575",
   padding: "10px",
   transition: "all 0.25s ease",
   "&:hover": { transform: "scale(1.05)" },
@@ -99,7 +99,7 @@ export const UserAvatar = styled(Avatar)({
   color: "#ff5876",
 });
 
-export const TabButton = styled(Button)<{ active: boolean }>(({ active }) => ({
+export const TabButton = styled(Button)<{ $active: boolean }>(({ $active }) => ({
   borderRadius: "24px",
   textTransform: "none",
   fontWeight: 700,
@@ -108,13 +108,13 @@ export const TabButton = styled(Button)<{ active: boolean }>(({ active }) => ({
   paddingRight: "24px",
   paddingTop: "8px",
   paddingBottom: "8px",
-  backgroundColor: active ? "white" : "rgba(255,255,255,0.75)",
-  color: active ? "#9c27b0" : "#757575",
-  boxShadow: active ? "0 4px 12px rgba(0,0,0,0.08)" : "none",
-  border: active ? "none" : "1px solid rgba(0,0,0,0.06)",
+  backgroundColor: $active ? "white" : "rgba(255,255,255,0.75)",
+  color: $active ? "#9c27b0" : "#757575",
+  boxShadow: $active ? "0 4px 12px rgba(0,0,0,0.08)" : "none",
+  border: $active ? "none" : "1px solid rgba(0,0,0,0.06)",
   transition: "all 0.3s ease",
   "&:hover": {
-    backgroundColor: active ? "white" : "rgba(255,255,255,0.9)",
+    backgroundColor: $active ? "white" : "rgba(255,255,255,0.9)",
   },
 }));
 
