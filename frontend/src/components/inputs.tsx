@@ -18,6 +18,7 @@ export const FieldInput: FunctionComponent<FieldInputProps> = ({ label, value, i
         error={isError}
         helperText={isError && helperText}
         slotProps={{
+            inputLabel: type === 'date' ? { shrink: true } : undefined,
             input: {
                 startAdornment: (
                     <InputAdornment position="start">

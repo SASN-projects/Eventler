@@ -6,7 +6,18 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
+  city?: string;
+  country?: string;
+  dateOfBirth?: string;
+  occupation?: string;
   createdAt?: string;
+}
+
+interface RegisterProfileData {
+  city?: string;
+  country?: string;
+  dateOfBirth?: string;
+  occupation?: string;
 }
 
 export interface AuthContextType {
@@ -20,6 +31,7 @@ export interface AuthContextType {
     lastName: string,
     password: string,
     confirmPassword: string,
+    profileData?: RegisterProfileData,
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -50,6 +62,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       lastName: string,
       password: string,
       confirmPassword: string,
+      profileData?: RegisterProfileData,
     ) => {
       const response = await api.post('/auth/register', {
         email,
@@ -57,6 +70,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         lastName,
         password,
         confirmPassword,
+        ...profileData,
       });
       const { accessToken, user: userData } = response.data;
       saveToken(accessToken);
