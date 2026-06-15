@@ -1,4 +1,4 @@
-import { InputAdornment, TextField, type SvgIconTypeMap } from "@mui/material";
+import { TextField, type SvgIconTypeMap } from "@mui/material";
 import type { OverridableComponent } from "@mui/material/OverridableComponent";
 import type { ChangeEventHandler, FunctionComponent, HTMLInputTypeAttribute } from "react";
 
@@ -12,30 +12,26 @@ interface FieldInputProps {
     onChange: ChangeEventHandler<HTMLInputElement | HTMLTextAreaElement>;
 }
 
-export const FieldInput: FunctionComponent<FieldInputProps> = ({ label, value, isError, helperText, type, icon: Icon, onChange }) => (
+export const FieldInput: FunctionComponent<FieldInputProps> = ({ label, value, isError, helperText, type, onChange }) => (
     <TextField
+        variant="filled"
         {...{ label, type, value, onChange }}
         error={isError}
         helperText={isError && helperText}
         fullWidth
         slotProps={{
             inputLabel: type === 'date' ? { shrink: true } : undefined,
-            input: Icon ? {
-                startAdornment: (
-                    <InputAdornment position="start">
-                        <Icon />
-                    </InputAdornment>
-                ),
-            } : undefined,
         }}
         sx={{
-            '& .MuiOutlinedInput-root': {
+            '& .MuiFilledInput-root': {
                 borderRadius: '16px',
                 backgroundColor: 'white',
                 fontFamily: 'Nunito, sans-serif',
-                '& fieldset': { border: 'none' },
-                '&:hover fieldset': { border: 'none' },
-                '&.Mui-focused fieldset': { border: '2px solid rgba(120,80,200,0.4)' },
+                overflow: 'hidden',
+                '&::before': { display: 'none' },
+                '&::after': { display: 'none' },
+                '&:hover': { backgroundColor: 'white' },
+                '&.Mui-focused': { backgroundColor: 'white' },
             },
             '& .MuiInputLabel-root': {
                 fontFamily: 'Nunito, sans-serif',

@@ -13,12 +13,11 @@ const PageWrap = styled(Box)({
   flexDirection: 'column',
   justifyContent: 'center',
   alignItems: 'center',
-  height: '100dvh',
-  overflow: 'hidden',
+  minHeight: '100%',
   padding: '32px 24px',
   background: 'linear-gradient(160deg, #b8c8f0 0%, #c9aee8 45%, #f0bcd4 100%)',
+  backgroundAttachment: 'fixed',
   boxSizing: 'border-box',
-  overflowY: 'auto',
 });
 
 /* ── App title ── */
