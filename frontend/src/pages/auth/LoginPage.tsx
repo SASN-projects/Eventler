@@ -1,23 +1,59 @@
 import type { FunctionComponent } from 'react';
 import { useState } from 'react';
-import { Alert, CircularProgress } from '@mui/material';
+import { Box, Typography, Alert, CircularProgress } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import {
-  AuthPageBackground,
-  AuthPhoneFrame,
-  AuthPhoneNotch,
-  AuthHero,
-  AuthFooter,
-  AuthContent,
-  AuthTitle,
-  AuthForm,
-  AuthTextField,
-  AuthButton,
-  AuthLinkText,
-} from '../../components/auth/AuthScreen';
+import { FieldInput } from '../../components/inputs';
+import { PrimeButton } from '../../components/buttons';
+
+const LoginContainer = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  alignItems: 'center',
+  minHeight: '100vh',
+  padding: '20px',
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+});
+
+const FormContainer = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '24px',
+  width: '100%',
+  maxWidth: '400px',
+  padding: '40px',
+  borderRadius: '20px',
+  backgroundColor: 'white',
+  boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)',
+});
+
+const Title = styled(Typography)({
+  fontSize: '28px',
+  fontWeight: 'bold',
+  marginBottom: '16px',
+  textAlign: 'center',
+  color: '#333',
+});
+
+const LinkText = styled(Typography)({
+  textAlign: 'center',
+  marginTop: '16px',
+  color: '#666',
+  fontSize: '14px',
+  '& a': {
+    color: '#667eea',
+    textDecoration: 'none',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    '&:hover': {
+      textDecoration: 'underline',
+    },
+  },
+});
 
 interface LoginPageProps {
   onNavigateToRegister?: () => void;
@@ -70,70 +106,64 @@ const LoginPage: FunctionComponent<LoginPageProps> = ({ onNavigateToRegister }) 
   };
 
   return (
-    <AuthPageBackground>
-      <AuthPhoneFrame>
-        <AuthPhoneNotch />
-        <AuthHero>
-          <AuthContent>
-            <AuthTitle>Eventler</AuthTitle>
+    <LoginContainer>
+      <FormContainer>
+        <Title>Login</Title>
 
-            {errors.general && <Alert severity="error" sx={{ width: '100%' }}>{errors.general}</Alert>}
+        {errors.general && <Alert severity="error">{errors.general}</Alert>}
 
-            <AuthForm onSubmit={handleSubmit}>
-              <AuthTextField
-                placeholder="Username"
-                value={email}
-                type="text"
-                icon={EmailIcon}
-                error={errors.email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (errors.email) {
-                    const { email: _removedError, ...rest } = errors;
-                    void _removedError;
-                    setErrors(rest);
-                  }
-                }}
-              />
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <FieldInput
+            label="Email"
+            value={email}
+            isError={!!errors.email}
+            helperText={errors.email || ''}
+            type="email"
+            icon={EmailIcon}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (errors.email) {
+                const { email: _, ...rest } = errors;
+                setErrors(rest);
+              }
+            }}
+          />
 
-              <AuthTextField
-                placeholder="Password"
-                value={password}
-                type="password"
-                icon={LockIcon}
-                error={errors.password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (errors.password) {
-                    const { password: _removedError, ...rest } = errors;
-                    void _removedError;
-                    setErrors(rest);
-                  }
-                }}
-              />
+          <FieldInput
+            label="Password"
+            value={password}
+            isError={!!errors.password}
+            helperText={errors.password || ''}
+            type="password"
+            icon={LockIcon}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (errors.password) {
+                const { password: _, ...rest } = errors;
+                setErrors(rest);
+              }
+            }}
+          />
 
-              <AuthButton type="submit" disabled={loading}>
-                {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Log In'}
-              </AuthButton>
-            </AuthForm>
+          <PrimeButton type="submit" fullWidth disabled={loading}>
+            {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Login'}
+          </PrimeButton>
+        </form>
 
-            <AuthLinkText>
-              Don’t have an account?{' '}
-              <span
-                className="auth-link"
-                onClick={() => {
-                  onNavigateToRegister?.();
-                  navigate('/register');
-                }}
-              >
-                Register
-              </span>
-            </AuthLinkText>
-          </AuthContent>
-        </AuthHero>
-        <AuthFooter />
-      </AuthPhoneFrame>
-    </AuthPageBackground>
+        <LinkText>
+          Don't have an account?{' '}
+          <span
+            onClick={() => {
+              onNavigateToRegister?.();
+              navigate('/register');
+            }}
+            style={{ cursor: 'pointer', color: '#667eea' }}
+          >
+            Sign up here
+          </span>
+        </LinkText>
+      </FormContainer>
+    </LoginContainer>
   );
 };
 
