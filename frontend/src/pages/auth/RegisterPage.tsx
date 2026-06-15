@@ -2,79 +2,79 @@ import type { FunctionComponent } from 'react';
 import { useState } from 'react';
 import { Box, Typography, Alert, CircularProgress, Button, Stack } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import PersonIcon from '@mui/icons-material/Person';
-import EmailIcon from '@mui/icons-material/Email';
-import LockIcon from '@mui/icons-material/Lock';
-import LocationCityIcon from '@mui/icons-material/LocationCity';
-import PublicIcon from '@mui/icons-material/Public';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import WorkIcon from '@mui/icons-material/Work';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { FieldInput } from '../../components/inputs';
 import { PrimeButton } from '../../components/buttons';
 
-const RegisterContainer = styled(Box)({
+/* ── Background ── */
+const PageWrap = styled(Box)({
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
   alignItems: 'center',
-  minHeight: '100vh',
-  padding: '20px',
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-});
-
-const FormContainer = styled(Box)({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '24px',
-  width: '100%',
-  maxWidth: '400px',
-  padding: '40px',
-  borderRadius: '20px',
-  backgroundColor: 'white',
-  boxShadow: '0px 8px 32px rgba(0, 0, 0, 0.1)',
-  maxHeight: '90vh',
+  height: '100dvh',
+  overflow: 'hidden',
+  padding: '32px 24px',
+  background: 'linear-gradient(160deg, #b8c8f0 0%, #c9aee8 45%, #f0bcd4 100%)',
+  boxSizing: 'border-box',
   overflowY: 'auto',
 });
 
-const Title = styled(Typography)({
-  fontSize: '28px',
-  fontWeight: 'bold',
-  marginBottom: '16px',
-  textAlign: 'center',
-  color: '#333',
-});
-
-const LinkText = styled(Typography)({
-  textAlign: 'center',
-  marginTop: '16px',
-  color: '#666',
-  fontSize: '14px',
-  '& a': {
-    color: '#667eea',
-    textDecoration: 'none',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    '&:hover': {
-      textDecoration: 'underline',
-    },
-  },
-});
-
-const StepHint = styled(Typography)({
-  textAlign: 'center',
-  color: '#666',
-  marginTop: '-8px',
+/* ── App title ── */
+const AppTitle = styled(Typography)({
+  fontSize: '42px',
+  fontWeight: 900,
+  color: 'white',
+  letterSpacing: '-0.5px',
   marginBottom: '8px',
-  fontSize: '14px',
+  fontFamily: 'Nunito, sans-serif',
+  textShadow: '0 2px 12px rgba(120, 80, 180, 0.18)',
+});
+
+const StepLabel = styled(Typography)({
+  fontSize: '13px',
+  color: 'rgba(255,255,255,0.8)',
+  fontWeight: 600,
+  marginBottom: '20px',
+  letterSpacing: '0.3px',
+  fontFamily: 'Nunito, sans-serif',
+});
+
+/* ── Form wrapper ── */
+const Form = styled('form')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '16px',
+  width: '100%',
+  maxWidth: '320px',
 });
 
 const TextButton = styled(Button)({
   textTransform: 'none',
-  color: '#666',
+  color: 'rgba(255,255,255,0.85)',
   fontWeight: 600,
+  fontFamily: 'Nunito, sans-serif',
 });
+
+/* ── Footer link text ── */
+const FooterText = styled(Typography)({
+  marginTop: '20px',
+  color: 'rgba(60,40,80,0.75)',
+  fontSize: '14px',
+  fontWeight: 600,
+  fontFamily: 'Nunito, sans-serif',
+});
+
+const LinkSpan = styled('span')({
+  color: '#5b6fd6',
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontFamily: 'Nunito, sans-serif',
+  '&:hover': { textDecoration: 'underline' },
+});
+
+/* ─────────────────────────────────────────── */
 
 const RegisterPage: FunctionComponent = () => {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
@@ -97,31 +97,14 @@ const RegisterPage: FunctionComponent = () => {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'First name is required';
-    }
-
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Last name is required';
-    }
-
-    if (!formData.email) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email';
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
+    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!formData.email) newErrors.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Please enter a valid email';
+    if (!formData.password) newErrors.password = 'Password is required';
+    else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+    if (!formData.confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
+    else if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -136,41 +119,18 @@ const RegisterPage: FunctionComponent = () => {
   };
 
   const buildOptionalProfilePayload = () => {
-    const payload: {
-      city?: string;
-      country?: string;
-      dateOfBirth?: string;
-      occupation?: string;
-    } = {};
-
-    if (formData.city.trim()) {
-      payload.city = formData.city.trim();
-    }
-
-    if (formData.country.trim()) {
-      payload.country = formData.country.trim();
-    }
-
-    if (formData.dateOfBirth) {
-      payload.dateOfBirth = formData.dateOfBirth;
-    }
-
-    if (formData.occupation.trim()) {
-      payload.occupation = formData.occupation.trim();
-    }
-
+    const payload: { city?: string; country?: string; dateOfBirth?: string; occupation?: string } = {};
+    if (formData.city.trim()) payload.city = formData.city.trim();
+    if (formData.country.trim()) payload.country = formData.country.trim();
+    if (formData.dateOfBirth) payload.dateOfBirth = formData.dateOfBirth;
+    if (formData.occupation.trim()) payload.occupation = formData.occupation.trim();
     return payload;
   };
 
   const submitRegistration = async (includeOptionalProfile: boolean) => {
-    if (!validateForm()) {
-      setCurrentStep(1);
-      return;
-    }
-
+    if (!validateForm()) { setCurrentStep(1); return; }
     setLoading(true);
     setErrors({});
-
     try {
       await register(
         formData.email,
@@ -182,8 +142,7 @@ const RegisterPage: FunctionComponent = () => {
       );
       navigate('/');
     } catch (error: any) {
-      const message = error?.response?.data?.message || 'Registration failed. Please try again.';
-      setErrors({ general: message });
+      setErrors({ general: error?.response?.data?.message || 'Registration failed. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -191,12 +150,7 @@ const RegisterPage: FunctionComponent = () => {
 
   const handleContinueToProfile = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
-    setCurrentStep(2);
+    if (validateForm()) setCurrentStep(2);
   };
 
   const handleCompleteRegistration = async (e: React.FormEvent) => {
@@ -205,140 +159,51 @@ const RegisterPage: FunctionComponent = () => {
   };
 
   return (
-    <RegisterContainer>
-      <FormContainer>
-        <Title>Create Account</Title>
-        <StepHint>
-          {currentStep === 1 ? 'Step 1 of 2: Account details' : 'Step 2 of 2: Optional profile details'}
-        </StepHint>
+    <PageWrap>
+      <AppTitle>Eventler</AppTitle>
+      <StepLabel>
+        {currentStep === 1 ? 'Step 1 of 2 · Account details' : 'Step 2 of 2 · Profile details'}
+      </StepLabel>
 
-        {errors.general && <Alert severity="error">{errors.general}</Alert>}
+      {errors.general && (
+        <Alert severity="error" sx={{ mb: 2, width: '100%', maxWidth: '320px', borderRadius: '12px' }}>
+          {errors.general}
+        </Alert>
+      )}
 
-        {currentStep === 1 ? (
-          <form onSubmit={handleContinueToProfile} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <FieldInput
-              label="First Name"
-              value={formData.firstName}
-              isError={!!errors.firstName}
-              helperText={errors.firstName || ''}
-              type="text"
-              icon={PersonIcon}
-              onChange={(e) => handleChange('firstName', e.target.value)}
-            />
+      {currentStep === 1 ? (
+        <Form onSubmit={handleContinueToProfile}>
+          <FieldInput label="First Name" value={formData.firstName} isError={!!errors.firstName} helperText={errors.firstName || ''} type="text" onChange={(e) => handleChange('firstName', e.target.value)} />
+          <FieldInput label="Last Name" value={formData.lastName} isError={!!errors.lastName} helperText={errors.lastName || ''} type="text" onChange={(e) => handleChange('lastName', e.target.value)} />
+          <FieldInput label="Email" value={formData.email} isError={!!errors.email} helperText={errors.email || ''} type="email" onChange={(e) => handleChange('email', e.target.value)} />
+          <FieldInput label="Password" value={formData.password} isError={!!errors.password} helperText={errors.password || ''} type="password" onChange={(e) => handleChange('password', e.target.value)} />
+          <FieldInput label="Confirm Password" value={formData.confirmPassword} isError={!!errors.confirmPassword} helperText={errors.confirmPassword || ''} type="password" onChange={(e) => handleChange('confirmPassword', e.target.value)} />
+          <PrimeButton type="submit" fullWidth disabled={loading}>
+            Continue
+          </PrimeButton>
+        </Form>
+      ) : (
+        <Form onSubmit={handleCompleteRegistration}>
+          <FieldInput label="City (Optional)" value={formData.city} isError={false} helperText="" type="text" onChange={(e) => handleChange('city', e.target.value)} />
+          <FieldInput label="Country (Optional)" value={formData.country} isError={false} helperText="" type="text" onChange={(e) => handleChange('country', e.target.value)} />
+          <FieldInput label="Date of Birth (Optional)" value={formData.dateOfBirth} isError={false} helperText="" type="date" onChange={(e) => handleChange('dateOfBirth', e.target.value)} />
+          <FieldInput label="Occupation (Optional)" value={formData.occupation} isError={false} helperText="" type="text" onChange={(e) => handleChange('occupation', e.target.value)} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <TextButton fullWidth onClick={() => setCurrentStep(1)} disabled={loading}>
+              Back
+            </TextButton>
+          </Stack>
+          <PrimeButton type="submit" fullWidth disabled={loading}>
+            {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Complete registration'}
+          </PrimeButton>
+        </Form>
+      )}
 
-            <FieldInput
-              label="Last Name"
-              value={formData.lastName}
-              isError={!!errors.lastName}
-              helperText={errors.lastName || ''}
-              type="text"
-              icon={PersonIcon}
-              onChange={(e) => handleChange('lastName', e.target.value)}
-            />
-
-            <FieldInput
-              label="Email"
-              value={formData.email}
-              isError={!!errors.email}
-              helperText={errors.email || ''}
-              type="email"
-              icon={EmailIcon}
-              onChange={(e) => handleChange('email', e.target.value)}
-            />
-
-            <FieldInput
-              label="Password"
-              value={formData.password}
-              isError={!!errors.password}
-              helperText={errors.password || ''}
-              type="password"
-              icon={LockIcon}
-              onChange={(e) => handleChange('password', e.target.value)}
-            />
-
-            <FieldInput
-              label="Confirm Password"
-              value={formData.confirmPassword}
-              isError={!!errors.confirmPassword}
-              helperText={errors.confirmPassword || ''}
-              type="password"
-              icon={LockIcon}
-              onChange={(e) => handleChange('confirmPassword', e.target.value)}
-            />
-
-            <PrimeButton type="submit" fullWidth disabled={loading}>
-              Continue
-            </PrimeButton>
-          </form>
-        ) : (
-          <form onSubmit={handleCompleteRegistration} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <FieldInput
-              label="City (Optional)"
-              value={formData.city}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={LocationCityIcon}
-              onChange={(e) => handleChange('city', e.target.value)}
-            />
-
-            <FieldInput
-              label="Country (Optional)"
-              value={formData.country}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={PublicIcon}
-              onChange={(e) => handleChange('country', e.target.value)}
-            />
-
-            <FieldInput
-              label="Date of Birth (Optional)"
-              value={formData.dateOfBirth}
-              isError={false}
-              helperText=""
-              type="date"
-              icon={CalendarMonthIcon}
-              onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-            />
-
-            <FieldInput
-              label="Occupation (Optional)"
-              value={formData.occupation}
-              isError={false}
-              helperText=""
-              type="text"
-              icon={WorkIcon}
-              onChange={(e) => handleChange('occupation', e.target.value)}
-            />
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <TextButton
-                fullWidth
-                onClick={() => setCurrentStep(1)}
-                disabled={loading}
-              >
-                Back
-              </TextButton>
-            </Stack>
-
-            <PrimeButton type="submit" fullWidth disabled={loading}>
-              {loading ? <CircularProgress size={24} sx={{ color: 'inherit' }} /> : 'Complete registration'}
-            </PrimeButton>
-          </form>
-        )}
-
-        <LinkText>
-          Already have an account?{' '}
-          <span
-            onClick={() => navigate('/login')}
-            style={{ cursor: 'pointer', color: '#667eea' }}
-          >
-            Log in here
-          </span>
-        </LinkText>
-      </FormContainer>
-    </RegisterContainer>
+      <FooterText>
+        Already have an account?{' '}
+        <LinkSpan onClick={() => navigate('/login')}>Log in here</LinkSpan>
+      </FooterText>
+    </PageWrap>
   );
 };
 
