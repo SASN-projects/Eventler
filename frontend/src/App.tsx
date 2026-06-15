@@ -1,19 +1,41 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Box } from '@mui/material';
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import HomeIcon from "@mui/icons-material/Home";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PersonIcon from "@mui/icons-material/Person";
+import AddIcon from "@mui/icons-material/Add";
 import './App.css';
 import DecisionPage from './pages/slidingPages/DecisionPage';
+import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
+import { useState, type FunctionComponent } from "react";
+import { AppContainer, MainContentArea, BottomNavPaper, HomeIconButton, PlusIconButton, ProfileIconButton } from "./pages/slidingPages/profile.styles";
 
-const AppContent = () => {
-  const { isAuthenticated, loading, logout } = useAuth();
+const AppContent: FunctionComponent = () => {
+  const { isAuthenticated, loading } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   if (loading) {
-    return <Box sx={{ height: '100vh', width: '100vw' }} />;
+    return <div style={{ height: '100vh', width: '100vw' }} />;
   }
+
+  const handleHomeClick = () => {
+    setShowProfile(false);
+  };
+
+  const handleProfileClick = () => {
+    setShowProfile(true);
+  };
+
+  const handlePlusClick = () => {
+    setShowProfile(false);
+    setResetKey((prev) => prev + 1);
+  };
 
   return (
     <Routes>
@@ -29,30 +51,29 @@ const AppContent = () => {
         path="/"
         element={
           <ProtectedRoute>
-            <Box sx={{ position: 'relative' }}>
-              <Box
-                onClick={logout}
-                sx={{
-                  position: 'absolute',
-                  top: 16,
-                  right: 16,
-                  padding: '8px 16px',
-                  backgroundColor: '#ff3e6b',
-                  color: 'white',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  zIndex: 10,
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  '&:hover': {
-                    backgroundColor: '#ff1f4a',
-                  },
-                }}
-              >
-                Logout
-              </Box>
-              <DecisionPage />
-            </Box>
+            <AppContainer>
+              <MainContentArea>
+                {showProfile ? (
+                  <ProfilePage onClose={() => setShowProfile(false)} />
+                ) : (
+                  <DecisionPage key={resetKey} />
+                )}
+              </MainContentArea>
+
+              <BottomNavPaper elevation={4}>
+                <HomeIconButton onClick={handleHomeClick} $active={!showProfile}>
+                  {!showProfile ? <HomeIcon sx={{ fontSize: 26 }} /> : <HomeOutlinedIcon sx={{ fontSize: 26 }} />}
+                </HomeIconButton>
+
+                <PlusIconButton onClick={handlePlusClick}>
+                  <AddIcon sx={{ fontSize: 30 }} />
+                </PlusIconButton>
+
+                <ProfileIconButton onClick={handleProfileClick} $active={showProfile}>
+                  {showProfile ? <PersonIcon sx={{ fontSize: 26 }} /> : <PersonOutlineIcon sx={{ fontSize: 26 }} />}
+                </ProfileIconButton>
+              </BottomNavPaper>
+            </AppContainer>
           </ProtectedRoute>
         }
       />
