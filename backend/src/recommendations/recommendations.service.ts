@@ -142,20 +142,41 @@ export class RecommendationsService {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
         console.log(prompt);
-        const rawResponse = await this.callGeminiModel(prompt, trace);
+        const rawResponse = await this.callGeminiModel(prompt, trace, attempt);
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
         console.log('recommendedEvents', recommendedEvents);
 
-        // Persist the generated recommendations
-        const recommendationsToSave = recommendedEvents.map((recommendation) =>
-          this.recommendationRepository.create({
-            title: recommendation.title,
-            description: recommendation.description,
-            address: recommendation.address,
-          }),
-        );
+        // Persist the generated recommendations under its own span
+        const persistSpan = trace.span({
+          name: 'persist-recommendations',
+          input: { count: recommendedEvents.length },
+        });
 
-        const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+        let savedRecommendations: Recommendation[];
+        try {
+          const recommendationsToSave = recommendedEvents.map((recommendation) =>
+            this.recommendationRepository.create({
+              title: recommendation.title,
+              description: recommendation.description,
+              address: recommendation.address,
+            }),
+          );
+
+          savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+
+          persistSpan.end({
+            output: {
+              savedCount: savedRecommendations.length,
+              ids: savedRecommendations.map((r) => r.id),
+            },
+          });
+        } catch (dbError: any) {
+          persistSpan.end({
+            level: 'ERROR',
+            statusMessage: dbError.message,
+          });
+          throw dbError;
+        }
 
         // Update parent trace on success
         trace.update({
@@ -266,7 +287,7 @@ export class RecommendationsService {
   Return JSON with key \"recommendedEvents\" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
   }
 
-  private async callGeminiModel(prompt: string, parentTrace?: ILangfuseTrace): Promise<string> {
+  private async callGeminiModel(prompt: string, parentTrace?: ILangfuseTrace, attempt = 1): Promise<string> {
     const responseSchema: ObjectSchema = {
       type: SchemaType.OBJECT,
       properties: {
@@ -291,8 +312,9 @@ export class RecommendationsService {
         prompt,
         responseSchema,
         parentTrace,
-        promptName: 'event-recommendation-planner',
+        promptName: `event-recommendation-planner (attempt ${attempt})`,
         promptVersion: '1.0.0', // extension point for prompt management
+        metadata: { attempt },
       });
 
       return JSON.stringify(result);
