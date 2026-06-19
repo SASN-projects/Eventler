@@ -9,18 +9,49 @@ import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { ILangfuseTrace, ILangfuseSpan } from '../langfuse/interfaces/langfuse.interface';
 
-jest.mock('langfuse', () => {
-  return {
-    Langfuse: jest.fn().mockImplementation(() => {
-      return {
-        trace: jest.fn(),
-        shutdownAsync: jest.fn().mockResolvedValue(undefined),
-      };
-    }),
-  };
+jest.mock('langfuse', () => ({
+  Langfuse: jest.fn().mockImplementation(() => ({
+    trace: jest.fn(),
+    shutdownAsync: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const makeSpanMock = (): ILangfuseSpan => ({
+  update: jest.fn(),
+  end: jest.fn(),
 });
 
+const mockTraceInstance = (): ILangfuseTrace => ({
+  generation: jest.fn(),
+  span: jest.fn().mockReturnValue(makeSpanMock()),
+  update: jest.fn(),
+});
 
+const makeEvent = (partial: Partial<any> = {}) => ({
+  id: 'test-event-uuid',
+  createdById: 'user-123',
+  eventType: 'casual',
+  locationCity: 'New York',
+  locationCountry: 'USA',
+  participantCount: 5,
+  targetDate: '2025-12-31',
+  ...partial,
+});
+
+const threeRecommendations = {
+  recommendedEvents: [
+    { title: 'Event 1', description: 'Desc 1', address: 'Addr 1' },
+    { title: 'Event 2', description: 'Desc 2', address: 'Addr 2' },
+    { title: 'Event 3', description: 'Desc 3', address: 'Addr 3' },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Test suite
+// ---------------------------------------------------------------------------
 describe('RecommendationsService', () => {
   let service: RecommendationsService;
   let eventRepositoryMock: any;
@@ -28,20 +59,11 @@ describe('RecommendationsService', () => {
   let slideAnswerServiceMock: any;
   let langfuseServiceMock: any;
   let geminiServiceMock: any;
-
-  const mockTraceInstance = (): ILangfuseTrace => {
-    const spanMock: ILangfuseSpan = {
-      update: jest.fn(),
-      end: jest.fn(),
-    };
-    return {
-      generation: jest.fn(),
-      span: jest.fn().mockReturnValue(spanMock),
-      update: jest.fn(),
-    } as any;
-  };
+  let mockTrace: ILangfuseTrace;
 
   beforeEach(async () => {
+    jest.restoreAllMocks();
+
     eventRepositoryMock = {
       findOne: jest.fn(),
       save: jest.fn(),
@@ -50,7 +72,7 @@ describe('RecommendationsService', () => {
     recommendationRepositoryMock = {
       create: jest.fn((dto) => dto),
       save: jest.fn((entities) =>
-        entities.map((e: any, idx: number) => ({ id: `rec-${idx + 1}`, ...e }))
+        entities.map((e: any, idx: number) => ({ id: `rec-${idx + 1}`, ...e })),
       ),
     };
 
@@ -60,8 +82,9 @@ describe('RecommendationsService', () => {
       ]),
     };
 
+    mockTrace = mockTraceInstance();
     langfuseServiceMock = {
-      trace: jest.fn().mockReturnValue(mockTraceInstance()),
+      trace: jest.fn().mockReturnValue(mockTrace),
     };
 
     geminiServiceMock = {
@@ -71,114 +94,146 @@ describe('RecommendationsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
-        {
-          provide: getRepositoryToken(Recommendation),
-          useValue: recommendationRepositoryMock,
-        },
-        {
-          provide: getRepositoryToken(Event),
-          useValue: eventRepositoryMock,
-        },
-        {
-          provide: getRepositoryToken(Venue),
-          useValue: {},
-        },
-        {
-          provide: SlidesService,
-          useValue: slideAnswerServiceMock,
-        },
-        {
-          provide: LangfuseService,
-          useValue: langfuseServiceMock,
-        },
-        {
-          provide: GeminiService,
-          useValue: geminiServiceMock,
-        },
+        { provide: getRepositoryToken(Recommendation), useValue: recommendationRepositoryMock },
+        { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
+        { provide: getRepositoryToken(Venue), useValue: {} },
+        { provide: SlidesService, useValue: slideAnswerServiceMock },
+        { provide: LangfuseService, useValue: langfuseServiceMock },
+        { provide: GeminiService, useValue: geminiServiceMock },
       ],
     }).compile();
 
     service = module.get<RecommendationsService>(RecommendationsService);
   });
 
-  it('should generate recommendations and save them on success', async () => {
-    const eventId = 'test-event-uuid';
-    eventRepositoryMock.findOne.mockResolvedValue({
-      id: eventId,
-      createdById: 'user-123',
-      eventType: 'casual',
-      locationCity: 'New York',
-      locationCountry: 'USA',
-      participantCount: 5,
-    });
+  // -------------------------------------------------------------------------
+  // Happy path
+  // -------------------------------------------------------------------------
+  it('generates recommendations, saves them, and returns success', async () => {
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+    geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
 
-    geminiServiceMock.generateJsonContent.mockResolvedValue({
-      recommendedEvents: [
-        { title: 'Event 1', description: 'Desc 1', address: 'Addr 1' },
-        { title: 'Event 2', description: 'Desc 2', address: 'Addr 2' },
-        { title: 'Event 3', description: 'Desc 3', address: 'Addr 3' },
-      ],
-    });
-
-    const result = await service.generateRecommendation(eventId);
+    const result = await service.generateRecommendation('test-event-uuid');
 
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(3);
     expect(result.data?.[0].title).toBe('Event 1');
 
-    // Verify Langfuse trace was created
-    expect(langfuseServiceMock.trace).toHaveBeenCalledWith('generate-recommendations', expect.objectContaining({
-      userId: 'user-123',
-      sessionId: eventId,
-    }));
+    // Langfuse trace created with correct userId and sessionId
+    expect(langfuseServiceMock.trace).toHaveBeenCalledWith(
+      'generate-recommendations',
+      expect.objectContaining({ userId: 'user-123', sessionId: 'test-event-uuid' }),
+    );
 
-    // Verify database saving
+    // DB save was called
     expect(recommendationRepositoryMock.save).toHaveBeenCalled();
   });
 
-  it('should retry on Gemini failure and log retry states', async () => {
-    // Speed up jest setTimeout during retry loops
-    jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+  // -------------------------------------------------------------------------
+  // Event not found — no trace should be started
+  // -------------------------------------------------------------------------
+  it('returns { success: false } without starting a trace when event is not found', async () => {
+    eventRepositoryMock.findOne.mockResolvedValue(null);
 
-    const eventId = 'test-event-uuid';
-    eventRepositoryMock.findOne.mockResolvedValue({
-      id: eventId,
-      createdById: 'user-123',
-    });
+    const result = await service.generateRecommendation('missing-id');
 
-    // Make Gemini fail twice, then succeed
-    geminiServiceMock.generateJsonContent
-      .mockRejectedValueOnce(new Error('Rate limit exceeded'))
-      .mockRejectedValueOnce(new Error('Transient connection error'))
-      .mockResolvedValueOnce({
-        recommendedEvents: [
-          { title: 'Event 1', description: 'Desc 1', address: 'Addr 1' },
-          { title: 'Event 2', description: 'Desc 2', address: 'Addr 2' },
-          { title: 'Event 3', description: 'Desc 3', address: 'Addr 3' },
-        ],
-      });
-
-    const result = await service.generateRecommendation(eventId);
-
-    expect(result.success).toBe(true);
-    expect(geminiServiceMock.generateJsonContent).toHaveBeenCalledTimes(3);
+    expect(result.success).toBe(false);
+    expect(langfuseServiceMock.trace).not.toHaveBeenCalled();
   });
 
-  it('should update trace with error output if all retries fail', async () => {
-    jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+  // -------------------------------------------------------------------------
+  // persist-recommendations span (item 8)
+  // -------------------------------------------------------------------------
+  describe('persist-recommendations span', () => {
+    it('creates and ends a persist span on successful DB save', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
 
-    const eventId = 'test-event-uuid';
-    eventRepositoryMock.findOne.mockResolvedValue({
-      id: eventId,
-      createdById: 'user-123',
+      await service.generateRecommendation('test-event-uuid');
+
+      // span() must have been called with name 'persist-recommendations'
+      expect(mockTrace.span).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'persist-recommendations' }),
+      );
+
+      // The span returned by trace.span() must have had .end() called
+      const spanInstance = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+      expect(spanInstance.end).toHaveBeenCalledWith(
+        expect.objectContaining({ output: expect.objectContaining({ savedCount: 3 }) }),
+      );
     });
 
+    it('ends the persist span with ERROR level when DB save throws, then re-tries', async () => {
+      // Speed up retries
+      jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+
+      // Gemini always succeeds, but DB always fails
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+      recommendationRepositoryMock.save.mockRejectedValue(new Error('DB connection lost'));
+
+      // Each retry creates a new span mock; collect all span mocks via the trace mock
+      const spanMocks: ILangfuseSpan[] = [];
+      (mockTrace.span as jest.Mock).mockImplementation(() => {
+        const s = makeSpanMock();
+        spanMocks.push(s);
+        return s;
+      });
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      // Should have failed all retries → success: false
+      expect(result.success).toBe(false);
+
+      // Every persist span (one per attempt) should have ended with ERROR
+      const persistSpans = spanMocks.filter((_, idx) => idx > 0 || spanMocks.length === 1);
+      for (const span of persistSpans) {
+        expect(span.end).toHaveBeenCalledWith(
+          expect.objectContaining({ level: 'ERROR', statusMessage: 'DB connection lost' }),
+        );
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Retry tracing — item 7: separate generations per attempt
+  // -------------------------------------------------------------------------
+  describe('retry tracing', () => {
+    it('creates a distinct generation name per retry attempt', async () => {
+      jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+
+      // Fail twice, succeed on 3rd
+      geminiServiceMock.generateJsonContent
+        .mockRejectedValueOnce(new Error('Rate limit'))
+        .mockRejectedValueOnce(new Error('Transient error'))
+        .mockResolvedValueOnce(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+      expect(geminiServiceMock.generateJsonContent).toHaveBeenCalledTimes(3);
+
+      // Each call must have a different promptName containing the attempt number
+      const calls = geminiServiceMock.generateJsonContent.mock.calls;
+      expect(calls[0][0].promptName).toContain('attempt 1');
+      expect(calls[1][0].promptName).toContain('attempt 2');
+      expect(calls[2][0].promptName).toContain('attempt 3');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // All retries exhausted
+  // -------------------------------------------------------------------------
+  it('updates trace with error output and returns { success: false } after all retries fail', async () => {
+    jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
     geminiServiceMock.generateJsonContent.mockRejectedValue(new Error('Gemini API is down'));
 
-    const mockTrace = mockTraceInstance();
-    langfuseServiceMock.trace.mockReturnValue(mockTrace);
-
-    const result = await service.generateRecommendation(eventId);
+    const result = await service.generateRecommendation('test-event-uuid');
 
     expect(result.success).toBe(false);
     expect(result.message).toContain('Failed to generate recommendation after 3 attempts');
@@ -189,7 +244,23 @@ describe('RecommendationsService', () => {
           success: false,
           error: expect.stringContaining('Failed to generate recommendation after 3 attempts'),
         }),
-      })
+      }),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Retrieval span error path — throws from SlidesService
+  // -------------------------------------------------------------------------
+  it('ends retrieval span with ERROR and re-throws when slide answers fail', async () => {
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+    slideAnswerServiceMock.getEventAnswers.mockRejectedValue(new Error('Slide service down'));
+
+    await expect(service.generateRecommendation('test-event-uuid')).rejects.toThrow('Slide service down');
+
+    // retrieve-user-preferences span should have ended with ERROR
+    const spanInstance = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+    expect(spanInstance.end).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'ERROR', statusMessage: 'Slide service down' }),
     );
   });
 });

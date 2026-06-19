@@ -28,10 +28,8 @@ class LangfuseGenerationWrapper implements ILangfuseGeneration {
   end(options?: any): void {
     try {
       const sanitized = sanitizeData(options);
-      this.realClient.update({
-        ...sanitized,
-        endTime: options?.endTime || new Date(),
-      });
+      // Call the SDK's .end() so it correctly records endTime and closes the generation.
+      this.realClient.end(sanitized);
     } catch (err: any) {
       telemetryLogger.warn(`Failed to end Langfuse generation: ${err.message}`);
     }
@@ -53,10 +51,8 @@ class LangfuseSpanWrapper implements ILangfuseSpan {
   end(options?: any): void {
     try {
       const sanitized = sanitizeData(options);
-      this.realClient.update({
-        ...sanitized,
-        endTime: options?.endTime || new Date(),
-      });
+      // Call the SDK's .end() so it correctly records endTime and closes the span.
+      this.realClient.end(sanitized);
     } catch (err: any) {
       telemetryLogger.warn(`Failed to end Langfuse span: ${err.message}`);
     }
@@ -130,7 +126,7 @@ export class LangfuseService implements OnModuleDestroy {
   }
 
   /**
-   * Start a trace in Langfuse. Returns a Trace wrapper.
+   * Start a trace in Langfuse. Returns a Trace wrapper or a Noop if disabled/failed.
    */
   trace(name: string, options?: {
     userId?: string;
