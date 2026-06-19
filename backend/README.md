@@ -9,7 +9,7 @@ A NestJS-based backend server for the Eventler event recommendation platform.
 - **Group Management**: Create and manage event groups
 - **Event Management**: Create single or group events
 - **Slide Answers**: Collect user preferences through interactive slides
-- **Recommendations**: AI-powered event recommendations (stub implementation)
+- **Recommendations**: AI-powered event recommendations using Google Gemini with Langfuse observability
 
 ## Tech Stack
 
