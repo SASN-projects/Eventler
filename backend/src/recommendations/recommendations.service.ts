@@ -69,13 +69,10 @@ export class RecommendationsService {
   }
 
   async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
-    console.log('here');
-
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
     });
-    console.log(event);
 
     if (!event) {
       return {
@@ -106,7 +103,7 @@ export class RecommendationsService {
     let eventAnswers: any[] = [];
     try {
       eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
-      console.log(eventAnswers);
+      this.logger.debug(`Retrieved ${eventAnswers.length} slide answer(s) for event ${eventId}`);
       retrievalSpan.end({
         output: {
           answersCount: eventAnswers.length,
@@ -144,10 +141,9 @@ export class RecommendationsService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
-        console.log(prompt);
         const rawResponse = await this.callGeminiModel(prompt, trace, attempt);
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
-        console.log('recommendedEvents', recommendedEvents);
+        this.logger.debug(`Attempt ${attempt}: generated ${recommendedEvents.length} recommendation(s) for event ${eventId}`);
 
         // Persist the generated recommendations under its own span
         const persistSpan = trace.span({
