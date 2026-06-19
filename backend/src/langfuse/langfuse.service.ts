@@ -101,12 +101,22 @@ export class LangfuseService implements OnModuleDestroy {
   private isEnabled = false;
 
   constructor(private readonly configService: ConfigService) {
-    const enabled = this.configService.get<string>('LANGFUSE_ENABLED') === 'true';
+    const rawEnabled = this.configService.get<string>('LANGFUSE_ENABLED');
+    const enabled = rawEnabled === 'true';
     const publicKey = this.configService.get<string>('LANGFUSE_PUBLIC_KEY');
     const secretKey = this.configService.get<string>('LANGFUSE_SECRET_KEY');
     const baseUrl = this.configService.get<string>('LANGFUSE_BASE_URL') || 'https://cloud.langfuse.com';
     const environment = this.configService.get<string>('LANGFUSE_ENVIRONMENT') || this.configService.get<string>('NODE_ENV') || 'development';
     const release = this.configService.get<string>('LANGFUSE_RELEASE') || '0.0.1';
+
+    // Startup Diagnostics
+    this.logger.log(`Langfuse Startup Diagnostics:`);
+    this.logger.log(`  LANGFUSE_ENABLED parsed value: ${enabled}`);
+    this.logger.log(`  hasPublicKey: ${!!publicKey}`);
+    this.logger.log(`  hasSecretKey: ${!!secretKey}`);
+    this.logger.log(`  LANGFUSE_BASE_URL: ${baseUrl}`);
+    this.logger.log(`  LANGFUSE_ENVIRONMENT: ${environment}`);
+    this.logger.log(`  LANGFUSE_RELEASE: ${release}`);
 
     if (enabled && publicKey && secretKey) {
       try {
@@ -115,13 +125,18 @@ export class LangfuseService implements OnModuleDestroy {
           secretKey,
           baseUrl,
         });
+        if (typeof this.langfuseClient.on === 'function') {
+          this.langfuseClient.on('error', (err) => {
+            this.logger.error(`Langfuse SDK Error Event: ${err.message}`, err.stack);
+          });
+        }
         this.isEnabled = true;
-        this.logger.log(`Langfuse service initialized. Environment: ${environment}, Release: ${release}`);
+        this.logger.log(`Langfuse Client mode: Real Client initialized. Environment: ${environment}, Release: ${release}`);
       } catch (err: any) {
         this.logger.error(`Failed to initialize Langfuse SDK: ${err.message}. Observability is disabled.`);
       }
     } else {
-      this.logger.log('Langfuse observability is disabled (LANGFUSE_ENABLED=false or missing credentials).');
+      this.logger.log('Langfuse Client mode: Noop (LANGFUSE_ENABLED=false or missing credentials).');
     }
   }
 
@@ -159,6 +174,19 @@ export class LangfuseService implements OnModuleDestroy {
     } catch (err: any) {
       this.logger.warn(`Failed to create Langfuse trace: ${err.message}. Returning Noop.`);
       return new NoopLangfuseTrace();
+    }
+  }
+
+  /**
+   * Manually flush queued events.
+   */
+  async flush(): Promise<void> {
+    if (this.langfuseClient && typeof this.langfuseClient.flush === 'function') {
+      try {
+        await this.langfuseClient.flush();
+      } catch (err: any) {
+        this.logger.error(`Failed to manually flush Langfuse: ${err.message}`);
+      }
     }
   }
 
