@@ -5,7 +5,6 @@ import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
-import { SlideAnswer } from '../slides/entities/slide-answer.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
@@ -273,7 +272,7 @@ export class RecommendationsService {
   ): string {
     const slideAnswersText = eventAnswers.map((answer) => `- ${answer.question}: ${answer.answerValue}`).join('\n');
 
-    return `You are a friendly event planner. Build exactly three (3) distinct structured event recommendations (as JSON array under key \"recommendedEvents\") based on the following event details:
+    return `You are a friendly event planner. Build exactly three (3) distinct structured event recommendations (as JSON array under key "recommendedEvents") based on the following event details:
 
   - Event Type: ${input.eventType}
   - Target Date: ${input.targetDate}
@@ -283,7 +282,7 @@ export class RecommendationsService {
   User Preferences (from slide answers):
   ${slideAnswersText || 'No preferences provided'}
 
-  Return JSON with key \"recommendedEvents\" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
+  Return JSON with key "recommendedEvents" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
   }
 
   private async callGeminiModel(prompt: string, parentTrace?: ILangfuseTrace, attempt = 1): Promise<string> {

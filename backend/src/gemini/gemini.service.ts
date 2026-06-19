@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, ObjectSchema } from '@google/generative-ai';
 import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
-export interface GenerateJsonContentOptions<T> {
+export interface GenerateJsonContentOptions {
   prompt: string;
   responseSchema: ObjectSchema;
   parentTrace?: ILangfuseTrace;
@@ -30,7 +30,7 @@ export class GeminiService {
     }
   }
 
-  async generateJsonContent<T>(options: GenerateJsonContentOptions<T>): Promise<T> {
+  async generateJsonContent<T>(options: GenerateJsonContentOptions): Promise<T> {
     if (!this.genAI) {
       throw new Error('GOOGLE_API_KEY is required for Gemini integration.');
     }
@@ -62,7 +62,7 @@ export class GeminiService {
         },
       });
 
-      const response = await result.response;
+      const response = result.response;
       const text = response.text();
       const endTime = new Date();
 

@@ -53,7 +53,7 @@ describe('LangfuseService', () => {
   beforeEach(() => {
     MockedLangfuse.mockClear();
     // Reset to default successful implementation before each test.
-    MockedLangfuse.mockImplementation(() => makeFakeClient() as any);
+    MockedLangfuse.mockImplementation(() => makeFakeClient());
   });
 
   // -------------------------------------------------------------------------
@@ -118,7 +118,7 @@ describe('LangfuseService', () => {
           throw new Error('trace() exploded');
         }),
       });
-      MockedLangfuse.mockImplementation(() => bustedClient as any);
+      MockedLangfuse.mockImplementation(() => bustedClient);
 
       const service = await buildService({
         LANGFUSE_ENABLED: 'true',
@@ -154,7 +154,7 @@ describe('LangfuseService', () => {
 
     it('calls shutdownAsync on module destroy', async () => {
       const fakeClient = makeFakeClient();
-      MockedLangfuse.mockImplementation(() => fakeClient as any);
+      MockedLangfuse.mockImplementation(() => fakeClient);
 
       const service = await buildService({
         LANGFUSE_ENABLED: 'true',
