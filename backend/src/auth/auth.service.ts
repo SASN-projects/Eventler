@@ -144,7 +144,7 @@ export class AuthService {
     }
   }
 
-  async logout(refreshToken: string) {
+  logout(refreshToken: string) {
     return { message: 'Logged out successfully', refreshToken };
   }
 

@@ -3,39 +3,39 @@ import { IsEmail, IsOptional, IsString, IsInt, Min, Max, IsDateString } from 'cl
 export class UpdateUserDto {
   @IsEmail()
   @IsOptional()
-  email?: string;
+    email?: string;
 
   @IsString()
   @IsOptional()
-  username?: string;
+    username?: string;
 
   @IsOptional()
   @IsString()
-  firstName?: string;
+    firstName?: string;
 
   @IsOptional()
   @IsString()
-  lastName?: string;
+    lastName?: string;
 
   @IsOptional()
   @IsString()
-  city?: string;
+    city?: string;
 
   @IsOptional()
   @IsString()
-  country?: string;
+    country?: string;
 
   @IsOptional()
   @IsDateString()
-  dateOfBirth?: string;
+    dateOfBirth?: string;
 
   @IsOptional()
   @IsInt()
   @Min(13)
   @Max(120)
-  age?: number;
+    age?: number;
 
   @IsOptional()
   @IsString()
-  occupation?: string;
+    occupation?: string;
 }

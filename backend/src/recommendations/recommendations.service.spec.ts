@@ -120,12 +120,14 @@ describe('RecommendationsService', () => {
     expect(result.data?.[0].title).toBe('Event 1');
 
     // Langfuse trace created with correct userId and sessionId
+     
     expect(langfuseServiceMock.trace).toHaveBeenCalledWith(
       'generate-recommendations',
       expect.objectContaining({ userId: 'user-123', sessionId: 'test-event-uuid' }),
     );
 
     // DB save was called
+     
     expect(recommendationRepositoryMock.save).toHaveBeenCalled();
   });
 
@@ -152,12 +154,14 @@ describe('RecommendationsService', () => {
       await service.generateRecommendation('test-event-uuid');
 
       // span() must have been called with name 'persist-recommendations'
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(mockTrace.span).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'persist-recommendations' }),
       );
 
       // The span returned by trace.span() must have had .end() called
       const spanInstance = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(spanInstance.end).toHaveBeenCalledWith(
         expect.objectContaining({ output: expect.objectContaining({ savedCount: 3 }) }),
       );
@@ -189,6 +193,7 @@ describe('RecommendationsService', () => {
       // Every persist span (one per attempt) should have ended with ERROR
       const persistSpans = spanMocks.filter((_, idx) => idx > 0 || spanMocks.length === 1);
       for (const span of persistSpans) {
+        // eslint-disable-next-line @typescript-eslint/unbound-method
         expect(span.end).toHaveBeenCalledWith(
           expect.objectContaining({ level: 'ERROR', statusMessage: 'DB connection lost' }),
         );
@@ -238,6 +243,7 @@ describe('RecommendationsService', () => {
     expect(result.success).toBe(false);
     expect(result.message).toContain('Failed to generate recommendation after 3 attempts');
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockTrace.update).toHaveBeenCalledWith(
       expect.objectContaining({
         output: expect.objectContaining({
@@ -259,6 +265,7 @@ describe('RecommendationsService', () => {
 
     // retrieve-user-preferences span should have ended with ERROR
     const spanInstance = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(spanInstance.end).toHaveBeenCalledWith(
       expect.objectContaining({ level: 'ERROR', statusMessage: 'Slide service down' }),
     );

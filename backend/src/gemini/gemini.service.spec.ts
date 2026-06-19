@@ -113,6 +113,7 @@ describe('GeminiService', () => {
     expect(response.recommendedEvents[0].title).toBe('Test Event');
 
     // generation() called with correct params
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockTrace.generation).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'test-prompt',
@@ -123,6 +124,7 @@ describe('GeminiService', () => {
 
     // Retrieve the generation instance the service received and check end()
     const generationInstance = (mockTrace.generation as jest.Mock).mock.results[0].value as ILangfuseGeneration;
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(generationInstance.end).toHaveBeenCalledWith(
       expect.objectContaining({
         usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
@@ -151,6 +153,7 @@ describe('GeminiService', () => {
 
       // generation.end() must have been called with ERROR level
       const generationInstance = (mockTrace.generation as jest.Mock).mock.results[0].value as ILangfuseGeneration;
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(generationInstance.end).toHaveBeenCalledWith(
         expect.objectContaining({
           level: 'ERROR',
