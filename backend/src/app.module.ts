@@ -10,6 +10,8 @@ import { GroupsModule } from './groups/groups.module';
 import { EventsModule } from './events/events.module';
 import { SlidesModule } from './slides/slides.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { LangfuseModule } from './langfuse/langfuse.module';
+import { GeminiModule } from './gemini/gemini.module';
 
 @Module({
   imports: [
@@ -24,8 +26,11 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     EventsModule,
     SlidesModule,
     RecommendationsModule,
+    LangfuseModule,
+    GeminiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule { }
+

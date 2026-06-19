@@ -4,8 +4,8 @@ import { Repository } from 'typeorm';
 import { SlideAnswer } from './entities/slide-answer.entity';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
 import { SliderQuestion } from './entities/slider-question.entity';
-import { EventResponse } from 'src/events/entities/event-response.entity';
-import { User } from 'src/auth/entities/user.entity';
+import { EventResponse } from '../events/entities/event-response.entity';
+import { User } from '../auth/entities/user.entity';
 
 @Injectable()
 export class SlidesService {

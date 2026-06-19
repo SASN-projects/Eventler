@@ -3,10 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
-import { GoogleGenerativeAI, SchemaType, ObjectSchema } from '@google/generative-ai';
+import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
-import { SlideAnswer } from 'src/slides/entities/slide-answer.entity';
-import { SlidesService } from 'src/slides/slides.service';
+import { SlideAnswer } from '../slides/entities/slide-answer.entity';
+import { SlidesService } from '../slides/slides.service';
+import { LangfuseService } from '../langfuse/langfuse.service';
+import { GeminiService } from '../gemini/gemini.service';
+import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
 export interface RecommendationResult {
   id: string;
@@ -24,7 +27,6 @@ export interface GenerateRecommendationResponse {
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
-  private readonly genAI: GoogleGenerativeAI;
 
   constructor(
     @InjectRepository(Recommendation)
@@ -33,15 +35,10 @@ export class RecommendationsService {
     private eventRepository: Repository<Event>,
     @InjectRepository(Venue)
     private venueRepository: Repository<Venue>,
-    // @InjectRepository(SlideAnswer)
     private slideAnswerService: SlidesService,
-  ) {
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_API_KEY is required for Gemini integration.');
-    }
-    this.genAI = new GoogleGenerativeAI(apiKey);
-  }
+    private readonly langfuseService: LangfuseService,
+    private readonly geminiService: GeminiService,
+  ) {}
 
   getFeed() {
     const mockRecommendations = [
@@ -83,7 +80,52 @@ export class RecommendationsService {
         message: `Event with id ${eventId} not found`,
       };
     }
-    const eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
+
+    // Initialize Langfuse trace
+    const trace = this.langfuseService.trace('generate-recommendations', {
+      userId: event.createdById,
+      sessionId: eventId,
+      metadata: {
+        eventId,
+        eventType: event.eventType,
+        locationCity: event.locationCity,
+        locationCountry: event.locationCountry,
+        participantCount: event.participantCount,
+      },
+    });
+
+    // Trace the retrieval of slide answers (preferences retrieval / RAG step)
+    const retrievalSpan = trace.span({
+      name: 'retrieve-user-preferences',
+      input: { eventId },
+    });
+
+    let eventAnswers: any[] = [];
+    try {
+      eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
+      console.log(eventAnswers);
+      retrievalSpan.end({
+        output: {
+          answersCount: eventAnswers.length,
+          answers: eventAnswers.map((answer) => ({
+            question: answer.question,
+            answerValue: answer.answerValue,
+          })),
+        },
+      });
+    } catch (error: any) {
+      retrievalSpan.end({
+        level: 'ERROR',
+        statusMessage: error.message,
+      });
+      trace.update({
+        output: {
+          success: false,
+          error: `Preferences retrieval failed: ${error.message}`,
+        },
+      });
+      throw error;
+    }
 
     const input = {
       targetDate: event.targetDate || 'flexible',
@@ -99,7 +141,8 @@ export class RecommendationsService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
-        const rawResponse = await this.callGeminiModel(prompt);
+        console.log(prompt);
+        const rawResponse = await this.callGeminiModel(prompt, trace);
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
         console.log('recommendedEvents', recommendedEvents);
 
@@ -113,6 +156,15 @@ export class RecommendationsService {
         );
 
         const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+
+        // Update parent trace on success
+        trace.update({
+          output: {
+            success: true,
+            recommendationsCount: savedRecommendations.length,
+            recommendationIds: savedRecommendations.map((r) => r.id),
+          },
+        });
 
         return {
           success: true,
@@ -131,6 +183,17 @@ export class RecommendationsService {
         }
       }
     }
+
+    // Update parent trace on failure after retries
+    trace.update({
+      output: {
+        success: false,
+        error: `Failed to generate recommendation after ${maxRetries} attempts. Last error: ${lastError?.message}`,
+      },
+      metadata: {
+        attempts: maxRetries,
+      },
+    });
 
     return {
       success: false,
@@ -203,10 +266,7 @@ export class RecommendationsService {
   Return JSON with key \"recommendedEvents\" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
   }
 
-  private async callGeminiModel(prompt: string): Promise<string> {
-    const modelName = process.env.GOOGLE_GEMINI_MODEL || 'gemini-2.5-flash';
-    const model = this.genAI.getGenerativeModel({ model: modelName });
-
+  private async callGeminiModel(prompt: string, parentTrace?: ILangfuseTrace): Promise<string> {
     const responseSchema: ObjectSchema = {
       type: SchemaType.OBJECT,
       properties: {
@@ -227,18 +287,16 @@ export class RecommendationsService {
     };
 
     try {
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema,
-        },
+      const result = await this.geminiService.generateJsonContent<{ recommendedEvents: any[] }>({
+        prompt,
+        responseSchema,
+        parentTrace,
+        promptName: 'event-recommendation-planner',
+        promptVersion: '1.0.0', // extension point for prompt management
       });
-      const response = await result.response;
-      const text = response.text();
-      return text;
+
+      return JSON.stringify(result);
     } catch (error: any) {
-      this.logger.error(`Gemini API error: ${error.message}`);
       throw new Error(`Failed to generate recommendation: ${error.message}`);
     }
   }

@@ -244,8 +244,6 @@ Authorization: Bearer <access_token>
 
 ## Testing
 
-## Testing
-
 ```bash
 # unit tests
 npm run test
@@ -256,6 +254,47 @@ npm run test:e2e
 # test coverage
 npm run test:cov
 ```
+
+## Langfuse Observability
+
+This project has production-grade integration with [Langfuse](https://langfuse.com/) for LLM/AI observability.
+
+### Configuration Environment Variables
+Add the following configuration settings to your `.env` file:
+
+```env
+# Enable/Disable Langfuse Tracing (true/false)
+LANGFUSE_ENABLED=true
+
+# Langfuse Project Credentials
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com # or self-hosted endpoint
+
+# Optional Tracing Metadata
+LANGFUSE_ENVIRONMENT=development
+LANGFUSE_RELEASE=0.0.1
+```
+
+### Local Setup & Testing
+1. Ensure `LANGFUSE_ENABLED=true` is set and you have supplied valid project keys.
+2. Run the application locally in development/watch mode:
+   ```bash
+   npm run start:dev
+   ```
+3. Trigger the recommendations generation endpoint by submitting slide answers for an event in the UI or via POST call to `/recommendations/events/:eventId/generate`.
+4. Log in to your Langfuse dashboard to view detailed traces, spans, latency, errors, prompts, and token counts.
+5. In local development or environments where `LANGFUSE_ENABLED=false` or credentials are missing, Langfuse fallback mechanism operates silently in **Noop mode** without throwing exceptions or blocking the core application flow.
+
+### What is Traced
+- **Traces**: High-level event recommendations generation trace containing standard metadata (e.g. `environment`, `release`), event-owner mapped to `userId`, event-id mapped to `sessionId`, and overall request inputs/outputs/errors.
+- **Retrieval Spans**: Database queries retrieving preferences (slide responses) for the event (our local preference RAG step).
+- **Generations**: Prompt templates sent to the Gemini API, raw responses returned, model configurations, latency metrics, prompt management details (names & versions), and token usage (`promptTokenCount`, `candidatesTokenCount`, `totalTokenCount`).
+
+### Privacy & Data Security
+To avoid leakage of sensitive production credentials, tokens, or PII:
+- **Redaction Helper**: A recursive data sanitizer (`sanitizeData` in `backend/src/langfuse/utils/redact.ts`) runs automatically before any trace or generation is sent to Langfuse.
+- **Redacted fields**: Keys containing keywords like `password`, `token`, `secret`, `authorization`, `cookie`, `key`, `apikey`, `credential`, `private` are stripped and logged as `[REDACTED]`.
 
 ## License
 

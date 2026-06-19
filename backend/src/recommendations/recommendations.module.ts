@@ -7,11 +7,17 @@ import { Event } from '../events/entities/event.entity';
 import { Venue } from 'src/venues/entities/venue.entity';
 import { SlideAnswer } from 'src/slides/entities/slide-answer.entity';
 import { SlidesModule } from 'src/slides/slides.module';
+import { GeminiModule } from '../gemini/gemini.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Recommendation, Event, Venue, SlideAnswer]), SlidesModule],
+  imports: [
+    TypeOrmModule.forFeature([Recommendation, Event, Venue, SlideAnswer]),
+    SlidesModule,
+    GeminiModule,
+  ],
   controllers: [RecommendationsController],
   providers: [RecommendationsService],
   exports: [RecommendationsService],
 })
 export class RecommendationsModule {}
+
