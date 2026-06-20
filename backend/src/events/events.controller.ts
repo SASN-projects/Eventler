@@ -6,18 +6,18 @@ import {
   Delete,
   Body,
   Param,
-  // UseGuards,
+  UseGuards,
   Request,
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
 import { SlidesService } from 'src/slides/slides.service';
 
 @Controller('events')
-// @UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard)
 export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
@@ -29,7 +29,7 @@ export class EventsController {
     @Request() req: AuthRequest,
     @Body() createEventDto: CreateEventDto,
   ) {
-    return await this.eventsService.create(req?.user?.sub, createEventDto);
+    return await this.eventsService.create(req.user.sub, createEventDto);
   }
 
   @Get(':id')
@@ -82,10 +82,7 @@ export class EventsController {
     @Request() req: AuthRequest,
     @Param('eventId') eventId: string,
   ) {
-    const event = await this.eventsService.findOne(
-      eventId,
-      '11111111-1111-1111-1111-111111111111',
-    );
+    const event = await this.eventsService.findOne(eventId, req.user.sub);
     const answers = await this.slidesService.getEventAnswers(eventId);
 
     return { event, answers };
