@@ -4,5 +4,5 @@ export class AddMembersDto {
   @IsArray()
   @IsUUID('4', { each: true })
   @IsOptional()
-  memberIds?: string[];
+    memberIds?: string[];
 }

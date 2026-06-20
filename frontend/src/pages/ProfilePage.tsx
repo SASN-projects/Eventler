@@ -30,7 +30,7 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const { data } = await api.get("/users/me");
+        const { data } = await api.get('/dev/users/me');
         setUser(data);
       } catch (err) {
         const raw = localStorage.getItem('eventler_user');
@@ -39,7 +39,7 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
     };
     const fetchEvents = async () => {
       try {
-        const { data } = await api.get("/users/events");
+        const { data } = await api.get('/dev/users/events');
         setEvents(data || []);
       } catch (err) {
         console.error('Failed to fetch events:', err);
@@ -57,7 +57,7 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
 
   const handleSave = async () => {
     try {
-      await api.put("/users/me", user);
+      await api.put('/dev/users/me', user);
       setOpenEdit(false);
     } catch (err) {
       localStorage.setItem('eventler_user', JSON.stringify(user));
