@@ -55,6 +55,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
   }, []);
 
+
   const register = useCallback(
     async (
       email: string,
