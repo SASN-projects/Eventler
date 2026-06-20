@@ -1,4 +1,4 @@
-import { Box, Paper, Avatar, Card, CardContent, Button, IconButton } from "@mui/material";
+import { Box, Paper, Avatar, Card, CardContent, Button, IconButton, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 
 // App.tsx Styled Components
@@ -157,4 +157,43 @@ export const OverflowAvatar = styled(Avatar)({
   color: "#d81b60",
   border: "2px solid white",
   boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
+});
+
+// Preferences Styled Components
+export const PreferenceGrid = styled(Box)({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+  gap: '12px',
+  width: '100%',
+  marginTop: '16px',
+});
+
+export const PreferenceCard = styled(Box)<{ $selected: boolean }>(({ $selected }) => ({
+  padding: '16px',
+  borderRadius: '16px',
+  border: $selected ? '3px solid #9c27b0' : '2px solid #e2e8f0',
+  backgroundColor: $selected ? '#fdf4ff' : 'white',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  cursor: 'pointer',
+  textAlign: 'center',
+  transition: 'all 0.2s ease',
+  boxShadow: $selected ? '0 4px 12px rgba(156, 39, 176, 0.15)' : 'none',
+  '&:hover': {
+    borderColor: $selected ? '#9c27b0' : '#cbd5e1',
+    transform: 'translateY(-2px)',
+  },
+}));
+
+export const PreferenceIcon = styled(Typography)({
+  fontSize: '28px',
+});
+
+export const PreferenceLabel = styled(Typography)({
+  fontSize: '13px',
+  fontWeight: 700,
+  color: '#475569',
 });

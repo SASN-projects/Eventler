@@ -1,20 +1,34 @@
+import EditIcon from '@mui/icons-material/Edit';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import RestoreIcon from '@mui/icons-material/Restore';
-import { Box, CircularProgress, Container, Paper, Stack } from '@mui/material';
+import { Box, Chip, CircularProgress, Container, IconButton, Paper, Stack, Typography } from '@mui/material';
 import { useEffect, useState, type ChangeEvent, type FunctionComponent } from 'react';
 import api from '../config/api';
+import EditPreferencesDialog from './EditPreferencesDialog';
 import EditProfileDialog from './EditProfileDialog';
-import GroupsPanel from './GroupsPanel';
 import EventCard from './EventCard';
+import GroupsPanel from './GroupsPanel';
 import ProfileHeader from './ProfileHeader';
 import { ProfileContainer, TabButton } from './slidingPages/profile.styles';
 import type { User } from './slidingPages/profile.types';
 
+const PREF_MAP: Record<string, string> = {
+  budget: 'Budget',
+  'event-type': 'Type',
+  transportation: 'Transport',
+  crowd: 'Crowd',
+  'planning-style': 'Plan',
+  'location-type': 'Vibe',
+  'evening-structure': 'Structure',
+};
+
 const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) => {
   const [openEdit, setOpenEdit] = useState(false);
+  const [openPrefs, setOpenPrefs] = useState(false);
   const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'groups'>('history');
   const [events, setEvents] = useState<any[]>([]);
+  const [preferences, setPreferences] = useState<string[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [user, setUser] = useState<User>({
     username: '',
@@ -32,11 +46,12 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
       try {
         const { data } = await api.get('/users/me');
         setUser(data);
-      } catch (err) {
+      } catch {
         const raw = localStorage.getItem('eventler_user');
         if (raw) setUser(JSON.parse(raw));
       }
     };
+
     const fetchEvents = async () => {
       try {
         const { data } = await api.get('/users/events');
@@ -47,22 +62,38 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
         setLoadingEvents(false);
       }
     };
+
+    const fetchPreferences = async () => {
+      try {
+        const { data } = await api.get('/users/preferences');
+        setPreferences(data?.interests || []);
+      } catch (err) {
+        console.error('Failed to fetch preferences:', err);
+      }
+    };
+
     fetchUser();
     fetchEvents();
+    fetchPreferences();
   }, []);
 
-  const handleChange = (field: keyof User) => (e: ChangeEvent<HTMLInputElement>) => {
-    setUser((s) => ({ ...s, [field]: e.target.value }));
+  const handleChange = (field: keyof User) => (event: ChangeEvent<HTMLInputElement>) => {
+    setUser((current) => ({ ...current, [field]: event.target.value }));
   };
 
   const handleSave = async () => {
     try {
       await api.put('/users/me', user);
       setOpenEdit(false);
-    } catch (err) {
+    } catch {
       localStorage.setItem('eventler_user', JSON.stringify(user));
       setOpenEdit(false);
     }
+  };
+
+  const handleSavePreferences = async (selected: string[]) => {
+    await api.put('/users/preferences', { interests: selected });
+    setPreferences(selected);
   };
 
   return (
@@ -72,6 +103,34 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
         maxWidth="md"
         sx={{ flex: 1, display: 'flex', flexDirection: 'column', mt: -2.5, pb: 2, overflow: 'hidden', zIndex: 2 }}
       >
+        <Box sx={{ bgcolor: 'white', borderRadius: '20px', p: 2, mb: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.secondary' }}>
+              Event Preferences
+            </Typography>
+            <IconButton size="small" onClick={() => setOpenPrefs(true)} sx={{ color: '#9c27b0' }}>
+              <EditIcon sx={{ fontSize: '16px' }} />
+            </IconButton>
+          </Stack>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ gap: 1 }}>
+            {preferences.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                No preferences set. Tap edit to customize recommendations.
+              </Typography>
+            ) : (
+              preferences.map((preference) => (
+                <Chip
+                  key={preference}
+                  label={PREF_MAP[preference] || preference}
+                  size="small"
+                  variant="outlined"
+                  sx={{ borderRadius: '8px', fontWeight: 600 }}
+                />
+              ))
+            )}
+          </Stack>
+        </Box>
+
         <Stack direction="row" spacing={1.5} sx={{ mb: 2, justifyContent: 'center' }}>
           <TabButton
             onClick={() => setActiveTab('history')}
@@ -95,6 +154,7 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
             Groups
           </TabButton>
         </Stack>
+
         <Box sx={{ flex: 1, overflowY: 'auto', px: 1, pb: 2 }}>
           {activeTab === 'history' &&
             (loadingEvents ? (
@@ -122,6 +182,12 @@ const ProfilePage: FunctionComponent<{ onClose: () => void }> = ({ onClose }) =>
         user={user}
         onChange={handleChange}
         onSave={handleSave}
+      />
+      <EditPreferencesDialog
+        open={openPrefs}
+        onClose={() => setOpenPrefs(false)}
+        initialSelected={preferences}
+        onSave={handleSavePreferences}
       />
     </ProfileContainer>
   );
