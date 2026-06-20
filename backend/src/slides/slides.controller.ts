@@ -4,16 +4,16 @@ import {
   Post,
   Body,
   Param,
-  // UseGuards,
+  UseGuards,
   Request,
 } from '@nestjs/common';
 import { SlidesService } from './slides.service';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
 
 @Controller('slides')
-// @UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard)
 export class SlidesController {
   constructor(private readonly slidesService: SlidesService) { }
 
@@ -30,7 +30,7 @@ export class SlidesController {
   ) {
     return await this.slidesService.submitAnswers(
       eventId,
-      req?.user?.sub,
+      req.user.sub,
       createSlideAnswersDto,
     );
   }

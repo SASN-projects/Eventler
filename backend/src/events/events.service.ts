@@ -22,7 +22,7 @@ export class EventsService {
     private groupMemberRepository: Repository<GroupMember>,
   ) { }
 
-  async create(userId: string = '11111111-1111-1111-1111-111111111111', createEventDto: CreateEventDto) {
+  async create(userId: string, createEventDto: CreateEventDto) {
     const event = this.eventRepository.create({
       ...createEventDto,
       createdById: userId,
