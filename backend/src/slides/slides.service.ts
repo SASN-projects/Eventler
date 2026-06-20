@@ -39,7 +39,7 @@ export class SlidesService {
 
   async submitAnswers(
     eventId: string,
-    userId: string = '11111111-1111-1111-1111-111111111111',
+    userId: string,
     createSlideAnswersDto: CreateSlideAnswersDto,
   ) {
     // ensure the (connected) user exists and fetch their data
