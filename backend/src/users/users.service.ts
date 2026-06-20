@@ -74,7 +74,10 @@ export class UsersService {
 
     if (!preferences) {
       // Create default preferences if they don't exist
-      preferences = this.preferencesRepository.create({ userId });
+      preferences = this.preferencesRepository.create({
+        userId,
+        preferredEventTypeId: 'individual',
+      });
       await this.preferencesRepository.save(preferences);
     }
 
@@ -89,6 +92,7 @@ export class UsersService {
     if (!preferences) {
       preferences = this.preferencesRepository.create({
         userId,
+        preferredEventTypeId: 'individual',
         ...updatePreferencesDto,
       });
     } else {
