@@ -36,7 +36,10 @@ const makeJudgeInput = (overrides: Partial<JudgeInput> = {}): JudgeInput => ({
   locationCountry: 'France',
   participantCount: 4,
   targetDate: '2025-12-25',
-  preferenceCount: 2,
+  userPreferences: [
+    { question: 'Vibe', answerValue: 'Relaxed' },
+    { question: 'Budget', answerValue: 'Medium' },
+  ],
   recommendations: [
     { title: 'Café A', description: 'Nice café', address: '1 Rue de Rivoli' },
     { title: 'Park B', description: 'Open park', address: 'Champ de Mars' },
@@ -290,9 +293,9 @@ describe('RecommendationJudgeService', () => {
     });
   });
 
-  // ── privacy ──────────────────────────────────────────────────────────────
-  describe('privacy', () => {
-    it('prompt does not contain raw slide answer values (preferenceCount only)', async () => {
+  // ── prompt preferences inclusion ──────────────────────────────────────────
+  describe('prompt preferences inclusion', () => {
+    it('prompt includes raw slide answer values under User Preferences', async () => {
       const geminiMock = {
         generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
       };
@@ -300,15 +303,38 @@ describe('RecommendationJudgeService', () => {
       const trace = makeNoopTrace();
 
       await svc.evaluate(
-        makeJudgeInput({ preferenceCount: 3 }),
+        makeJudgeInput({
+          userPreferences: [
+            { question: 'Atmosphere', answerValue: 'Cosy' },
+            { question: 'Price Range', answerValue: 'Low' },
+          ],
+        }),
         trace,
       );
 
       const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
-      // Raw answer text must not appear; only count
-      expect(prompt).toContain('3'); // preferenceCount
-      expect(prompt).not.toContain('answerValue');
-      expect(prompt).not.toContain('Relaxed');
+      expect(prompt).toContain('User Preferences:');
+      expect(prompt).toContain('Atmosphere: Cosy');
+      expect(prompt).toContain('Price Range: Low');
+    });
+
+    it('prompt includes fallback when userPreferences is empty', async () => {
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeNoopTrace();
+
+      await svc.evaluate(
+        makeJudgeInput({
+          userPreferences: [],
+        }),
+        trace,
+      );
+
+      const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
+      expect(prompt).toContain('User Preferences:');
+      expect(prompt).toContain('No explicit user preferences were provided.');
     });
   });
 });
