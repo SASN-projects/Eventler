@@ -110,10 +110,6 @@ export class RecommendationsService {
       retrievalSpan.end({
         output: {
           answersCount: eventAnswers.length,
-          answers: eventAnswers.map((answer) => ({
-            question: answer.question,
-            answerValue: answer.answerValue,
-          })),
         },
       });
     } catch (error: any) {
