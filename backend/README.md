@@ -370,6 +370,34 @@ RECOMMENDATION_JUDGE_MAX_OUTPUT_LENGTH=2000        # truncate recommendation des
 - **Cost**: enabling the judge adds one extra model call per recommendation generation (subject to `RECOMMENDATION_JUDGE_SAMPLE_RATE`). Use sampling to control cost in high-traffic environments.
 - All judge inputs pass through the existing `sanitizeData()` redaction layer before reaching Langfuse.
 
+### Langfuse Quality Monitoring
+
+This section details how to monitor and evaluate the quality of recommendation generation runs in the Langfuse dashboard.
+
+#### Where to View Traces
+1. Go to your Langfuse dashboard.
+2. Select **Tracing** from the left sidebar and click on the **Traces** tab.
+3. Look for traces named `generate-recommendations`. Clicking a trace opens the detail view showing the chronological timeline of steps (`retrieve-user-preferences` span, model call attempt generation, and optional `recommendation-llm-judge` generation).
+
+#### Where to View Scores
+1. In a single trace's detail view, click the **Scores** tab in the right-hand panel to view all deterministic and judge scores assigned to that trace.
+2. For aggregate statistics, click **Scores** in the left sidebar to navigate to the **Score Analytics** dashboard. Here, you can monitor average quality trends over time and filter metrics by environment or release version.
+
+#### Which Scores to Monitor & Suggested Thresholds
+To ensure the recommendation system remains healthy and doesn't degrade, track these scores and follow the suggested evaluation thresholds:
+
+* **Structural Integrity (Deterministic)**
+  * `json_validity`: Must remain `1.0`. Any drop to `0` means the model returned unparseable JSON.
+  * `schema_compliance`: Must remain `1.0`. Any drop to `0` indicates missing required arrays (e.g., `recommendedEvents`).
+  * `has_duplicate_recommendations = 1`: Investigate. Represents a drop in output variety (model repeated itself).
+  * `has_empty_required_fields = 1`: Investigate. Represents incomplete recommendations missing titles, descriptions, or addresses.
+
+* **LLM-as-a-Judge Quality (When Enabled)**
+  * `judge_overall_quality < 0.65`: Investigate. Quality is below normal parameters.
+  * `judge_overall_quality < 0.5`: Critical. Significant quality drop.
+  * `judge_failed > 0.05`: Investigate. More than 5% of judge evaluations are failing.
+  * `judge_failed > 0.15`: Critical. Significant failure rate in the evaluator layer.
+
 ## License
 
 MIT
