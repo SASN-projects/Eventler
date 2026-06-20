@@ -10,6 +10,7 @@ import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
+import { RecommendationJudgeService } from './recommendation-judge.service';
 
 export interface RecommendationResult {
   id: string;
@@ -39,6 +40,7 @@ export class RecommendationsService {
     private readonly langfuseService: LangfuseService,
     private readonly geminiService: GeminiService,
     private readonly qualityEvaluator: RecommendationQualityEvaluator,
+    private readonly judgeService: RecommendationJudgeService,
   ) {}
 
   getFeed() {
@@ -155,7 +157,32 @@ export class RecommendationsService {
         }
         // ────────────────────────────────────────────────────────────────
 
+        // ── LLM-as-a-Judge (optional, fire-and-forget) ───────────────────
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
+        if (this.judgeService.shouldSample()) {
+          try {
+            await this.judgeService.evaluate(
+              {
+                eventType: input.eventType,
+                locationCity: input.locationCity,
+                locationCountry: input.locationCountry,
+                participantCount: input.participantCount,
+                targetDate: String(input.targetDate),
+                preferenceCount: eventAnswers.length,
+                recommendations: recommendedEvents.map((r) => ({
+                  title: r.title,
+                  description: r.description,
+                  address: r.address,
+                })),
+              },
+              trace,
+            );
+          } catch (judgeErr: any) {
+            this.logger.warn(`LLM Judge call failed unexpectedly: ${judgeErr.message}`);
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         this.logger.debug(`Attempt ${attempt}: generated ${recommendedEvents.length} recommendation(s) for event ${eventId}`);
 
         // Persist the generated recommendations under its own span
