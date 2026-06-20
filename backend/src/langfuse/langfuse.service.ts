@@ -92,6 +92,17 @@ class LangfuseTraceWrapper implements ILangfuseTrace {
       telemetryLogger.warn(`Failed to update Langfuse trace: ${err.message}`);
     }
   }
+
+  score(options: { name: string; value: number; comment?: string }): void {
+    try {
+      const sanitized = sanitizeData(options);
+      if (typeof this.realClient.score === 'function') {
+        this.realClient.score(sanitized);
+      }
+    } catch (err: any) {
+      telemetryLogger.warn(`Failed to send Langfuse score "${options?.name}": ${err.message}`);
+    }
+  }
 }
 
 @Injectable()

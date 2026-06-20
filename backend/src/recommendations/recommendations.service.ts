@@ -9,6 +9,7 @@ import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
+import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 
 export interface RecommendationResult {
   id: string;
@@ -37,6 +38,7 @@ export class RecommendationsService {
     private slideAnswerService: SlidesService,
     private readonly langfuseService: LangfuseService,
     private readonly geminiService: GeminiService,
+    private readonly qualityEvaluator: RecommendationQualityEvaluator,
   ) {}
 
   getFeed() {
@@ -141,6 +143,18 @@ export class RecommendationsService {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
         const rawResponse = await this.callGeminiModel(prompt, trace, attempt);
+
+        // ── Quality evaluation (deterministic, fire-and-forget) ──────────
+        const scores = this.qualityEvaluator.evaluate(rawResponse);
+        try {
+          for (const [name, value] of Object.entries(scores) as [string, number][]) {
+            trace.score({ name, value });
+          }
+        } catch (scoreErr: any) {
+          this.logger.warn(`Quality score reporting failed: ${scoreErr.message}`);
+        }
+        // ────────────────────────────────────────────────────────────────
+
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
         this.logger.debug(`Attempt ${attempt}: generated ${recommendedEvents.length} recommendation(s) for event ${eventId}`);
 
