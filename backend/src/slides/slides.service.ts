@@ -18,23 +18,52 @@ export class SlidesService {
     private sliderQuestionRepository: Repository<SliderQuestion>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
-  ) {}
+  ) { }
 
-  async getSlides(): Promise<SliderQuestion[]> {
-    const subQuery = this.sliderQuestionRepository
-      .createQueryBuilder('subQuestion')
-      .select('subQuestion.id')
-      .orderBy('RANDOM()')
-      .limit(4)
-      .getQuery();
+  async getSlides(userId: string): Promise<SliderQuestion[]> {
+    // 1. Fetch user to get their preferences
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['preferences'],
+    });
 
-    return this.sliderQuestionRepository
+    const preferredCodes: string[] = user?.preferences?.interests || [];
+
+    // 2. Fetch all questions from the database along with their options
+    const allQuestions = await this.sliderQuestionRepository
       .createQueryBuilder('question')
       .leftJoinAndSelect('question.options', 'option')
-      .where(`question.id IN (${subQuery})`)
       .orderBy('question.code', 'ASC')
       .addOrderBy('option.value', 'ASC')
       .getMany();
+
+    // 3. Separate questions into preferred and other categories
+    const preferredQuestions = allQuestions.filter((q) =>
+      preferredCodes.includes(q.code),
+    );
+    const otherQuestions = allQuestions.filter(
+      (q) => !preferredCodes.includes(q.code),
+    );
+
+    // 4. Shuffle other questions randomly
+    const shuffledOthers = [...otherQuestions].sort(() => Math.random() - 0.5);
+
+    // 5. Select enough other questions to reach 6 total
+    const needed = Math.max(0, 6 - preferredQuestions.length);
+    const selectedOthers = shuffledOthers.slice(0, needed);
+
+    // 6. Combine and sort alphabetically by code
+    const selectedQuestions = [...preferredQuestions, ...selectedOthers];
+    selectedQuestions.sort((a, b) => a.code.localeCompare(b.code));
+
+    // 7. Ensure options inside each question are sorted alphabetically by value
+    for (const q of selectedQuestions) {
+      if (q.options) {
+        q.options.sort((a, b) => a.value.localeCompare(b.value));
+      }
+    }
+
+    return selectedQuestions;
   }
 
   async submitAnswers(
