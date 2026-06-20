@@ -447,4 +447,124 @@ describe('RecommendationsService', () => {
       expect(judgeServiceMock.evaluate).toHaveBeenCalledTimes(1);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Prompt preferences audit (Phase 2 requirements)
+  // -------------------------------------------------------------------------
+  describe('prompt preferences audit', () => {
+    // Access the private method via casting to any
+    const getService = () => service as any;
+
+    const baseInput = {
+      targetDate: '2025-12-31',
+      locationCity: 'New York',
+      locationCountry: 'USA',
+      participantCount: 5,
+      eventType: 'casual',
+    };
+
+    it('includes a User Preferences section with all answers when eventAnswers is non-empty', () => {
+      const answers = [
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Budget', answerValue: 'Medium' },
+      ];
+      const prompt: string = getService().buildPrompt(baseInput, answers);
+
+      expect(prompt).toContain('User Preferences');
+      expect(prompt).toContain('Vibe: Relaxed');
+      expect(prompt).toContain('Budget: Medium');
+    });
+
+    it('includes "No explicit user preferences were provided." when eventAnswers is empty', () => {
+      const prompt: string = getService().buildPrompt(baseInput, []);
+      expect(prompt).toContain('No explicit user preferences were provided.');
+    });
+
+    it('also includes the fallback text when eventAnswers is omitted (default parameter)', () => {
+      const prompt: string = getService().buildPrompt(baseInput);
+      expect(prompt).toContain('No explicit user preferences were provided.');
+    });
+
+    it('changing user answers produces a different prompt', () => {
+      const promptA: string = getService().buildPrompt(baseInput, [
+        { question: 'Vibe', answerValue: 'Relaxed' },
+      ]);
+      const promptB: string = getService().buildPrompt(baseInput, [
+        { question: 'Vibe', answerValue: 'Energetic' },
+      ]);
+      expect(promptA).not.toBe(promptB);
+      expect(promptA).toContain('Relaxed');
+      expect(promptB).toContain('Energetic');
+    });
+
+    it('Langfuse retrieve-user-preferences span contains only answersCount, not raw question/answerValue', async () => {
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Budget', answerValue: 'Low' },
+      ]);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      // The retrieval span is always the first span created
+      const retrievalSpan = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+      const endCall = (retrievalSpan.end as jest.Mock).mock.calls[0][0];
+
+      // Only answersCount must be present
+      expect(endCall.output).toEqual({ answersCount: 2 });
+      // Raw fields must NOT appear
+      const serialized = JSON.stringify(endCall);
+      expect(serialized).not.toContain('Relaxed');
+      expect(serialized).not.toContain('Low');
+      expect(serialized).not.toContain('answerValue');
+      expect(serialized).not.toContain('question');
+    });
+
+    it('GeminiService receives a prompt that includes the preference summary', async () => {
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Lively' },
+      ]);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+      expect(prompt).toContain('User Preferences');
+      expect(prompt).toContain('Vibe: Lively');
+    });
+
+    it('GeminiService receives the no-preferences fallback when no answers exist', async () => {
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([]);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+      expect(prompt).toContain('No explicit user preferences were provided.');
+    });
+
+    it('judge evaluator receives minimized preference context (preferenceCount only, no raw answers)', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Energetic' },
+        { question: 'Budget', answerValue: 'High' },
+      ]);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const judgeInput = judgeServiceMock.evaluate.mock.calls[0][0];
+      expect(judgeInput.preferenceCount).toBe(2);
+      const serialized = JSON.stringify(judgeInput);
+      expect(serialized).not.toContain('Energetic');
+      expect(serialized).not.toContain('High');
+      expect(serialized).not.toContain('answerValue');
+    });
+  });
 });
