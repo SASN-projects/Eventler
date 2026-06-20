@@ -16,7 +16,7 @@ export class UsersService {
     private preferencesRepository: Repository<UserPreferences>,
     @InjectRepository(Event)
     private eventRepository: Repository<Event>,
-  ) { }
+  ) {}
 
   async getMe(userId: string) {
     const user = await this.userRepository.findOne({
@@ -81,10 +81,7 @@ export class UsersService {
     return preferences;
   }
 
-  async updatePreferences(
-    userId: string,
-    updatePreferencesDto: UpdatePreferencesDto,
-  ) {
+  async updatePreferences(userId: string, updatePreferencesDto: UpdatePreferencesDto) {
     let preferences = await this.preferencesRepository.findOne({
       where: { userId },
     });
@@ -111,5 +108,14 @@ export class UsersService {
     });
 
     return events;
+  }
+
+  async findAll() {
+    const users = await this.userRepository.find({
+      select: ['id', 'username', 'firstName', 'lastName', 'email'],
+      order: { firstName: 'ASC' },
+    });
+
+    return users.map((u) => ({ id: u.id, username: u.username, firstName: u.firstName, lastName: u.lastName }));
   }
 }

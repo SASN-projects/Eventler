@@ -8,11 +8,16 @@ import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
   async getMe(@Request() req: AuthRequest) {
     return await this.usersService.getMe(req.user.sub);
+  }
+
+  @Get()
+  async findAll() {
+    return await this.usersService.findAll();
   }
 
   @Put('me')
@@ -26,14 +31,8 @@ export class UsersController {
   }
 
   @Put('preferences')
-  async updatePreferences(
-    @Request() req: AuthRequest,
-    @Body() updatePreferencesDto: UpdatePreferencesDto,
-  ) {
-    return await this.usersService.updatePreferences(
-      req.user.sub,
-      updatePreferencesDto,
-    );
+  async updatePreferences(@Request() req: AuthRequest, @Body() updatePreferencesDto: UpdatePreferencesDto) {
+    return await this.usersService.updatePreferences(req.user.sub, updatePreferencesDto);
   }
 
   @Get('events')
