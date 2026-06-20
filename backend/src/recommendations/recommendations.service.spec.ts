@@ -374,7 +374,7 @@ describe('RecommendationsService', () => {
       expect(judgeServiceMock.evaluate).not.toHaveBeenCalled();
     });
 
-    it('calls judge.evaluate() with minimized input when shouldSample() is true', async () => {
+    it('calls judge.evaluate() with userPreferences array when shouldSample() is true', async () => {
       judgeServiceMock.shouldSample.mockReturnValue(true);
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
@@ -387,7 +387,7 @@ describe('RecommendationsService', () => {
           locationCity: 'New York',
           locationCountry: 'USA',
           participantCount: 5,
-          preferenceCount: 1, // from the mock slide answers
+          userPreferences: [{ question: 'Vibe', answerValue: 'Relaxed' }],
           recommendations: expect.arrayContaining([
             expect.objectContaining({ title: 'Event 1' }),
           ]),
@@ -396,7 +396,7 @@ describe('RecommendationsService', () => {
       );
     });
 
-    it('does NOT include raw slide answer content in the judge input', async () => {
+    it('includes raw slide answer content in the judge input', async () => {
       judgeServiceMock.shouldSample.mockReturnValue(true);
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
@@ -408,10 +408,10 @@ describe('RecommendationsService', () => {
       await service.generateRecommendation('test-event-uuid');
 
       const judgeInput = judgeServiceMock.evaluate.mock.calls[0][0];
-      // Only count is passed — raw answers must NOT appear
-      expect(judgeInput.preferenceCount).toBe(2);
-      expect(JSON.stringify(judgeInput)).not.toContain('Relaxed');
-      expect(JSON.stringify(judgeInput)).not.toContain('Low');
+      expect(judgeInput.userPreferences).toEqual([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Budget', answerValue: 'Low' },
+      ]);
     });
 
     it('recommendation flow succeeds even when judge.evaluate() throws', async () => {
@@ -548,7 +548,7 @@ describe('RecommendationsService', () => {
       expect(prompt).toContain('No explicit user preferences were provided.');
     });
 
-    it('judge evaluator receives minimized preference context (preferenceCount only, no raw answers)', async () => {
+    it('judge evaluator receives full preference context (userPreferences list)', async () => {
       judgeServiceMock.shouldSample.mockReturnValue(true);
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
         { question: 'Vibe', answerValue: 'Energetic' },
@@ -560,11 +560,10 @@ describe('RecommendationsService', () => {
       await service.generateRecommendation('test-event-uuid');
 
       const judgeInput = judgeServiceMock.evaluate.mock.calls[0][0];
-      expect(judgeInput.preferenceCount).toBe(2);
-      const serialized = JSON.stringify(judgeInput);
-      expect(serialized).not.toContain('Energetic');
-      expect(serialized).not.toContain('High');
-      expect(serialized).not.toContain('answerValue');
+      expect(judgeInput.userPreferences).toEqual([
+        { question: 'Vibe', answerValue: 'Energetic' },
+        { question: 'Budget', answerValue: 'High' },
+      ]);
     });
   });
 });

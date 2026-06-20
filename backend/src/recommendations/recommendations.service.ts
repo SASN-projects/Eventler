@@ -164,7 +164,10 @@ export class RecommendationsService {
                 locationCountry: input.locationCountry,
                 participantCount: input.participantCount,
                 targetDate: String(input.targetDate),
-                preferenceCount: eventAnswers.length,
+                userPreferences: eventAnswers.map((p) => ({
+                  question: p.question,
+                  answerValue: p.answerValue,
+                })),
                 recommendations: recommendedEvents.map((r) => ({
                   title: r.title,
                   description: r.description,

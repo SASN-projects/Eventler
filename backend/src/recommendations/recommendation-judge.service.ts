@@ -15,8 +15,11 @@ export interface JudgeInput {
   locationCountry: string;
   participantCount: number;
   targetDate: string;
-  /** Number of user preferences collected — count only, not raw answers. */
-  preferenceCount: number;
+  /** Actual user preferences. */
+  userPreferences: Array<{
+    question: string;
+    answerValue: string;
+  }>;
   recommendations: Array<{
     title: string;
     description: string;
@@ -207,6 +210,10 @@ export class RecommendationJudgeService {
       )
       .join('\n\n');
 
+    const preferenceLines = input.userPreferences && input.userPreferences.length > 0
+      ? input.userPreferences.map((p) => `  - ${p.question}: ${p.answerValue}`).join('\n')
+      : '  No explicit user preferences were provided.';
+
     return `You are an expert event planning evaluator.
 Evaluate the following event recommendations against the event context and return ONLY a valid JSON object — no markdown, no explanation outside the JSON.
 
@@ -215,7 +222,8 @@ Event Context:
 - Location: ${input.locationCity}, ${input.locationCountry}
 - Date: ${input.targetDate}
 - Participants: ${input.participantCount}
-- Number of user preferences collected: ${input.preferenceCount}
+- User Preferences:
+${preferenceLines}
 
 Generated Recommendations:
 ${recLines}
