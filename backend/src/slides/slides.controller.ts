@@ -18,8 +18,9 @@ export class SlidesController {
   constructor(private readonly slidesService: SlidesService) { }
 
   @Get()
-  getSlides() {
-    return this.slidesService.getSlides();
+  getSlides(@Request() req: AuthRequest) {
+    const userId = req?.user?.sub || '11111111-1111-1111-1111-111111111111';
+    return this.slidesService.getSlides(userId);
   }
 
   @Post('submit-answers/:eventId')
