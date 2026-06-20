@@ -25,8 +25,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import api from '../config/api';
 import { PrimeButton } from '../components/buttons';
-import { AuthContext } from '../contexts/AuthContext';
 import { HistoryCard, OverflowAvatar, ParticipantAvatar } from './slidingPages/profile.styles';
+import { AuthContext } from '../contexts/AuthContext';
 
 type Member = {
   id: string;
@@ -203,6 +203,7 @@ const GroupsPanel: React.FC = () => {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailGroup, setDetailGroup] = useState<Group | null>(null);
+
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -339,7 +340,9 @@ const GroupsPanel: React.FC = () => {
         await api.post(`/groups/${detailGroup.id}/members`, { memberIds: memberIdsToAdd });
       }
 
-      await Promise.all(memberIdsToRemove.map((memberId) => api.delete(`/groups/${detailGroup.id}/members/${memberId}`)));
+      await Promise.all(
+        memberIdsToRemove.map((memberId) => api.delete(`/groups/${detailGroup.id}/members/${memberId}`)),
+      );
 
       const { data } = await api.get(`/groups/${detailGroup.id}`);
       const updated = normalizeGroup(data);
@@ -467,7 +470,7 @@ const GroupsPanel: React.FC = () => {
 
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ pr: 10 }}>
-          {editing ? 'Edit Group' : detailGroup?.name ?? 'Group'}
+          {editing ? 'Edit Group' : (detailGroup?.name ?? 'Group')}
           {detailGroup && isManager && !editing ? (
             <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 12, top: 10 }}>
               <IconButton aria-label="Edit group" onClick={() => setEditing(true)}>
@@ -555,7 +558,9 @@ const GroupsPanel: React.FC = () => {
                     {detailMembers.map((member) => (
                       <ListItem key={member.id} disableGutters>
                         <ListItemAvatar>
-                          <Avatar src={member.avatar ?? undefined}>{!member.avatar ? getInitials(member) : null}</Avatar>
+                          <Avatar src={member.avatar ?? undefined}>
+                            {!member.avatar ? getInitials(member) : null}
+                          </Avatar>
                         </ListItemAvatar>
                         <ListItemText primary={getMemberName(member)} secondary={member.username ?? ''} />
                       </ListItem>
