@@ -291,6 +291,33 @@ LANGFUSE_RELEASE=0.0.1
 - **Retrieval Spans**: Database queries retrieving preferences (slide responses) for the event (our local preference RAG step).
 - **Generations**: Prompt templates sent to the Gemini API, raw responses returned, model configurations, latency metrics, prompt management details (names & versions), and token usage (`promptTokenCount`, `candidatesTokenCount`, `totalTokenCount`).
 
+### Quality Evaluation Scores
+
+In addition to raw tracing, the recommendation generation flow automatically computes **deterministic quality scores** and attaches them to the Langfuse trace after every model call.
+
+#### Scores recorded
+
+| Score name | Type | Good value | What it measures |
+|---|---|---|---|
+| `json_validity` | `0 \| 1` | `1` | Model output is parseable JSON |
+| `schema_compliance` | `0 \| 1` | `1` | Parsed JSON contains a `recommendedEvents` array |
+| `recommendations_count` | `number` | `3` | Number of recommendations returned (expected: 3) |
+| `has_duplicate_recommendations` | `0 \| 1` | `0` | Duplicate titles detected (case-insensitive) |
+| `has_empty_required_fields` | `0 \| 1` | `0` | Any item missing `title`, `description`, or `address` |
+
+#### How to view scores in Langfuse
+
+1. Open your [Langfuse dashboard](https://cloud.langfuse.com) and navigate to **Traces**.
+2. Click on any `generate-recommendations` trace.
+3. Open the **Scores** tab on the right-hand panel — all 5 metrics will appear with their numeric values.
+4. Use the **Scores** overview page (`/scores`) to filter, aggregate, and chart score trends across all traces over time.
+
+#### Why deterministic scores first
+
+Deterministic evaluators are cheap, fast, and 100% reproducible — they run in microseconds with zero additional API calls or cost.
+They provide an immediate quality baseline that catches structural regressions (malformed JSON, wrong field names, duplicates) before adding the complexity and latency of an LLM-as-a-Judge layer.
+Once deterministic coverage is solid and score baselines are established in Langfuse, a model-based evaluator can be layered on top to assess semantic quality (relevance, novelty, coherence) without duplicating structural checks.
+
 ### Privacy & Data Security
 To avoid leakage of sensitive production credentials, tokens, or PII:
 - **Redaction Helper**: A recursive data sanitizer (`sanitizeData` in `backend/src/langfuse/utils/redact.ts`) runs automatically before any trace or generation is sent to Langfuse.

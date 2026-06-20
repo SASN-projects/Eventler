@@ -166,4 +166,76 @@ describe('LangfuseService', () => {
       expect(fakeClient.shutdownAsync).toHaveBeenCalledTimes(1);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // score() method tests
+  // -------------------------------------------------------------------------
+  describe('trace.score()', () => {
+    it('delegates to the SDK score() function in enabled mode', async () => {
+      const fakeTraceClient = {
+        generation: jest.fn().mockReturnValue({ update: jest.fn(), end: jest.fn() }),
+        span: jest.fn().mockReturnValue({ update: jest.fn(), end: jest.fn() }),
+        update: jest.fn(),
+        score: jest.fn(),
+      };
+      const fakeClient = makeFakeClient({
+        trace: jest.fn().mockReturnValue(fakeTraceClient),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      const trace = service.trace('test-trace');
+      trace.score({ name: 'json_validity', value: 1 });
+
+      expect(fakeTraceClient.score).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'json_validity', value: 1 }),
+      );
+    });
+
+    it('score() is a no-op on NoopLangfuseTrace and does not throw', () => {
+      const noop = new NoopLangfuseTrace();
+      expect(() => noop.score({ name: 'any_metric', value: 0 })).not.toThrow();
+    });
+
+    it('swallows SDK score() errors and does not propagate them', async () => {
+      const bustedTraceClient = {
+        generation: jest.fn().mockReturnValue({ update: jest.fn(), end: jest.fn() }),
+        span: jest.fn().mockReturnValue({ update: jest.fn(), end: jest.fn() }),
+        update: jest.fn(),
+        score: jest.fn().mockImplementation(() => {
+          throw new Error('score() SDK exploded');
+        }),
+      };
+      const fakeClient = makeFakeClient({
+        trace: jest.fn().mockReturnValue(bustedTraceClient),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      const trace = service.trace('test-trace');
+      // Must not throw even though the underlying SDK call throws
+      expect(() => trace.score({ name: 'schema_compliance', value: 0 })).not.toThrow();
+    });
+
+    it('score() in disabled mode returns without contacting the SDK', async () => {
+      const service = await buildService({ LANGFUSE_ENABLED: 'false' });
+      const trace = service.trace('noop-trace');
+
+      // NoopLangfuseTrace.score() must be a complete no-op
+      expect(() => trace.score({ name: 'any_metric', value: 1 })).not.toThrow();
+      // SDK was never instantiated
+      expect(MockedLangfuse).not.toHaveBeenCalled();
+    });
+  });
 });
+

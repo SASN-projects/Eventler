@@ -1,13 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RecommendationsService } from './recommendations.service';
+import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
-import { ILangfuseTrace, ILangfuseSpan } from '../langfuse/interfaces/langfuse.interface';
+import { ILangfuseTrace, ILangfuseSpan, NoopLangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
 jest.mock('langfuse', () => ({
   Langfuse: jest.fn().mockImplementation(() => ({
@@ -28,6 +29,7 @@ const mockTraceInstance = (): ILangfuseTrace => ({
   generation: jest.fn(),
   span: jest.fn().mockReturnValue(makeSpanMock()),
   update: jest.fn(),
+  score: jest.fn(),
 });
 
 const makeEvent = (partial: Partial<any> = {}) => ({
@@ -94,6 +96,7 @@ describe('RecommendationsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
+        RecommendationQualityEvaluator,
         { provide: getRepositoryToken(Recommendation), useValue: recommendationRepositoryMock },
         { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
         { provide: getRepositoryToken(Venue), useValue: {} },
@@ -270,4 +273,79 @@ describe('RecommendationsService', () => {
       expect.objectContaining({ level: 'ERROR', statusMessage: 'Slide service down' }),
     );
   });
+
+  // -------------------------------------------------------------------------
+  // Quality score tests
+  // -------------------------------------------------------------------------
+  describe('quality evaluation scores', () => {
+    it('sends all 5 quality scores to Langfuse after successful generation', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+
+      // score() must have been called once per quality metric
+      const scoreNames = (mockTrace.score as jest.Mock).mock.calls.map(
+        (call: any[]) => call[0].name,
+      );
+      expect(scoreNames).toEqual(
+        expect.arrayContaining([
+          'json_validity',
+          'schema_compliance',
+          'recommendations_count',
+          'has_duplicate_recommendations',
+          'has_empty_required_fields',
+        ]),
+      );
+    });
+
+    it('sends json_validity=1 and schema_compliance=1 for valid model output', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const scoreCalls: Record<string, number> = {};
+      for (const [arg] of (mockTrace.score as jest.Mock).mock.calls) {
+        scoreCalls[arg.name] = arg.value;
+      }
+
+      expect(scoreCalls['json_validity']).toBe(1);
+      expect(scoreCalls['schema_compliance']).toBe(1);
+      expect(scoreCalls['recommendations_count']).toBe(3);
+      expect(scoreCalls['has_duplicate_recommendations']).toBe(0);
+      expect(scoreCalls['has_empty_required_fields']).toBe(0);
+    });
+
+    it('does not break the recommendation flow when trace.score() throws', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      // Make score() throw to simulate a Langfuse SDK error
+      (mockTrace.score as jest.Mock).mockImplementation(() => {
+        throw new Error('Langfuse score exploded');
+      });
+
+      // The service wraps score() in try/catch — result must still succeed
+      const result = await service.generateRecommendation('test-event-uuid');
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('still generates recommendations when Langfuse is disabled (NoopLangfuseTrace)', async () => {
+      // Override langfuseService to return a real Noop trace (disabled mode)
+      langfuseServiceMock.trace.mockReturnValue(new NoopLangfuseTrace());
+
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(3);
+    });
+  });
 });
+

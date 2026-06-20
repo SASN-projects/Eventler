@@ -29,6 +29,16 @@ export interface ILangfuseTrace {
     metadata?: any;
     tags?: string[];
   }): void;
+
+  /**
+   * Attach a named numeric score to this trace (e.g. a quality metric).
+   * No-ops safely when Langfuse is disabled.
+   */
+  score(options: {
+    name: string;
+    value: number;
+    comment?: string;
+  }): void;
 }
 
 export interface ILangfuseGeneration {
@@ -101,4 +111,6 @@ export class NoopLangfuseTrace implements ILangfuseTrace {
   }
 
   update(): void {}
+
+  score(): void {}
 }
