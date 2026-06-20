@@ -165,7 +165,7 @@ describe('RecommendationJudgeService', () => {
       expect(callArg.promptName).toBe('recommendation-llm-judge');
 
       // Scores were attached
-      const scoreNames = (trace.score as jest.Mock).mock.calls.map((c: any[]) => c[0].name);
+      const scoreNames = (trace.score).mock.calls.map((c: any[]) => c[0].name);
       expect(scoreNames).toEqual(
         expect.arrayContaining([
           'judge_relevance_to_event',
@@ -182,7 +182,7 @@ describe('RecommendationJudgeService', () => {
       );
 
       // judge_failed must be 0 on success
-      const failedScore = (trace.score as jest.Mock).mock.calls.find(
+      const failedScore = (trace.score).mock.calls.find(
         (c: any[]) => c[0].name === 'judge_failed',
       );
       expect(failedScore![0].value).toBe(0);
@@ -200,7 +200,7 @@ describe('RecommendationJudgeService', () => {
         const trace = makeTraceMock();
         await svc.evaluate(makeJudgeInput(), trace as any);
 
-        const hallucinationScore = (trace.score as jest.Mock).mock.calls.find(
+        const hallucinationScore = (trace.score).mock.calls.find(
           (c: any[]) => c[0].name === 'judge_hallucination_risk',
         );
         expect(hallucinationScore![0].value).toBe(expected);
@@ -219,10 +219,10 @@ describe('RecommendationJudgeService', () => {
       const trace = makeTraceMock();
       await svc.evaluate(makeJudgeInput(), trace as any);
 
-      const relevance = (trace.score as jest.Mock).mock.calls.find(
+      const relevance = (trace.score).mock.calls.find(
         (c: any[]) => c[0].name === 'judge_relevance_to_event',
       );
-      const locationFit = (trace.score as jest.Mock).mock.calls.find(
+      const locationFit = (trace.score).mock.calls.find(
         (c: any[]) => c[0].name === 'judge_location_fit',
       );
       expect(relevance![0].value).toBe(1);
@@ -242,7 +242,7 @@ describe('RecommendationJudgeService', () => {
       await expect(svc.evaluate(makeJudgeInput(), trace as any)).resolves.not.toThrow();
 
       // judge_failed=1 must be recorded
-      const failedScore = (trace.score as jest.Mock).mock.calls.find(
+      const failedScore = (trace.score).mock.calls.find(
         (c: any[]) => c[0].name === 'judge_failed',
       );
       expect(failedScore![0].value).toBe(1);
@@ -265,7 +265,7 @@ describe('RecommendationJudgeService', () => {
 
       await expect(svc.evaluate(makeJudgeInput(), trace as any)).resolves.not.toThrow();
 
-      const failedScore = (trace.score as jest.Mock).mock.calls.find(
+      const failedScore = (trace.score).mock.calls.find(
         (c: any[]) => c[0].name === 'judge_failed',
       );
       expect(failedScore![0].value).toBe(1);
@@ -277,7 +277,7 @@ describe('RecommendationJudgeService', () => {
       };
       const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
       const trace = makeTraceMock();
-      (trace.score as jest.Mock).mockImplementation(() => { throw new Error('score SDK exploded'); });
+      (trace.score).mockImplementation(() => { throw new Error('score SDK exploded'); });
 
       await expect(svc.evaluate(makeJudgeInput(), trace as any)).resolves.not.toThrow();
     });

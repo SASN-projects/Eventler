@@ -316,7 +316,7 @@ Return exactly this JSON schema:
         })
         .catch((e) => {
           clearTimeout(timer);
-          reject(e);
+          reject(e instanceof Error ? e : new Error(String(e)));
         });
     });
   }

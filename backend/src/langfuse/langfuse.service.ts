@@ -121,7 +121,7 @@ export class LangfuseService implements OnModuleDestroy {
     const release = this.configService.get<string>('LANGFUSE_RELEASE') || '0.0.1';
 
     // Startup Diagnostics
-    this.logger.log(`Langfuse Startup Diagnostics:`);
+    this.logger.log('Langfuse Startup Diagnostics:');
     this.logger.log(`  LANGFUSE_ENABLED parsed value: ${enabled}`);
     this.logger.log(`  hasPublicKey: ${!!publicKey}`);
     this.logger.log(`  hasSecretKey: ${!!secretKey}`);
@@ -191,10 +191,10 @@ export class LangfuseService implements OnModuleDestroy {
   /**
    * Manually flush queued events.
    */
-  async flush(): Promise<void> {
+  flush(): void {
     if (this.langfuseClient && typeof this.langfuseClient.flush === 'function') {
       try {
-        await this.langfuseClient.flush();
+        this.langfuseClient.flush();
       } catch (err: any) {
         this.logger.error(`Failed to manually flush Langfuse: ${err.message}`);
       }
