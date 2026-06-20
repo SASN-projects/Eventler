@@ -26,6 +26,23 @@ VALUES
 ('cccccccc-4444-4444-4444-444444444444', 'Museum Cafe', 'Museum', 'Quiet cafe near cultural attractions', '3 Shaul Hamelech Blvd', 'Tel Aviv', 'Israel', 2, 4.20, 'facebook', 'fb_004')
 ON CONFLICT (id) DO NOTHING;
 
+-- GROUPS
+INSERT INTO groups (id, name, description, created_by, invite_link_token, created_at, updated_at)
+VALUES
+('77777777-7777-7777-7777-777777777777', 'The Gang', 'Close friends that hang out frequently', '11111111-1111-1111-1111-111111111111', 'thegang-token-abc', NOW(), NOW()),
+('88888888-8888-8888-8888-888888888888', 'Homies', 'Casual group for nearby meetups', '22222222-2222-2222-2222-222222222222', 'homies-token-xyz', NOW(), NOW())
+ON CONFLICT (id) DO NOTHING;
+
+-- GROUP MEMBERS
+INSERT INTO group_members (group_id, user_id, role, joined_at)
+VALUES
+('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111', 'ADMIN', NOW()),
+('77777777-7777-7777-7777-777777777777', '22222222-2222-2222-2222-222222222222', 'MEMBER', NOW()),
+('77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', 'MEMBER', NOW()),
+('88888888-8888-8888-8888-888888888888', '22222222-2222-2222-2222-222222222222', 'ADMIN', NOW()),
+('88888888-8888-8888-8888-888888888888', '44444444-4444-4444-4444-444444444444', 'MEMBER', NOW())
+ON CONFLICT (group_id, user_id) DO NOTHING;
+
 -- FAVORITE VENUES
 INSERT INTO favorite_venues (user_id, venue_id)
 VALUES

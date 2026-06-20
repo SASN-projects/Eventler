@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE event_type_enum AS ENUM ('individual', 'group', 'manual');
 CREATE TYPE event_status_enum AS ENUM ('draft', 'collecting_responses', 'recommended', 'finalized', 'cancelled');
-CREATE TYPE group_role_enum AS ENUM ('owner', 'member');
+CREATE TYPE group_role_enum AS ENUM ('ADMIN', 'MEMBER');
 CREATE TYPE participant_status_enum AS ENUM ('pending', 'submitted', 'declined');
 CREATE TYPE answer_mode_enum AS ENUM ('options','value');
 CREATE TYPE transportation_enum AS ENUM ('bus', 'car', 'walk', 'train');
@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 CREATE TABLE IF NOT EXISTS groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(150) NOT NULL,
-    description TEXT,
+    description TEXT NOT NULL,
     created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    invite_link_token VARCHAR(255) UNIQUE,
+    invite_link_token VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS groups (
 CREATE TABLE IF NOT EXISTS group_members (
     group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role group_role_enum NOT NULL DEFAULT 'member',
+    role group_role_enum NOT NULL DEFAULT 'MEMBER',
     joined_at TIMESTAMP NOT NULL DEFAULT NOW(),
     PRIMARY KEY (group_id, user_id)
 );

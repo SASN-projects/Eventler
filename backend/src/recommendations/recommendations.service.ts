@@ -72,13 +72,10 @@ export class RecommendationsService {
   }
 
   async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
-    console.log('here');
-
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
     });
-    console.log(event);
 
     if (!event) {
       return {
@@ -87,7 +84,6 @@ export class RecommendationsService {
       };
     }
     const eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
-    console.log(eventAnswers);
 
     const input = {
       targetDate: event.targetDate || 'flexible',
@@ -103,7 +99,6 @@ export class RecommendationsService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const prompt = this.buildPrompt(input, eventAnswers);
-        console.log(prompt);
         const rawResponse = await this.callGeminiModel(prompt);
         const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
         console.log('recommendedEvents', recommendedEvents);
