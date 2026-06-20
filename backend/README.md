@@ -9,7 +9,7 @@ A NestJS-based backend server for the Eventler event recommendation platform.
 - **Group Management**: Create and manage event groups
 - **Event Management**: Create single or group events
 - **Slide Answers**: Collect user preferences through interactive slides
-- **Recommendations**: AI-powered event recommendations (stub implementation)
+- **Recommendations**: AI-powered event recommendations using Google Gemini with Langfuse observability
 
 ## Tech Stack
 
@@ -244,8 +244,6 @@ Authorization: Bearer <access_token>
 
 ## Testing
 
-## Testing
-
 ```bash
 # unit tests
 npm run test
@@ -256,6 +254,149 @@ npm run test:e2e
 # test coverage
 npm run test:cov
 ```
+
+## Langfuse Observability
+
+This project has production-grade integration with [Langfuse](https://langfuse.com/) for LLM/AI observability.
+
+### Configuration Environment Variables
+Add the following configuration settings to your `.env` file:
+
+```env
+# Enable/Disable Langfuse Tracing (true/false)
+LANGFUSE_ENABLED=true
+
+# Langfuse Project Credentials
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com # or self-hosted endpoint
+
+# Optional Tracing Metadata
+LANGFUSE_ENVIRONMENT=development
+LANGFUSE_RELEASE=0.0.1
+```
+
+### Local Setup & Testing
+1. Ensure `LANGFUSE_ENABLED=true` is set and you have supplied valid project keys.
+2. Run the application locally in development/watch mode:
+   ```bash
+   npm run start:dev
+   ```
+3. Trigger the recommendations generation endpoint by submitting slide answers for an event in the UI or via POST call to `/recommendations/events/:eventId/generate`.
+4. Log in to your Langfuse dashboard to view detailed traces, spans, latency, errors, prompts, and token counts.
+5. In local development or environments where `LANGFUSE_ENABLED=false` or credentials are missing, Langfuse fallback mechanism operates silently in **Noop mode** without throwing exceptions or blocking the core application flow.
+
+### What is Traced
+- **Traces**: High-level event recommendations generation trace containing standard metadata (e.g. `environment`, `release`), event-owner mapped to `userId`, event-id mapped to `sessionId`, and overall request inputs/outputs/errors.
+- **Retrieval Spans**: Database queries retrieving preferences (slide responses) for the event (our local preference RAG step).
+- **Generations**: Prompt templates sent to the Gemini API, raw responses returned, model configurations, latency metrics, prompt management details (names & versions), and token usage (`promptTokenCount`, `candidatesTokenCount`, `totalTokenCount`).
+
+### Quality Evaluation Scores
+
+In addition to raw tracing, the recommendation generation flow automatically computes **deterministic quality scores** and attaches them to the Langfuse trace after every model call.
+
+#### Scores recorded
+
+| Score name | Type | Good value | What it measures |
+|---|---|---|---|
+| `json_validity` | `0 \| 1` | `1` | Model output is parseable JSON |
+| `schema_compliance` | `0 \| 1` | `1` | Parsed JSON contains a `recommendedEvents` array |
+| `recommendations_count` | `number` | `3` | Number of recommendations returned (expected: 3) |
+| `has_duplicate_recommendations` | `0 \| 1` | `0` | Duplicate titles detected (case-insensitive) |
+| `has_empty_required_fields` | `0 \| 1` | `0` | Any item missing `title`, `description`, or `address` |
+
+#### How to view scores in Langfuse
+
+1. Open your [Langfuse dashboard](https://cloud.langfuse.com) and navigate to **Traces**.
+2. Click on any `generate-recommendations` trace.
+3. Open the **Scores** tab on the right-hand panel — all 5 metrics will appear with their numeric values.
+4. Use the **Scores** overview page (`/scores`) to filter, aggregate, and chart score trends across all traces over time.
+
+#### Why deterministic scores first
+
+Deterministic evaluators are cheap, fast, and 100% reproducible — they run in microseconds with zero additional API calls or cost.
+They provide an immediate quality baseline that catches structural regressions (malformed JSON, wrong field names, duplicates) before adding the complexity and latency of an LLM-as-a-Judge layer.
+Once deterministic coverage is solid and score baselines are established in Langfuse, a model-based evaluator can be layered on top to assess semantic quality (relevance, novelty, coherence) without duplicating structural checks.
+
+### Privacy & Data Security
+To avoid leakage of sensitive production credentials, tokens, or PII:
+- **Redaction Helper**: A recursive data sanitizer (`sanitizeData` in `backend/src/langfuse/utils/redact.ts`) runs automatically before any trace or generation is sent to Langfuse.
+- **Redacted fields**: Keys containing keywords like `password`, `token`, `secret`, `authorization`, `cookie`, `key`, `apikey`, `credential`, `private` are stripped and logged as `[REDACTED]`.
+
+### LLM-as-a-Judge Evaluation
+
+In addition to deterministic scores, the recommendation flow supports an **optional** LLM-as-a-Judge layer that uses a language model to evaluate the semantic quality of generated recommendations.
+
+> [!IMPORTANT]
+> **Disabled by default.** Set `RECOMMENDATION_JUDGE_ENABLED=true` to activate it.
+
+#### What it does
+
+After recommendations are generated and deterministic scores are computed, the judge model receives a minimized summary of the event context and the generated recommendations. It returns a structured JSON evaluation covering semantic quality dimensions that deterministic checks cannot capture (relevance, coherence, diversity, etc.).
+
+The judge evaluation is **best-effort**: if it fails, times out, or produces invalid JSON, the recommendation response is unaffected.
+
+#### How to enable
+
+Add to your `.env`:
+
+```env
+RECOMMENDATION_JUDGE_ENABLED=true
+RECOMMENDATION_JUDGE_MODEL=gemini-2.5-flash        # defaults to GOOGLE_GEMINI_MODEL
+RECOMMENDATION_JUDGE_TIMEOUT_MS=15000              # max wait for judge response
+RECOMMENDATION_JUDGE_SAMPLE_RATE=1                 # 1 = 100%, 0.5 = 50%, 0 = never
+RECOMMENDATION_JUDGE_MAX_INPUT_LENGTH=4000         # truncate judge prompt at this length
+RECOMMENDATION_JUDGE_MAX_OUTPUT_LENGTH=2000        # truncate recommendation descriptions
+```
+
+#### Scores recorded
+
+| Score name | Range | What it measures |
+|---|---|---|
+| `judge_relevance_to_event` | 0–1 | Are recommendations relevant to the event type? |
+| `judge_preference_alignment` | 0–1 | Do recommendations reflect user preferences? |
+| `judge_location_fit` | 0–1 | Suitable for the requested location? |
+| `judge_date_time_fit` | 0–1 | Plausible for the requested date/time? |
+| `judge_specificity` | 0–1 | Concrete and useful rather than vague? |
+| `judge_diversity` | 0–1 | Meaningfully different from each other? |
+| `judge_hallucination_risk` | 0/0.5/1 | Invented facts: high=0, medium=0.5, low=1 |
+| `judge_overall_quality` | 0–1 | Overall quality of the output |
+| `judge_latency_ms` | ms | Time taken by the judge model call |
+| `judge_failed` | 0/1 | 1 if judge call failed for any reason |
+
+#### Privacy and cost notes
+
+- **Raw user answers are never sent to the judge.** Only the count of preferences collected is included in the judge prompt.
+- **Cost**: enabling the judge adds one extra model call per recommendation generation (subject to `RECOMMENDATION_JUDGE_SAMPLE_RATE`). Use sampling to control cost in high-traffic environments.
+- All judge inputs pass through the existing `sanitizeData()` redaction layer before reaching Langfuse.
+
+### Langfuse Quality Monitoring
+
+This section details how to monitor and evaluate the quality of recommendation generation runs in the Langfuse dashboard.
+
+#### Where to View Traces
+1. Go to your Langfuse dashboard.
+2. Select **Tracing** from the left sidebar and click on the **Traces** tab.
+3. Look for traces named `generate-recommendations`. Clicking a trace opens the detail view showing the chronological timeline of steps (`retrieve-user-preferences` span, model call attempt generation, and optional `recommendation-llm-judge` generation).
+
+#### Where to View Scores
+1. In a single trace's detail view, click the **Scores** tab in the right-hand panel to view all deterministic and judge scores assigned to that trace.
+2. For aggregate statistics, click **Scores** in the left sidebar to navigate to the **Score Analytics** dashboard. Here, you can monitor average quality trends over time and filter metrics by environment or release version.
+
+#### Which Scores to Monitor & Suggested Thresholds
+To ensure the recommendation system remains healthy and doesn't degrade, track these scores and follow the suggested evaluation thresholds:
+
+* **Structural Integrity (Deterministic)**
+  * `json_validity`: Must remain `1.0`. Any drop to `0` means the model returned unparseable JSON.
+  * `schema_compliance`: Must remain `1.0`. Any drop to `0` indicates missing required arrays (e.g., `recommendedEvents`).
+  * `has_duplicate_recommendations = 1`: Investigate. Represents a drop in output variety (model repeated itself).
+  * `has_empty_required_fields = 1`: Investigate. Represents incomplete recommendations missing titles, descriptions, or addresses.
+
+* **LLM-as-a-Judge Quality (When Enabled)**
+  * `judge_overall_quality < 0.65`: Investigate. Quality is below normal parameters.
+  * `judge_overall_quality < 0.5`: Critical. Significant quality drop.
+  * `judge_failed > 0.05`: Investigate. More than 5% of judge evaluations are failing.
+  * `judge_failed > 0.15`: Critical. Significant failure rate in the evaluator layer.
 
 ## License
 

@@ -1,0 +1,264 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { GeminiService } from './gemini.service';
+import { ILangfuseTrace, ILangfuseGeneration } from '../langfuse/interfaces/langfuse.interface';
+import { sanitizeData } from '../langfuse/utils/redact';
+
+// ---------------------------------------------------------------------------
+// Module-level mocks
+// ---------------------------------------------------------------------------
+jest.mock('langfuse', () => ({
+  Langfuse: jest.fn().mockImplementation(() => ({
+    trace: jest.fn(),
+    shutdownAsync: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+const mockGenerateContent = jest.fn();
+
+jest.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
+    getGenerativeModel: jest.fn().mockReturnValue({
+      generateContent: mockGenerateContent,
+    }),
+  })),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const successfulApiResponse = (jsonPayload: object) => ({
+  response: {
+    text: jest.fn().mockReturnValue(JSON.stringify(jsonPayload)),
+    usageMetadata: {
+      promptTokenCount: 10,
+      candidatesTokenCount: 20,
+      totalTokenCount: 30,
+    },
+  },
+});
+
+const mockConfigService = (apiKey?: string) => ({
+  get: jest.fn((key: string) => {
+    if (key === 'GOOGLE_API_KEY') return apiKey;
+    if (key === 'GOOGLE_GEMINI_MODEL') return 'gemini-2.5-flash';
+    return undefined;
+  }),
+});
+
+const createMockTrace = (): ILangfuseTrace => {
+  const generationMock: ILangfuseGeneration = {
+    update: jest.fn(),
+    end: jest.fn(),
+  };
+  return {
+    generation: jest.fn().mockReturnValue(generationMock),
+    span: jest.fn(),
+    update: jest.fn(),
+    score: jest.fn(),
+  } as any;
+};
+
+async function buildService(apiKey?: string): Promise<GeminiService> {
+  const module: TestingModule = await Test.createTestingModule({
+    providers: [
+      GeminiService,
+      { provide: ConfigService, useValue: mockConfigService(apiKey) },
+    ],
+  }).compile();
+  return module.get<GeminiService>(GeminiService);
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+describe('GeminiService', () => {
+  beforeEach(() => {
+    mockGenerateContent.mockReset();
+  });
+
+  // -------------------------------------------------------------------------
+  // No API key
+  // -------------------------------------------------------------------------
+  it('should throw when GOOGLE_API_KEY is not defined', async () => {
+    const service = await buildService(undefined);
+    await expect(
+      service.generateJsonContent({ prompt: 'test', responseSchema: {} as any }),
+    ).rejects.toThrow('GOOGLE_API_KEY is required for Gemini integration.');
+  });
+
+  // -------------------------------------------------------------------------
+  // Happy path — token reporting + tracing
+  // -------------------------------------------------------------------------
+  it('should call Gemini SDK, report usage, and log to Langfuse trace', async () => {
+    mockGenerateContent.mockResolvedValue(
+      successfulApiResponse({
+        recommendedEvents: [
+          { title: 'Test Event', description: 'Test Desc', address: '123 Test St' },
+        ],
+      }),
+    );
+
+    const service = await buildService('fake-api-key');
+    const mockTrace = createMockTrace();
+
+    const response = await service.generateJsonContent<{ recommendedEvents: any[] }>({
+      prompt: 'test prompt',
+      responseSchema: {} as any,
+      parentTrace: mockTrace,
+      promptName: 'test-prompt',
+      promptVersion: '1.0.0',
+    });
+
+    expect(response.recommendedEvents).toHaveLength(1);
+    expect(response.recommendedEvents[0].title).toBe('Test Event');
+
+    // generation() called with correct params
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(mockTrace.generation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'test-prompt',
+        model: 'gemini-2.5-flash',
+        input: 'test prompt',
+      }),
+    );
+
+    // Retrieve the generation instance the service received and check end()
+    const generationInstance = (mockTrace.generation as jest.Mock).mock.results[0].value as ILangfuseGeneration;
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(generationInstance.end).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+      }),
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Generation failure — item 9: generation failure + item 6: error re-thrown
+  // -------------------------------------------------------------------------
+  describe('LLM failure handling', () => {
+    it('records ERROR level on generation and re-throws to caller', async () => {
+      mockGenerateContent.mockRejectedValue(new Error('upstream API down'));
+
+      const service = await buildService('fake-api-key');
+      const mockTrace = createMockTrace();
+
+      await expect(
+        service.generateJsonContent({
+          prompt: 'test',
+          responseSchema: {} as any,
+          parentTrace: mockTrace,
+          promptName: 'failing-prompt',
+        }),
+      ).rejects.toThrow('upstream API down');
+
+      // generation.end() must have been called with ERROR level
+      const generationInstance = (mockTrace.generation as jest.Mock).mock.results[0].value as ILangfuseGeneration;
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(generationInstance.end).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'ERROR',
+          statusMessage: 'upstream API down',
+        }),
+      );
+    });
+
+    it('still throws even without a parentTrace (no trace crash)', async () => {
+      mockGenerateContent.mockRejectedValue(new Error('no trace error'));
+
+      const service = await buildService('fake-api-key');
+
+      await expect(
+        service.generateJsonContent({
+          prompt: 'test',
+          responseSchema: {} as any,
+          // no parentTrace
+        }),
+      ).rejects.toThrow('no trace error');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Redaction and sanitization utility — item 9: nested redaction
+  // -------------------------------------------------------------------------
+  describe('sanitizeData utility', () => {
+    it('redacts top-level sensitive keys', () => {
+      const data = {
+        apiKey: 'AIzaSyExampleKey',
+        password: 'super_secret',
+        token: 'bearer-xyz',
+      };
+      const sanitized = sanitizeData(data);
+      expect(sanitized.apiKey).toBe('[REDACTED]');
+      expect(sanitized.password).toBe('[REDACTED]');
+      expect(sanitized.token).toBe('[REDACTED]');
+    });
+
+    it('recursively redacts nested sensitive fields', () => {
+      const data = {
+        user: {
+          username: 'john_doe',
+          password: 'super_secret',
+          cookie: 'session=123',
+          profile: {
+            displayName: 'John',
+            secretAnswer: 'blue', // "secret" token → redacted
+          },
+        },
+        items: [
+          { name: 'regular_item' },
+          { token: 'bearer-token-val' },
+        ],
+      };
+      const sanitized = sanitizeData(data);
+
+      expect(sanitized.user.password).toBe('[REDACTED]');
+      expect(sanitized.user.cookie).toBe('[REDACTED]');
+      expect(sanitized.user.profile.secretAnswer).toBe('[REDACTED]');
+      expect(sanitized.user.username).toBe('john_doe');
+      expect(sanitized.user.profile.displayName).toBe('John');
+      expect(sanitized.items[1].token).toBe('[REDACTED]');
+      expect(sanitized.items[0].name).toBe('regular_item');
+    });
+
+    it('does NOT redact generic fields that merely contain a sensitive substring', () => {
+      // "monkey" contains "key" as substring — must NOT be redacted
+      const data = {
+        monkey: 'fun animal',
+        donkey: 'another animal',
+        marketCategory: 'electronics', // "category" has no sensitive token
+      };
+      const sanitized = sanitizeData(data);
+      expect(sanitized.monkey).toBe('fun animal');
+      expect(sanitized.donkey).toBe('another animal');
+      expect(sanitized.marketCategory).toBe('electronics');
+    });
+
+    it('does redact camelCase and snake_case variants of sensitive words', () => {
+      const data = {
+        apiKey: 'should-redact',         // tokens: ['api', 'key']
+        API_KEY: 'should-redact',        // tokens: ['api', 'key']
+        secretToken: 'should-redact',    // tokens: ['secret', 'token']
+        user_password: 'should-redact',  // tokens: ['user', 'password']
+      };
+      const sanitized = sanitizeData(data);
+      expect(sanitized.apiKey).toBe('[REDACTED]');
+      expect(sanitized.API_KEY).toBe('[REDACTED]');
+      expect(sanitized.secretToken).toBe('[REDACTED]');
+      expect(sanitized.user_password).toBe('[REDACTED]');
+    });
+
+    it('handles circular references without throwing', () => {
+      const obj: any = { name: 'root' };
+      obj.self = obj;
+      const sanitized = sanitizeData(obj);
+      expect(sanitized.name).toBe('root');
+      expect(sanitized.self).toBe('[Circular Reference]');
+    });
+
+    it('handles null and undefined gracefully', () => {
+      expect(sanitizeData(null)).toBeNull();
+      expect(sanitizeData(undefined)).toBeUndefined();
+    });
+  });
+});

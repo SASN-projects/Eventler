@@ -4,9 +4,8 @@ import { Repository } from 'typeorm';
 import { SlideAnswer } from './entities/slide-answer.entity';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
 import { SliderQuestion } from './entities/slider-question.entity';
-import { EventResponse } from 'src/events/entities/event-response.entity';
-import { User } from 'src/auth/entities/user.entity';
-import { UserPreferences } from 'src/users/entities/user-preferences.entity';
+import { EventResponse } from '../events/entities/event-response.entity';
+import { User } from '../auth/entities/user.entity';
 
 @Injectable()
 export class SlidesService {
@@ -19,7 +18,7 @@ export class SlidesService {
     private sliderQuestionRepository: Repository<SliderQuestion>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
-  ) {}
+  ) { }
 
   async getSlides(userId: string): Promise<SliderQuestion[]> {
     // 1. Fetch user to get their preferences
