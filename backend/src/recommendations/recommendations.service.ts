@@ -307,7 +307,13 @@ export class RecommendationsService {
     },
     eventAnswers: any[] = [],
   ): string {
-    const slideAnswersText = eventAnswers.map((answer) => `- ${answer.question}: ${answer.answerValue}`).join('\n');
+    const slideAnswersText = eventAnswers
+      .map((answer) => `- ${answer.question}: ${answer.answerValue}`)
+      .join('\n');
+
+    const preferencesSection = slideAnswersText
+      ? `User Preferences (from participant answers — tailor every recommendation to reflect these):\n  ${slideAnswersText}`
+      : 'User Preferences:\n  No explicit user preferences were provided.';
 
     return `You are a friendly event planner. Build exactly three (3) distinct structured event recommendations (as JSON array under key "recommendedEvents") based on the following event details:
 
@@ -316,8 +322,7 @@ export class RecommendationsService {
   - Location: ${input.locationCity}, ${input.locationCountry}
   - Number of Participants: ${input.participantCount}
 
-  User Preferences (from slide answers):
-  ${slideAnswersText || 'No preferences provided'}
+  ${preferencesSection}
 
   Return JSON with key "recommendedEvents" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
   }
