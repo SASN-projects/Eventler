@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RecommendationsController } from './recommendations.controller';
 import { RecommendationsService } from './recommendations.service';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
+import { RecommendationJudgeService } from './recommendation-judge.service';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from 'src/venues/entities/venue.entity';
@@ -17,7 +18,7 @@ import { GeminiModule } from '../gemini/gemini.module';
     GeminiModule,
   ],
   controllers: [RecommendationsController],
-  providers: [RecommendationsService, RecommendationQualityEvaluator],
+  providers: [RecommendationsService, RecommendationQualityEvaluator, RecommendationJudgeService],
   exports: [RecommendationsService],
 })
 export class RecommendationsModule {}

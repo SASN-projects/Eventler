@@ -55,6 +55,7 @@ const createMockTrace = (): ILangfuseTrace => {
     generation: jest.fn().mockReturnValue(generationMock),
     span: jest.fn(),
     update: jest.fn(),
+    score: jest.fn(),
   } as any;
 };
 

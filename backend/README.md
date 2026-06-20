@@ -323,6 +323,53 @@ To avoid leakage of sensitive production credentials, tokens, or PII:
 - **Redaction Helper**: A recursive data sanitizer (`sanitizeData` in `backend/src/langfuse/utils/redact.ts`) runs automatically before any trace or generation is sent to Langfuse.
 - **Redacted fields**: Keys containing keywords like `password`, `token`, `secret`, `authorization`, `cookie`, `key`, `apikey`, `credential`, `private` are stripped and logged as `[REDACTED]`.
 
+### LLM-as-a-Judge Evaluation
+
+In addition to deterministic scores, the recommendation flow supports an **optional** LLM-as-a-Judge layer that uses a language model to evaluate the semantic quality of generated recommendations.
+
+> [!IMPORTANT]
+> **Disabled by default.** Set `RECOMMENDATION_JUDGE_ENABLED=true` to activate it.
+
+#### What it does
+
+After recommendations are generated and deterministic scores are computed, the judge model receives a minimized summary of the event context and the generated recommendations. It returns a structured JSON evaluation covering semantic quality dimensions that deterministic checks cannot capture (relevance, coherence, diversity, etc.).
+
+The judge evaluation is **best-effort**: if it fails, times out, or produces invalid JSON, the recommendation response is unaffected.
+
+#### How to enable
+
+Add to your `.env`:
+
+```env
+RECOMMENDATION_JUDGE_ENABLED=true
+RECOMMENDATION_JUDGE_MODEL=gemini-2.5-flash        # defaults to GOOGLE_GEMINI_MODEL
+RECOMMENDATION_JUDGE_TIMEOUT_MS=15000              # max wait for judge response
+RECOMMENDATION_JUDGE_SAMPLE_RATE=1                 # 1 = 100%, 0.5 = 50%, 0 = never
+RECOMMENDATION_JUDGE_MAX_INPUT_LENGTH=4000         # truncate judge prompt at this length
+RECOMMENDATION_JUDGE_MAX_OUTPUT_LENGTH=2000        # truncate recommendation descriptions
+```
+
+#### Scores recorded
+
+| Score name | Range | What it measures |
+|---|---|---|
+| `judge_relevance_to_event` | 0–1 | Are recommendations relevant to the event type? |
+| `judge_preference_alignment` | 0–1 | Do recommendations reflect user preferences? |
+| `judge_location_fit` | 0–1 | Suitable for the requested location? |
+| `judge_date_time_fit` | 0–1 | Plausible for the requested date/time? |
+| `judge_specificity` | 0–1 | Concrete and useful rather than vague? |
+| `judge_diversity` | 0–1 | Meaningfully different from each other? |
+| `judge_hallucination_risk` | 0/0.5/1 | Invented facts: high=0, medium=0.5, low=1 |
+| `judge_overall_quality` | 0–1 | Overall quality of the output |
+| `judge_latency_ms` | ms | Time taken by the judge model call |
+| `judge_failed` | 0/1 | 1 if judge call failed for any reason |
+
+#### Privacy and cost notes
+
+- **Raw user answers are never sent to the judge.** Only the count of preferences collected is included in the judge prompt.
+- **Cost**: enabling the judge adds one extra model call per recommendation generation (subject to `RECOMMENDATION_JUDGE_SAMPLE_RATE`). Use sampling to control cost in high-traffic environments.
+- All judge inputs pass through the existing `sanitizeData()` redaction layer before reaching Langfuse.
+
 ## License
 
 MIT

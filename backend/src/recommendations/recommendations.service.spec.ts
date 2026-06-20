@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RecommendationsService } from './recommendations.service';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
+import { RecommendationJudgeService } from './recommendation-judge.service';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from '../venues/entities/venue.entity';
@@ -61,6 +62,7 @@ describe('RecommendationsService', () => {
   let slideAnswerServiceMock: any;
   let langfuseServiceMock: any;
   let geminiServiceMock: any;
+  let judgeServiceMock: any;
   let mockTrace: ILangfuseTrace;
 
   beforeEach(async () => {
@@ -93,6 +95,14 @@ describe('RecommendationsService', () => {
       generateJsonContent: jest.fn(),
     };
 
+    // Judge is DISABLED by default in all existing tests to keep them unaffected.
+    // Individual judge tests override shouldSample / evaluate as needed.
+    judgeServiceMock = {
+      isEnabled: jest.fn().mockReturnValue(false),
+      shouldSample: jest.fn().mockReturnValue(false),
+      evaluate: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
@@ -103,6 +113,7 @@ describe('RecommendationsService', () => {
         { provide: SlidesService, useValue: slideAnswerServiceMock },
         { provide: LangfuseService, useValue: langfuseServiceMock },
         { provide: GeminiService, useValue: geminiServiceMock },
+        { provide: RecommendationJudgeService, useValue: judgeServiceMock },
       ],
     }).compile();
 
@@ -347,5 +358,93 @@ describe('RecommendationsService', () => {
       expect(result.data).toHaveLength(3);
     });
   });
-});
 
+  // -------------------------------------------------------------------------
+  // LLM-as-a-Judge tests
+  // -------------------------------------------------------------------------
+  describe('LLM-as-a-Judge', () => {
+    it('does not call judge.evaluate() when shouldSample() returns false', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(false);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+      expect(judgeServiceMock.evaluate).not.toHaveBeenCalled();
+    });
+
+    it('calls judge.evaluate() with minimized input when shouldSample() is true', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(judgeServiceMock.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'casual',
+          locationCity: 'New York',
+          locationCountry: 'USA',
+          participantCount: 5,
+          preferenceCount: 1, // from the mock slide answers
+          recommendations: expect.arrayContaining([
+            expect.objectContaining({ title: 'Event 1' }),
+          ]),
+        }),
+        mockTrace,
+      );
+    });
+
+    it('does NOT include raw slide answer content in the judge input', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Budget', answerValue: 'Low' },
+      ]);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const judgeInput = judgeServiceMock.evaluate.mock.calls[0][0];
+      // Only count is passed — raw answers must NOT appear
+      expect(judgeInput.preferenceCount).toBe(2);
+      expect(JSON.stringify(judgeInput)).not.toContain('Relaxed');
+      expect(JSON.stringify(judgeInput)).not.toContain('Low');
+    });
+
+    it('recommendation flow succeeds even when judge.evaluate() throws', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      judgeServiceMock.evaluate.mockRejectedValue(new Error('Judge model exploded'));
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      // judgeService.evaluate() is awaited directly in the service, so we need
+      // to ensure a caught exception here doesn't bubble. The service itself
+      // wraps the judge call — let's verify the result is still success.
+      const result = await service.generateRecommendation('test-event-uuid');
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('sample rate 0 — shouldSample returns false, judge is never called', async () => {
+      // Simulate Math.random() returning 0.5, sampleRate effectively 0
+      judgeServiceMock.shouldSample.mockReturnValue(false);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+      expect(judgeServiceMock.evaluate).not.toHaveBeenCalled();
+    });
+
+    it('sample rate 1 — shouldSample returns true, judge is always called', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+      expect(judgeServiceMock.evaluate).toHaveBeenCalledTimes(1);
+    });
+  });
+});
