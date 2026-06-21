@@ -4,6 +4,7 @@ import { RecommendationsController } from './recommendations.controller';
 import { RecommendationsService } from './recommendations.service';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
+import { RecommendationPromptContextBuilder } from './recommendation-prompt-context.builder';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from 'src/venues/entities/venue.entity';
@@ -18,7 +19,7 @@ import { GeminiModule } from '../gemini/gemini.module';
     GeminiModule,
   ],
   controllers: [RecommendationsController],
-  providers: [RecommendationsService, RecommendationQualityEvaluator, RecommendationJudgeService],
+  providers: [RecommendationsService, RecommendationQualityEvaluator, RecommendationJudgeService, RecommendationPromptContextBuilder],
   exports: [RecommendationsService],
 })
 export class RecommendationsModule {}

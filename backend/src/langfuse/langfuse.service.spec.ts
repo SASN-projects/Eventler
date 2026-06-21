@@ -13,6 +13,11 @@ const makeFakeClient = (overrides: Partial<ReturnType<typeof makeFakeClient>> = 
     span: jest.fn().mockReturnValue({ update: jest.fn(), end: jest.fn() }),
     update: jest.fn(),
   }),
+  getPrompt: jest.fn().mockResolvedValue({
+    prompt: 'Hello {{name}}',
+    version: 3,
+    isFallback: false,
+  }),
   shutdownAsync: jest.fn().mockResolvedValue(undefined),
   ...overrides,
 });
@@ -237,5 +242,131 @@ describe('LangfuseService', () => {
       expect(MockedLangfuse).not.toHaveBeenCalled();
     });
   });
-});
+  // -------------------------------------------------------------------------
+  // getPrompt() tests
+  // -------------------------------------------------------------------------
+  describe('getPrompt()', () => {
+    const FALLBACK = 'FALLBACK_TEMPLATE';
+    const PROMPT_NAME = 'event-recommendation-planner';
 
+    it('returns source: "langfuse" and resolved version when enabled and SDK succeeds', async () => {
+      const fakeClient = makeFakeClient({
+        getPrompt: jest.fn().mockResolvedValue({
+          prompt: 'Managed template {{eventCoreContext}}',
+          version: 7,
+          isFallback: false,
+        }),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      const result = await service.getPrompt(PROMPT_NAME, FALLBACK);
+
+      expect(result.source).toBe('langfuse');
+      expect(result.version).toBe(7);
+      expect(result.template).toBe('Managed template {{eventCoreContext}}');
+      // SDK was called with the correct prompt name
+      expect(fakeClient.getPrompt).toHaveBeenCalledWith(
+        PROMPT_NAME,
+        undefined,
+        { type: 'text' },
+      );
+    });
+
+    it('passes optional version number to SDK getPrompt()', async () => {
+      const fakeClient = makeFakeClient({
+        getPrompt: jest.fn().mockResolvedValue({
+          prompt: 'v2 template',
+          version: 2,
+          isFallback: false,
+        }),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      await service.getPrompt(PROMPT_NAME, FALLBACK, 2);
+
+      expect(fakeClient.getPrompt).toHaveBeenCalledWith(PROMPT_NAME, 2, { type: 'text' });
+    });
+
+    it('returns source: "fallback" when Langfuse is disabled', async () => {
+      const service = await buildService({ LANGFUSE_ENABLED: 'false' });
+      const result = await service.getPrompt(PROMPT_NAME, FALLBACK);
+
+      expect(result.source).toBe('fallback');
+      expect(result.template).toBe(FALLBACK);
+      expect(result.version).toBe('fallback');
+    });
+
+    it('returns source: "fallback" when credentials are missing', async () => {
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: '',
+        LANGFUSE_SECRET_KEY: '',
+      });
+      const result = await service.getPrompt(PROMPT_NAME, FALLBACK);
+
+      expect(result.source).toBe('fallback');
+      expect(result.template).toBe(FALLBACK);
+    });
+
+    it('returns source: "fallback" when SDK getPrompt() throws', async () => {
+      const fakeClient = makeFakeClient({
+        getPrompt: jest.fn().mockRejectedValue(new Error('Prompt not found')),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      const result = await service.getPrompt(PROMPT_NAME, FALLBACK);
+
+      expect(result.source).toBe('fallback');
+      expect(result.template).toBe(FALLBACK);
+      expect(result.version).toBe('fallback');
+    });
+
+    it('never throws even when SDK throws', async () => {
+      const fakeClient = makeFakeClient({
+        getPrompt: jest.fn().mockRejectedValue(new Error('Network timeout')),
+      });
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      await expect(service.getPrompt(PROMPT_NAME, FALLBACK)).resolves.not.toThrow();
+    });
+
+    it('returns source: "fallback" when SDK constructor throws (service disabled)', async () => {
+      MockedLangfuse.mockImplementation(() => {
+        throw new Error('SDK init boom');
+      });
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+      });
+
+      const result = await service.getPrompt(PROMPT_NAME, FALLBACK);
+      expect(result.source).toBe('fallback');
+    });
+  });
+});
