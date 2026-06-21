@@ -11,6 +11,19 @@ import {
 } from './interfaces/langfuse.interface';
 import { sanitizeData } from './utils/redact';
 
+/**
+ * Result returned by LangfuseService.getPrompt().
+ *
+ * - template: the raw prompt template string with {{variable}} placeholders.
+ * - version: the resolved prompt version (number from Langfuse, or 'fallback').
+ * - source: 'langfuse' when fetched from Prompt Management, 'fallback' otherwise.
+ */
+export interface PromptRetrievalResult {
+  template: string;
+  version: number | string;
+  source: 'langfuse' | 'fallback';
+}
+
 const telemetryLogger = new Logger('LangfuseTelemetry');
 
 class LangfuseGenerationWrapper implements ILangfuseGeneration {
@@ -185,6 +198,57 @@ export class LangfuseService implements OnModuleDestroy {
     } catch (err: any) {
       this.logger.warn(`Failed to create Langfuse trace: ${err.message}. Returning Noop.`);
       return new NoopLangfuseTrace();
+    }
+  }
+
+  /**
+   * Retrieve a text prompt from Langfuse Prompt Management.
+   *
+   * Returns the prompt template and resolved version from Langfuse when
+   * available. Falls back to the provided fallbackTemplate when:
+   *   - Langfuse is disabled or credentials are missing
+   *   - The prompt name does not exist in Langfuse
+   *   - Network or SDK errors occur
+   *
+   * Never throws — the recommendation flow must never be blocked by a prompt
+   * management failure. Safe warnings are logged (no raw prompt content).
+   *
+   * @param name             Langfuse prompt name (e.g. 'event-recommendation-planner')
+   * @param fallbackTemplate Hardcoded template to use when Langfuse is unavailable
+   * @param version          Optional specific version number to fetch
+   */
+  async getPrompt(
+    name: string,
+    fallbackTemplate: string,
+    version?: number,
+  ): Promise<PromptRetrievalResult> {
+    const fallback: PromptRetrievalResult = {
+      template: fallbackTemplate,
+      version: 'fallback',
+      source: 'fallback',
+    };
+
+    if (!this.isEnabled || !this.langfuseClient) {
+      return fallback;
+    }
+
+    try {
+      const promptClient = await this.langfuseClient.getPrompt(
+        name,
+        version,
+        { type: 'text' },
+      );
+
+      return {
+        template: promptClient.prompt,
+        version: promptClient.version,
+        source: 'langfuse',
+      };
+    } catch (err: any) {
+      this.logger.warn(
+        `Langfuse prompt fetch failed for "${name}": ${err.message}. Using fallback template.`,
+      );
+      return fallback;
     }
   }
 

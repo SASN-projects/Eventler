@@ -398,6 +398,33 @@ To ensure the recommendation system remains healthy and doesn't degrade, track t
   * `judge_failed > 0.05`: Investigate. More than 5% of judge evaluations are failing.
   * `judge_failed > 0.15`: Critical. Significant failure rate in the evaluator layer.
 
+### Langfuse Prompt Management
+
+This project uses [Langfuse Prompt Management](https://langfuse.com/docs/prompts) to manage prompt templates dynamically, decouple them from the application code, and track version updates.
+
+#### Configuration
+- **Prompt Name**: `event-recommendation-planner`
+- **Prompt Type**: `text`
+- **Dynamic placeholders**:
+  - `{{eventCoreContext}}`: Structured key event metrics (date, location, type, participant count).
+  - `{{userPreferencesSummary}}`: Summarized participant responses for personalized matches.
+  - `{{constraintsSummary}}`: Absolute limits the model must respect (schema keys, exact counts).
+  - `{{optionalSignalsSummary}}`: Hook for future signals.
+  - `{{recommendationPolicy}}`: Strict execution priorities for recommendations.
+  - `{{outputFormatInstructions}}`: Output schema layout.
+
+#### Future-Proof Design
+Instead of adding individual top-level variables for every new recommendation signal (such as budget, weather, maps, or history), additional signals are appended into the structured sections produced by `RecommendationPromptContextBuilder` (e.g. within `{{optionalSignalsSummary}}` or `{{constraintsSummary}}`). This keeps the Langfuse template simple and future-proof without requiring updates to template arguments or schema parsing.
+
+#### Resiliency & Fallback Strategy
+To prevent Langfuse outages, network drops, or missing credentials from disrupting users, the prompt retrieval uses a strict fallback strategy:
+1. If the Langfuse client is disabled or credentials are omitted, it bypasses the API call.
+2. If the API request fails, timed out, or the prompt does not exist, the error is safely caught and a warning is logged.
+3. The flow transparently falls back to `RECOMMENDATION_FALLBACK_TEMPLATE` (a local copy of the prompt), using the exact same variable compilation.
+4. The generation is successfully tracked with metadata: `{ promptVersion: 'fallback', promptSource: 'fallback' }`.
+
+---
+
 ## License
 
 MIT
