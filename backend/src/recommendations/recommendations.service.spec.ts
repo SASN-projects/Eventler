@@ -11,6 +11,7 @@ import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { ConfigService } from '@nestjs/config';
 import { ILangfuseTrace, ILangfuseSpan, NoopLangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
 jest.mock('langfuse', () => ({
@@ -125,6 +126,13 @@ describe('RecommendationsService', () => {
       }),
     };
 
+    const configServiceMock = {
+      get: jest.fn((key: string) => {
+        if (key === 'LANGFUSE_PROMPT_NAME') return 'event-recommendation-planner';
+        return undefined;
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
@@ -137,6 +145,7 @@ describe('RecommendationsService', () => {
         { provide: GeminiService, useValue: geminiServiceMock },
         { provide: RecommendationJudgeService, useValue: judgeServiceMock },
         { provide: RecommendationPromptContextBuilder, useValue: promptContextBuilderMock },
+        { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compile();
 
