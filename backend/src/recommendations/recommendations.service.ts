@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
@@ -11,6 +12,10 @@ import { GeminiService } from '../gemini/gemini.service';
 import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
+import {
+  RecommendationPromptContextBuilder,
+  RecommendationEventInput,
+} from './recommendation-prompt-context.builder';
 
 export interface RecommendationResult {
   id: string;
@@ -23,6 +28,74 @@ export interface GenerateRecommendationResponse {
   success: boolean;
   data?: RecommendationResult[];
   message?: string;
+}
+
+/**
+ * Prompt metadata resolved after a getPrompt() call.
+ * Passed through to Gemini generation metadata for Langfuse observability.
+ */
+interface PromptMeta {
+  promptVersion: number | string;
+  promptSource: 'langfuse' | 'fallback';
+}
+
+// ---------------------------------------------------------------------------
+// Fallback prompt template
+//
+// This is the hardcoded fallback used when Langfuse Prompt Management is
+// disabled, unreachable, or does not contain the prompt.
+//
+// It uses the same {{variable}} placeholders as the managed Langfuse template
+// so the same context builder and compile step are used in both paths.
+//
+// To update the managed prompt: edit the template in Langfuse UI under
+// prompt name "event-recommendation-planner" — this fallback remains for
+// safety only. To update the fallback: edit the constant below.
+// ---------------------------------------------------------------------------
+export const RECOMMENDATION_PROMPT_NAME = 'event-recommendation-planner';
+
+export const RECOMMENDATION_FALLBACK_TEMPLATE = `You are a friendly event planner.
+
+Use the following event context:
+
+{{eventCoreContext}}
+
+User preferences:
+
+{{userPreferencesSummary}}
+
+Constraints and requirements:
+
+{{constraintsSummary}}
+
+Additional optional signals:
+
+{{optionalSignalsSummary}}
+
+Recommendation policy:
+
+{{recommendationPolicy}}
+
+Return the answer exactly according to this format:
+
+{{outputFormatInstructions}}`;
+
+// ---------------------------------------------------------------------------
+// Template compilation
+//
+// Performs simple {{variableName}} → value substitution.
+// All values are pre-sanitised strings produced by the context builder —
+// undefined/null cannot appear. Unresolved placeholders (which would only
+// occur in a corrupt template) are replaced with an empty string.
+// ---------------------------------------------------------------------------
+export function compileTemplate(
+  template: string,
+  variables: Record<string, any>,
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    const value = variables[key];
+    return typeof value === 'string' ? value : '';
+  });
 }
 
 @Injectable()
@@ -41,7 +114,13 @@ export class RecommendationsService {
     private readonly geminiService: GeminiService,
     private readonly qualityEvaluator: RecommendationQualityEvaluator,
     private readonly judgeService: RecommendationJudgeService,
+    private readonly promptContextBuilder: RecommendationPromptContextBuilder,
+    private readonly configService: ConfigService,
   ) {}
+
+  private getPromptName(): string {
+    return this.configService.get<string>('LANGFUSE_PROMPT_NAME') || RECOMMENDATION_PROMPT_NAME;
+  }
 
   getFeed() {
     const mockRecommendations = [
@@ -107,6 +186,7 @@ export class RecommendationsService {
     try {
       eventAnswers = await this.slideAnswerService.getEventAnswers(eventId);
       this.logger.debug(`Retrieved ${eventAnswers.length} slide answer(s) for event ${eventId}`);
+      // Only emit the safe aggregate — raw question/answerValue must NOT appear here.
       retrievalSpan.end({
         output: {
           answersCount: eventAnswers.length,
@@ -126,7 +206,7 @@ export class RecommendationsService {
       throw error;
     }
 
-    const input = {
+    const eventInput: RecommendationEventInput = {
       targetDate: event.targetDate || 'flexible',
       locationCity: event.locationCity || 'local area',
       locationCountry: event.locationCountry || 'local area',
@@ -134,13 +214,24 @@ export class RecommendationsService {
       eventType: event.eventType || 'casual',
     };
 
+    // Fetch the managed prompt from Langfuse (or fall back to the hardcoded template).
+    // This is done once before the retry loop so all retry attempts share the same
+    // resolved version and source metadata.
+    const { template, version: promptVersion, source: promptSource } =
+      await this.langfuseService.getPrompt(
+        this.getPromptName(),
+        RECOMMENDATION_FALLBACK_TEMPLATE,
+      );
+
+    const promptMeta: PromptMeta = { promptVersion, promptSource };
+
     const maxRetries = 3;
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const prompt = this.buildPrompt(input, eventAnswers);
-        const rawResponse = await this.callGeminiModel(prompt, trace, attempt);
+        const prompt = this.buildPrompt(eventInput, eventAnswers, template);
+        const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt);
 
         // ── Quality evaluation (deterministic, fire-and-forget) ──────────
         const scores = this.qualityEvaluator.evaluate(rawResponse);
@@ -154,16 +245,16 @@ export class RecommendationsService {
         // ────────────────────────────────────────────────────────────────
 
         // ── LLM-as-a-Judge (optional, fire-and-forget) ───────────────────
-        const recommendedEvents = this.parseGeminiResponse(rawResponse, input);
+        const recommendedEvents = this.parseGeminiResponse(rawResponse, eventInput);
         if (this.judgeService.shouldSample()) {
           try {
             await this.judgeService.evaluate(
               {
-                eventType: input.eventType,
-                locationCity: input.locationCity,
-                locationCountry: input.locationCountry,
-                participantCount: input.participantCount,
-                targetDate: String(input.targetDate),
+                eventType: eventInput.eventType,
+                locationCity: eventInput.locationCity,
+                locationCountry: eventInput.locationCountry,
+                participantCount: eventInput.participantCount,
+                targetDate: String(eventInput.targetDate),
                 userPreferences: eventAnswers.map((p) => ({
                   question: p.question,
                   answerValue: p.answerValue,
@@ -300,37 +391,32 @@ export class RecommendationsService {
     };
   }
 
+  /**
+   * Builds the final compiled prompt string.
+   *
+   * Uses the RecommendationPromptContextBuilder to produce the structured
+   * context object, then compiles it into the given template string via
+   * simple {{variable}} substitution.
+   *
+   * @param eventInput   Core event fields.
+   * @param eventAnswers Slide answers for personalisation.
+   * @param template     Prompt template (from Langfuse or fallback constant).
+   */
   private buildPrompt(
-    input: {
-      targetDate: string;
-      locationCity: string;
-      locationCountry: string;
-      participantCount: number;
-      eventType: string;
-    },
+    eventInput: RecommendationEventInput,
     eventAnswers: any[] = [],
+    template: string = RECOMMENDATION_FALLBACK_TEMPLATE,
   ): string {
-    const slideAnswersText = eventAnswers
-      .map((answer) => `- ${answer.question}: ${answer.answerValue}`)
-      .join('\n');
-
-    const preferencesSection = slideAnswersText
-      ? `User Preferences (from participant answers — tailor every recommendation to reflect these):\n  ${slideAnswersText}`
-      : 'User Preferences:\n  No explicit user preferences were provided.';
-
-    return `You are a friendly event planner. Build exactly three (3) distinct structured event recommendations (as JSON array under key "recommendedEvents") based on the following event details:
-
-  - Event Type: ${input.eventType}
-  - Target Date: ${input.targetDate}
-  - Location: ${input.locationCity}, ${input.locationCountry}
-  - Number of Participants: ${input.participantCount}
-
-  ${preferencesSection}
-
-  Return JSON with key "recommendedEvents" containing an array of 3 objects. Each object must include: 'title' (short), 'description' (text), and 'address' (text). Do not include extra fields.`;
+    const context = this.promptContextBuilder.build(eventInput, eventAnswers);
+    return compileTemplate(template, context);
   }
 
-  private async callGeminiModel(prompt: string, parentTrace?: ILangfuseTrace, attempt = 1): Promise<string> {
+  private async callGeminiModel(
+    prompt: string,
+    promptMeta: PromptMeta,
+    parentTrace?: ILangfuseTrace,
+    attempt = 1,
+  ): Promise<string> {
     const responseSchema: ObjectSchema = {
       type: SchemaType.OBJECT,
       properties: {
@@ -351,13 +437,19 @@ export class RecommendationsService {
     };
 
     try {
+      const promptName = this.getPromptName();
       const result = await this.geminiService.generateJsonContent<{ recommendedEvents: any[] }>({
         prompt,
         responseSchema,
         parentTrace,
-        promptName: `event-recommendation-planner (attempt ${attempt})`,
-        promptVersion: '1.0.0', // extension point for prompt management
-        metadata: { attempt },
+        promptName: `${promptName} (attempt ${attempt})`,
+        promptVersion: String(promptMeta.promptVersion),
+        metadata: {
+          attempt,
+          promptName,
+          promptVersion: promptMeta.promptVersion,
+          promptSource: promptMeta.promptSource,
+        },
       });
 
       return JSON.stringify(result);
@@ -368,13 +460,7 @@ export class RecommendationsService {
 
   private parseGeminiResponse(
     responseText: string,
-    input: {
-      targetDate: string;
-      locationCity: string;
-      locationCountry: string;
-      participantCount: number;
-      eventType: string;
-    },
+    input: RecommendationEventInput,
   ): RecommendationResult[] {
     try {
       const parsed = JSON.parse(responseText.trim());

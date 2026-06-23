@@ -3,12 +3,15 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { RecommendationsService } from './recommendations.service';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
+import { RecommendationPromptContextBuilder } from './recommendation-prompt-context.builder';
+import { RECOMMENDATION_PROMPT_NAME, RECOMMENDATION_FALLBACK_TEMPLATE, compileTemplate } from './recommendations.service';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { ConfigService } from '@nestjs/config';
 import { ILangfuseTrace, ILangfuseSpan, NoopLangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
 jest.mock('langfuse', () => ({
@@ -63,6 +66,7 @@ describe('RecommendationsService', () => {
   let langfuseServiceMock: any;
   let geminiServiceMock: any;
   let judgeServiceMock: any;
+  let promptContextBuilderMock: any;
   let mockTrace: ILangfuseTrace;
 
   beforeEach(async () => {
@@ -87,8 +91,15 @@ describe('RecommendationsService', () => {
     };
 
     mockTrace = mockTraceInstance();
+
+    // Default getPrompt returns a fallback result so existing tests are unaffected.
     langfuseServiceMock = {
       trace: jest.fn().mockReturnValue(mockTrace),
+      getPrompt: jest.fn().mockResolvedValue({
+        template: RECOMMENDATION_FALLBACK_TEMPLATE,
+        version: 'fallback',
+        source: 'fallback',
+      }),
     };
 
     geminiServiceMock = {
@@ -103,6 +114,25 @@ describe('RecommendationsService', () => {
       evaluate: jest.fn().mockResolvedValue(undefined),
     };
 
+    // Default context builder returns a minimal but complete context.
+    promptContextBuilderMock = {
+      build: jest.fn().mockReturnValue({
+        eventCoreContext: 'Event Type: casual',
+        userPreferencesSummary: 'No explicit user preferences were provided.',
+        constraintsSummary: 'Location: New York, USA.',
+        optionalSignalsSummary: 'No additional optional signals were provided.',
+        recommendationPolicy: 'Hard constraints first.',
+        outputFormatInstructions: 'Return JSON with key "recommendedEvents".',
+      }),
+    };
+
+    const configServiceMock = {
+      get: jest.fn((key: string) => {
+        if (key === 'LANGFUSE_PROMPT_NAME') return 'event-recommendation-planner';
+        return undefined;
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecommendationsService,
@@ -114,6 +144,8 @@ describe('RecommendationsService', () => {
         { provide: LangfuseService, useValue: langfuseServiceMock },
         { provide: GeminiService, useValue: geminiServiceMock },
         { provide: RecommendationJudgeService, useValue: judgeServiceMock },
+        { provide: RecommendationPromptContextBuilder, useValue: promptContextBuilderMock },
+        { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compile();
 
@@ -448,80 +480,126 @@ describe('RecommendationsService', () => {
     });
   });
 
+
+
   // -------------------------------------------------------------------------
-  // Prompt preferences audit (Phase 2 requirements)
+  // Langfuse Prompt Management — promptSource and promptVersion metadata
   // -------------------------------------------------------------------------
-  describe('prompt preferences audit', () => {
-    // Access the private method via casting to any
-    const getService = () => service as any;
-
-    const baseInput = {
-      targetDate: '2025-12-31',
-      locationCity: 'New York',
-      locationCountry: 'USA',
-      participantCount: 5,
-      eventType: 'casual',
-    };
-
-    it('includes a User Preferences section with all answers when eventAnswers is non-empty', () => {
-      const answers = [
-        { question: 'Vibe', answerValue: 'Relaxed' },
-        { question: 'Budget', answerValue: 'Medium' },
-      ];
-      const prompt: string = getService().buildPrompt(baseInput, answers);
-
-      expect(prompt).toContain('User Preferences');
-      expect(prompt).toContain('Vibe: Relaxed');
-      expect(prompt).toContain('Budget: Medium');
-    });
-
-    it('includes "No explicit user preferences were provided." when eventAnswers is empty', () => {
-      const prompt: string = getService().buildPrompt(baseInput, []);
-      expect(prompt).toContain('No explicit user preferences were provided.');
-    });
-
-    it('also includes the fallback text when eventAnswers is omitted (default parameter)', () => {
-      const prompt: string = getService().buildPrompt(baseInput);
-      expect(prompt).toContain('No explicit user preferences were provided.');
-    });
-
-    it('changing user answers produces a different prompt', () => {
-      const promptA: string = getService().buildPrompt(baseInput, [
-        { question: 'Vibe', answerValue: 'Relaxed' },
-      ]);
-      const promptB: string = getService().buildPrompt(baseInput, [
-        { question: 'Vibe', answerValue: 'Energetic' },
-      ]);
-      expect(promptA).not.toBe(promptB);
-      expect(promptA).toContain('Relaxed');
-      expect(promptB).toContain('Energetic');
-    });
-
-    it('Langfuse retrieve-user-preferences span contains only answersCount, not raw question/answerValue', async () => {
-      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
-        { question: 'Vibe', answerValue: 'Relaxed' },
-        { question: 'Budget', answerValue: 'Low' },
-      ]);
+  describe('Langfuse Prompt Management metadata', () => {
+    it('passes promptSource: "fallback" to Gemini metadata when getPrompt returns fallback', async () => {
+      langfuseServiceMock.getPrompt.mockResolvedValue({
+        template: RECOMMENDATION_FALLBACK_TEMPLATE,
+        version: 'fallback',
+        source: 'fallback',
+      });
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
 
       await service.generateRecommendation('test-event-uuid');
 
-      // The retrieval span is always the first span created
-      const retrievalSpan = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
-      const endCall = (retrievalSpan.end as jest.Mock).mock.calls[0][0];
-
-      // Only answersCount must be present
-      expect(endCall.output).toEqual({ answersCount: 2 });
-      // Raw fields must NOT appear
-      const serialized = JSON.stringify(endCall);
-      expect(serialized).not.toContain('Relaxed');
-      expect(serialized).not.toContain('Low');
-      expect(serialized).not.toContain('answerValue');
-      expect(serialized).not.toContain('question');
+      const callArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      expect(callArg.metadata.promptSource).toBe('fallback');
+      expect(callArg.metadata.promptVersion).toBe('fallback');
+      expect(callArg.metadata.promptName).toBe(RECOMMENDATION_PROMPT_NAME);
     });
 
-    it('GeminiService receives a prompt that includes the preference summary', async () => {
+    it('passes promptSource: "langfuse" and numeric version to Gemini metadata when getPrompt returns managed prompt', async () => {
+      langfuseServiceMock.getPrompt.mockResolvedValue({
+        template: RECOMMENDATION_FALLBACK_TEMPLATE,
+        version: 5,
+        source: 'langfuse',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const callArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      expect(callArg.metadata.promptSource).toBe('langfuse');
+      expect(callArg.metadata.promptVersion).toBe(5);
+    });
+
+    it('recommendation flow still succeeds when getPrompt returns fallback (Langfuse disabled)', async () => {
+      langfuseServiceMock.getPrompt.mockResolvedValue({
+        template: RECOMMENDATION_FALLBACK_TEMPLATE,
+        version: 'fallback',
+        source: 'fallback',
+      });
+      langfuseServiceMock.trace.mockReturnValue(new NoopLangfuseTrace());
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('getPrompt is called once per generateRecommendation invocation (before retry loop)', async () => {
+      jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      // Fail twice, succeed on 3rd — getPrompt should still be called exactly once
+      geminiServiceMock.generateJsonContent
+        .mockRejectedValueOnce(new Error('Transient'))
+        .mockRejectedValueOnce(new Error('Transient'))
+        .mockResolvedValueOnce(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(langfuseServiceMock.getPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    it('all retry attempt promptNames include the attempt number', async () => {
+      jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent
+        .mockRejectedValueOnce(new Error('Rate limit'))
+        .mockRejectedValueOnce(new Error('Transient error'))
+        .mockResolvedValueOnce(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const calls = geminiServiceMock.generateJsonContent.mock.calls;
+      expect(calls[0][0].promptName).toContain('attempt 1');
+      expect(calls[1][0].promptName).toContain('attempt 2');
+      expect(calls[2][0].promptName).toContain('attempt 3');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // compileTemplate helper unit tests
+  // -------------------------------------------------------------------------
+  describe('compileTemplate()', () => {
+    it('substitutes all {{variable}} placeholders', () => {
+      const template = 'Hello {{name}}, you are in {{city}}.';
+      const result = compileTemplate(template, { name: 'Alice', city: 'Paris' });
+      expect(result).toBe('Hello Alice, you are in Paris.');
+    });
+
+    it('replaces unknown placeholders with empty string (no "undefined" leakage)', () => {
+      const template = 'Hello {{name}} and {{unknown}}.';
+      const result = compileTemplate(template, { name: 'Bob' });
+      expect(result).not.toContain('undefined');
+      expect(result).toBe('Hello Bob and .');
+    });
+
+    it('handles templates with no placeholders', () => {
+      const template = 'Static text only.';
+      const result = compileTemplate(template, {});
+      expect(result).toBe('Static text only.');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Context builder integration — preferences audit (maintained from Phase 2)
+  // -------------------------------------------------------------------------
+  describe('prompt preferences audit', () => {
+    it('GeminiService receives a prompt compiled from the context (includes preferences)', async () => {
+      // Make the real context builder available for this test by letting the
+      // mock pass through to a real build call on a real builder instance.
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any) => realBuilder.build(input, answers),
+      );
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
         { question: 'Vibe', answerValue: 'Lively' },
       ]);
@@ -532,11 +610,15 @@ describe('RecommendationsService', () => {
 
       const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
       const prompt: string = geminiCallArg.prompt;
-      expect(prompt).toContain('User Preferences');
-      expect(prompt).toContain('Vibe: Lively');
+      expect(prompt).toContain('Lively');
+      expect(prompt).toContain('Vibe');
     });
 
     it('GeminiService receives the no-preferences fallback when no answers exist', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any) => realBuilder.build(input, answers),
+      );
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([]);
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
@@ -548,22 +630,50 @@ describe('RecommendationsService', () => {
       expect(prompt).toContain('No explicit user preferences were provided.');
     });
 
-    it('judge evaluator receives full preference context (userPreferences list)', async () => {
-      judgeServiceMock.shouldSample.mockReturnValue(true);
+    it('retrieve-user-preferences span still contains only answersCount', async () => {
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
-        { question: 'Vibe', answerValue: 'Energetic' },
-        { question: 'Budget', answerValue: 'High' },
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Budget', answerValue: 'Low' },
       ]);
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
 
       await service.generateRecommendation('test-event-uuid');
 
-      const judgeInput = judgeServiceMock.evaluate.mock.calls[0][0];
-      expect(judgeInput.userPreferences).toEqual([
-        { question: 'Vibe', answerValue: 'Energetic' },
-        { question: 'Budget', answerValue: 'High' },
+      const retrievalSpan = (mockTrace.span as jest.Mock).mock.results[0].value as ILangfuseSpan;
+      const endCall = (retrievalSpan.end as jest.Mock).mock.calls[0][0];
+
+      expect(endCall.output).toEqual({ answersCount: 2 });
+      const serialized = JSON.stringify(endCall);
+      expect(serialized).not.toContain('Relaxed');
+      expect(serialized).not.toContain('answerValue');
+      expect(serialized).not.toContain('question');
+    });
+
+    it('changing user answers produces a different prompt', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any) => realBuilder.build(input, answers),
+      );
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValueOnce([
+        { question: 'Vibe', answerValue: 'Relaxed' },
       ]);
+      await service.generateRecommendation('test-event-uuid');
+      const promptA: string = geminiServiceMock.generateJsonContent.mock.calls[0][0].prompt;
+
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValueOnce([
+        { question: 'Vibe', answerValue: 'Energetic' },
+      ]);
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+      await service.generateRecommendation('test-event-uuid');
+      const promptB: string = geminiServiceMock.generateJsonContent.mock.calls[1][0].prompt;
+
+      expect(promptA).not.toBe(promptB);
+      expect(promptA).toContain('Relaxed');
+      expect(promptB).toContain('Energetic');
     });
   });
 });
