@@ -27,7 +27,7 @@ export interface PromptRetrievalResult {
 const telemetryLogger = new Logger('LangfuseTelemetry');
 
 class LangfuseGenerationWrapper implements ILangfuseGeneration {
-  constructor(private readonly realClient: any) {}
+  constructor(private readonly realClient: any) { }
 
   update(options: any): void {
     try {
@@ -50,7 +50,7 @@ class LangfuseGenerationWrapper implements ILangfuseGeneration {
 }
 
 class LangfuseSpanWrapper implements ILangfuseSpan {
-  constructor(private readonly realClient: any) {}
+  constructor(private readonly realClient: any) { }
 
   update(options: any): void {
     try {
@@ -73,7 +73,7 @@ class LangfuseSpanWrapper implements ILangfuseSpan {
 }
 
 class LangfuseTraceWrapper implements ILangfuseTrace {
-  constructor(private readonly realClient: any) {}
+  constructor(private readonly realClient: any) { }
 
   generation(options: any): ILangfuseGeneration {
     try {
@@ -236,7 +236,10 @@ export class LangfuseService implements OnModuleDestroy {
       const promptClient = await this.langfuseClient.getPrompt(
         name,
         version,
-        { type: 'text' },
+        {
+          type: 'text',
+          label: this.configService.get<string>('LANGFUSE_PROMPT_LABEL') || 'development',
+        },
       );
 
       return {

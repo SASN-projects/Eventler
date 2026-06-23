@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
@@ -114,7 +115,12 @@ export class RecommendationsService {
     private readonly qualityEvaluator: RecommendationQualityEvaluator,
     private readonly judgeService: RecommendationJudgeService,
     private readonly promptContextBuilder: RecommendationPromptContextBuilder,
+    private readonly configService: ConfigService,
   ) {}
+
+  private getPromptName(): string {
+    return this.configService.get<string>('LANGFUSE_PROMPT_NAME') || RECOMMENDATION_PROMPT_NAME;
+  }
 
   getFeed() {
     const mockRecommendations = [
@@ -213,7 +219,7 @@ export class RecommendationsService {
     // resolved version and source metadata.
     const { template, version: promptVersion, source: promptSource } =
       await this.langfuseService.getPrompt(
-        RECOMMENDATION_PROMPT_NAME,
+        this.getPromptName(),
         RECOMMENDATION_FALLBACK_TEMPLATE,
       );
 
@@ -431,15 +437,16 @@ export class RecommendationsService {
     };
 
     try {
+      const promptName = this.getPromptName();
       const result = await this.geminiService.generateJsonContent<{ recommendedEvents: any[] }>({
         prompt,
         responseSchema,
         parentTrace,
-        promptName: `${RECOMMENDATION_PROMPT_NAME} (attempt ${attempt})`,
+        promptName: `${promptName} (attempt ${attempt})`,
         promptVersion: String(promptMeta.promptVersion),
         metadata: {
           attempt,
-          promptName: RECOMMENDATION_PROMPT_NAME,
+          promptName,
           promptVersion: promptMeta.promptVersion,
           promptSource: promptMeta.promptSource,
         },

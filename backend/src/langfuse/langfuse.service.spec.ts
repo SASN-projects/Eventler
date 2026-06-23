@@ -270,11 +270,11 @@ describe('LangfuseService', () => {
       expect(result.source).toBe('langfuse');
       expect(result.version).toBe(7);
       expect(result.template).toBe('Managed template {{eventCoreContext}}');
-      // SDK was called with the correct prompt name
+      // SDK was called with the correct prompt name and default label
       expect(fakeClient.getPrompt).toHaveBeenCalledWith(
         PROMPT_NAME,
         undefined,
-        { type: 'text' },
+        { type: 'text', label: 'development' },
       );
     });
 
@@ -296,7 +296,27 @@ describe('LangfuseService', () => {
 
       await service.getPrompt(PROMPT_NAME, FALLBACK, 2);
 
-      expect(fakeClient.getPrompt).toHaveBeenCalledWith(PROMPT_NAME, 2, { type: 'text' });
+      expect(fakeClient.getPrompt).toHaveBeenCalledWith(PROMPT_NAME, 2, { type: 'text', label: 'development' });
+    });
+
+    it('uses LANGFUSE_PROMPT_LABEL config when provided', async () => {
+      const fakeClient = makeFakeClient();
+      MockedLangfuse.mockImplementation(() => fakeClient);
+
+      const service = await buildService({
+        LANGFUSE_ENABLED: 'true',
+        LANGFUSE_PUBLIC_KEY: 'pk-test',
+        LANGFUSE_SECRET_KEY: 'sk-test',
+        LANGFUSE_PROMPT_LABEL: 'production',
+      });
+
+      await service.getPrompt(PROMPT_NAME, FALLBACK);
+
+      expect(fakeClient.getPrompt).toHaveBeenCalledWith(
+        PROMPT_NAME,
+        undefined,
+        { type: 'text', label: 'production' },
+      );
     });
 
     it('returns source: "fallback" when Langfuse is disabled', async () => {
