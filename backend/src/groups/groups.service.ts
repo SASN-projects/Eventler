@@ -6,6 +6,7 @@ import { Group } from './entities/group.entity';
 import { GroupMember } from './entities/group-member.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { GroupRole } from './enums/group-role.enum';
 
 @Injectable()
 export class GroupsService {
@@ -15,6 +16,13 @@ export class GroupsService {
     @InjectRepository(GroupMember)
     private groupMemberRepository: Repository<GroupMember>,
   ) {}
+
+  private toGroupResponse(group: Group) {
+    return {
+      ...group,
+      members: group.members?.map((member) => member.user).filter(Boolean) ?? [],
+    };
+  }
 
   async create(userId: string, createGroupDto: CreateGroupDto) {
     const inviteLink = uuidv4();
@@ -33,35 +41,67 @@ export class GroupsService {
       {
         groupId: group.id,
         userId,
+        role: GroupRole.ADMIN,
       },
     ];
 
-    // Add additional members if provided
-    if (createGroupDto.memberIds && createGroupDto.memberIds.length > 0) {
-      for (const memberId of createGroupDto.memberIds) {
-        if (memberId !== userId) {
-          // Don't add creator twice
-          members.push({
-            groupId: group.id,
-            userId: memberId,
-          });
+    const rawMemberIds = Array.isArray(createGroupDto.memberIds) ? createGroupDto.memberIds : [];
+    const fallbackMembers = Array.isArray((createGroupDto as any).members) ? (createGroupDto as any).members : [];
+
+    const resolvedMemberIds = new Set<string>();
+    for (const memberId of rawMemberIds) {
+      if (memberId && typeof memberId === 'string') {
+        resolvedMemberIds.add(memberId);
+      }
+    }
+    for (const member of fallbackMembers) {
+      if (!member) continue;
+      if (typeof member === 'string') {
+        resolvedMemberIds.add(member);
+      } else if (typeof member === 'object') {
+        const extractedId = member.id ?? member.value ?? member.userId ?? member.uuid ?? null;
+        if (extractedId) {
+          resolvedMemberIds.add(String(extractedId));
         }
       }
     }
 
-    await this.groupMemberRepository.save(members);
+    for (const memberId of resolvedMemberIds) {
+      if (memberId !== userId) {
+        members.push({
+          groupId: group.id,
+          userId: memberId,
+          role: GroupRole.MEMBER,
+        });
+      }
+    }
 
-    return group;
+    if (members.length > 0) {
+      await this.groupMemberRepository.insert(members as any);
+    }
+
+    const savedGroup = await this.groupRepository.findOne({
+      where: { id: group.id },
+      relations: ['members', 'members.user'],
+    });
+
+    if (!savedGroup) {
+      return group;
+    }
+
+    return this.toGroupResponse(savedGroup);
   }
 
   async findAll(userId: string) {
     const groups = await this.groupRepository
       .createQueryBuilder('group')
+      .innerJoin('group.members', 'currentMember', 'currentMember.userId = :userId', { userId })
       .leftJoinAndSelect('group.members', 'member')
-      .where('member.userId = :userId', { userId })
+      .leftJoinAndSelect('member.user', 'user')
+      .orderBy('group.createdAt', 'DESC')
       .getMany();
 
-    return groups;
+    return groups.map((group) => this.toGroupResponse(group));
   }
 
   async findOne(id: string, userId: string) {
@@ -80,7 +120,7 @@ export class GroupsService {
       throw new ForbiddenException('You are not a member of this group');
     }
 
-    return group;
+    return this.toGroupResponse(group);
   }
 
   async update(id: string, userId: string, updateGroupDto: UpdateGroupDto) {
@@ -93,16 +133,32 @@ export class GroupsService {
       throw new NotFoundException('Group not found');
     }
 
-    const isMember = group.members.some((member) => member.userId === userId);
+    const isCreator = group.createdById === userId;
 
-    if (!isMember) {
-      throw new ForbiddenException('Only group members can update the group');
+    if (!isCreator) {
+      throw new ForbiddenException('Only the group creator can update the group');
     }
 
-    Object.assign(group, updateGroupDto);
+    if (updateGroupDto.name !== undefined) {
+      group.name = updateGroupDto.name;
+    }
+
+    if (updateGroupDto.description !== undefined) {
+      group.description = updateGroupDto.description;
+    }
+
     await this.groupRepository.save(group);
 
-    return group;
+    const updatedGroup = await this.groupRepository.findOne({
+      where: { id },
+      relations: ['members', 'members.user'],
+    });
+
+    if (!updatedGroup) {
+      throw new NotFoundException('Group not found');
+    }
+
+    return this.toGroupResponse(updatedGroup);
   }
 
   async addMembers(groupId: string, requesterId: string, memberIds: string[]) {
@@ -115,9 +171,9 @@ export class GroupsService {
       throw new NotFoundException('Group not found');
     }
 
-    const isMember = group.members.some((m) => m.userId === requesterId);
-    if (!isMember) {
-      throw new ForbiddenException('Only group members can add new members');
+    const isCreator = group.createdById === requesterId;
+    if (!isCreator) {
+      throw new ForbiddenException('Only the group creator can add new members');
     }
 
     const existing = new Set(group.members.map((m) => m.userId));
@@ -133,7 +189,16 @@ export class GroupsService {
       await this.groupMemberRepository.save(toCreate as any);
     }
 
-    return await this.groupRepository.findOne({ where: { id: groupId }, relations: ['members', 'members.user'] });
+    const updatedGroup = await this.groupRepository.findOne({
+      where: { id: groupId },
+      relations: ['members', 'members.user'],
+    });
+
+    if (!updatedGroup) {
+      throw new NotFoundException('Group not found');
+    }
+
+    return this.toGroupResponse(updatedGroup);
   }
 
   async removeMember(groupId: string, requesterId: string, userId: string) {
@@ -147,8 +212,12 @@ export class GroupsService {
     }
 
     const isCreator = group.createdById === requesterId;
-    if (!isCreator && requesterId !== userId) {
-      throw new ForbiddenException('Only the group creator or the user themselves can remove a member');
+    if (!isCreator) {
+      throw new ForbiddenException('Only the group creator can remove members');
+    }
+
+    if (group.createdById === userId) {
+      throw new ForbiddenException('The group creator cannot be removed from the group');
     }
 
     const member = await this.groupMemberRepository.findOne({ where: { groupId, userId } });

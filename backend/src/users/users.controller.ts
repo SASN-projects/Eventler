@@ -19,7 +19,6 @@ export class UsersController {
   async findAll() {
     return await this.usersService.findAll();
   }
-
   @Put('me')
   async updateMe(@Request() req: AuthRequest, @Body() updateUserDto: UpdateUserDto) {
     return await this.usersService.updateMe(req.user.sub, updateUserDto);
