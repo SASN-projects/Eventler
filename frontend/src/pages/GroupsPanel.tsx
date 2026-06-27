@@ -25,8 +25,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import api from '../config/api';
 import { PrimeButton } from '../components/buttons';
-import { HistoryCard, OverflowAvatar, ParticipantAvatar } from './slidingPages/profile.styles';
 import { AuthContext } from '../contexts/AuthContext';
+import { HistoryCard, OverflowAvatar, ParticipantAvatar } from './slidingPages/profile.styles';
 
 type Member = {
   id: string;
@@ -203,7 +203,6 @@ const GroupsPanel: React.FC = () => {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailGroup, setDetailGroup] = useState<Group | null>(null);
-
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');

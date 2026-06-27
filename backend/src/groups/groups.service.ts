@@ -39,7 +39,6 @@ export class GroupsService {
 
     await this.groupRepository.save(group);
 
-    // Add creator as member
     const members = [
       {
         groupId: group.id,
@@ -197,7 +196,7 @@ export class GroupsService {
       throw new ForbiddenException('Only the group creator can add new members');
     }
 
-    const existing = new Set(group.members.map((m) => m.userId));
+    const existing = new Set(group.members.map((member) => member.userId));
     const toCreate = [] as Partial<GroupMember>[];
 
     for (const id of memberIds) {

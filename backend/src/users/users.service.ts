@@ -129,5 +129,4 @@ export class UsersService {
 
     return events;
   }
-
 }
