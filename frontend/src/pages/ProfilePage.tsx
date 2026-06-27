@@ -11,6 +11,7 @@ import ProfileHeader from "./ProfileHeader";
 import EventCard from "./EventCard";
 import EditProfileDialog from "./EditProfileDialog";
 import EditPreferencesDialog from "./EditPreferencesDialog";
+import GroupsPanel from "./GroupsPanel";
 
 const PREF_MAP: Record<string, string> = {
   budget: "💰 Budget", "event-type": "🎉 Type", transportation: "🚗 Transport",
@@ -67,7 +68,7 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
             events.length === 0 ? <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px", border: "1px dashed rgba(0,0,0,0.12)" }}>No events in history.</Paper> :
             events.map((e) => <EventCard key={e.id} event={e} />))}
           {activeTab === "favorites" && <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px" }}>No favorite venues.</Paper>}
-          {activeTab === "groups" && <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px" }}>No group events.</Paper>}
+          {activeTab === "groups" && <GroupsPanel />}
         </Box>
       </Container>
       <EditProfileDialog open={openEdit} onClose={() => setOpenEdit(false)} user={user} onChange={(f) => (e) => setUser((s) => ({ ...s, [f]: e.target.value }))} onSave={handleSave} />

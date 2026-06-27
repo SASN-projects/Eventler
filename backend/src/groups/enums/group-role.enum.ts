@@ -1,4 +1,4 @@
 export enum GroupRole {
-  ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
+  ADMIN = 'owner',
+  MEMBER = 'member',
 }
