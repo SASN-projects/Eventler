@@ -162,7 +162,6 @@ export class RecommendationsService {
         message: `Event with id ${eventId} not found`,
       };
     }
-
     // Initialize Langfuse trace
     const trace = this.langfuseService.trace('generate-recommendations', {
       userId: event.createdById,

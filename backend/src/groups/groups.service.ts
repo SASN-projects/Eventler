@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Group } from './entities/group.entity';
 import { GroupMember } from './entities/group-member.entity';
@@ -20,7 +20,10 @@ export class GroupsService {
   private toGroupResponse(group: Group) {
     return {
       ...group,
-      members: group.members?.map((member) => member.user).filter(Boolean) ?? [],
+      members:
+        group.members
+          ?.map((member) => member.user ?? (member.userId ? { id: member.userId } : null))
+          .filter(Boolean) ?? [],
     };
   }
 
@@ -96,10 +99,28 @@ export class GroupsService {
     const groups = await this.groupRepository
       .createQueryBuilder('group')
       .innerJoin('group.members', 'currentMember', 'currentMember.userId = :userId', { userId })
-      .leftJoinAndSelect('group.members', 'member')
-      .leftJoinAndSelect('member.user', 'user')
       .orderBy('group.createdAt', 'DESC')
       .getMany();
+
+    if (groups.length === 0) {
+      return [];
+    }
+
+    const members = await this.groupMemberRepository.find({
+      where: { groupId: In(groups.map((group) => group.id)) },
+      relations: ['user'],
+    });
+    const membersByGroupId = new Map<string, GroupMember[]>();
+
+    for (const member of members) {
+      const groupMembers = membersByGroupId.get(member.groupId) ?? [];
+      groupMembers.push(member);
+      membersByGroupId.set(member.groupId, groupMembers);
+    }
+
+    for (const group of groups) {
+      group.members = membersByGroupId.get(group.id) ?? [];
+    }
 
     return groups.map((group) => this.toGroupResponse(group));
   }
@@ -181,7 +202,7 @@ export class GroupsService {
 
     for (const id of memberIds) {
       if (!existing.has(id)) {
-        toCreate.push({ groupId: group.id, userId: id });
+        toCreate.push({ groupId: group.id, userId: id, role: GroupRole.MEMBER });
       }
     }
 

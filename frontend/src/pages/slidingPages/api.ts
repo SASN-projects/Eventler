@@ -11,7 +11,7 @@ export const fetchSlidesQuestions = async (): Promise<Question[]> => {
         }));
     } catch {
         console.log('fetching slides failed');
-        return [];
+        throw new Error('Failed to fetch slides');
     }
 };
 

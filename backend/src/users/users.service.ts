@@ -67,6 +67,22 @@ export class UsersService {
     };
   }
 
+  async findAll() {
+    const users = await this.userRepository.find({
+      select: ['id', 'username', 'firstName', 'lastName', 'email'],
+      order: { firstName: 'ASC', lastName: 'ASC' },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.username,
+    }));
+  }
+
   async getPreferences(userId: string) {
     let preferences = await this.preferencesRepository.findOne({
       where: { userId },
@@ -114,12 +130,4 @@ export class UsersService {
     return events;
   }
 
-  async findAll() {
-    const users = await this.userRepository.find({
-      select: ['id', 'username', 'firstName', 'lastName', 'email'],
-      order: { firstName: 'ASC' },
-    });
-
-    return users.map((u) => ({ id: u.id, username: u.username, firstName: u.firstName, lastName: u.lastName }));
-  }
 }

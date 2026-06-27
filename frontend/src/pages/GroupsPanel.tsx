@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Avatar,
   Box,
   Button,
@@ -18,15 +19,14 @@ import {
   Stack,
   TextField,
   Typography,
-  Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import api from '../config/api';
 import { PrimeButton } from '../components/buttons';
-import { ParticipantAvatar, OverflowAvatar, HistoryCard } from './slidingPages/profile.styles';
 import { AuthContext } from '../contexts/AuthContext';
+import { HistoryCard, OverflowAvatar, ParticipantAvatar } from './slidingPages/profile.styles';
 
 type Member = {
   id: string;
@@ -35,6 +35,8 @@ type Member = {
   firstName?: string;
   lastName?: string;
   username?: string;
+  user?: Member;
+  userId?: string;
 };
 
 type Group = {
@@ -45,8 +47,17 @@ type Group = {
   members?: Array<Member | string>;
 };
 
-const getMemberName = (member: Member) =>
-  (member.name ?? `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim()) || member.username || member.id;
+const getMemberName = (member?: Partial<Member> | null) => {
+  if (!member) return 'Member';
+
+  return (
+    member.name ||
+    `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim() ||
+    member.username ||
+    member.id ||
+    'Member'
+  );
+};
 
 const getInitials = (member: Member) =>
   getMemberName(member)
@@ -62,16 +73,50 @@ const normalizeGroup = (group: Group): Group => ({
   description: group.description ?? '',
 });
 
-const normalizeMembers = (members: Array<Member | string> | undefined, users: Member[]) =>
-  (members ?? []).map((member) => {
-    if (typeof member !== 'string') {
-      return member;
-    }
+const normalizeMembers = (members: Array<Member | string | null | undefined> | undefined, users: Member[]) =>
+  (members ?? [])
+    .map((member) => {
+      if (!member) {
+        return null;
+      }
 
-    return users.find((user) => user.id === member) ?? { id: member, name: member };
-  });
+      if (typeof member !== 'string') {
+        if (member.user) {
+          return member.user;
+        }
 
-const mergeMembersById = (...memberGroups: Array<Array<Member | null | undefined>>) => {
+        if (member.id) {
+          return member;
+        }
+
+        if (member.userId) {
+          return users.find((user) => user.id === member.userId) ?? { id: member.userId, name: member.userId };
+        }
+
+        return member;
+      }
+
+      return users.find((user) => user.id === member) ?? { id: member, name: member };
+    })
+    .filter((member): member is Member => {
+      if (!member) {
+        return false;
+      }
+
+      return Boolean(member.id || getMemberName(member) !== 'Member');
+    })
+    .map((member, index) => {
+      if (member.id) {
+        return member;
+      }
+
+      return {
+        ...member,
+        id: `member-${index}-${getMemberName(member)}`,
+      };
+    });
+
+const mergeMembersById = (...memberGroups: Member[][]): Member[] => {
   const membersById = new Map<string, Member>();
 
   memberGroups.flat().forEach((member) => {
@@ -227,10 +272,11 @@ const GroupsPanel: React.FC = () => {
     try {
       const { data } = await api.get(`/groups/${id}`);
       const group = normalizeGroup(data);
+      const members = normalizeMembers(group.members, users);
       setDetailGroup(group);
       setEditName(group.name);
       setEditDescription(group.description ?? '');
-      setEditMembers(normalizeMembers(group.members, users));
+      setEditMembers(members);
     } catch (err) {
       console.error('Failed to fetch group', err);
       const fallbackGroup = groups.find((group) => group.id === id) ?? null;
@@ -257,13 +303,7 @@ const GroupsPanel: React.FC = () => {
         description: newDescription.trim(),
         memberIds,
       });
-      const created = normalizeGroup({
-        id: data?.id ?? `group-${Date.now()}`,
-        name: data?.name ?? newName.trim(),
-        description: data?.description ?? newDescription.trim(),
-        members: data?.members ?? [...(currentUser ? [currentUser] : []), ...selectedMembers],
-        createdById: data?.createdById,
-      });
+      const created = normalizeGroup(data);
 
       setGroups((previous) => [created, ...previous]);
       setCreateOpen(false);
@@ -283,7 +323,7 @@ const GroupsPanel: React.FC = () => {
     setError('');
 
     try {
-      const { data } = await api.put(`/groups/${detailGroup.id}`, {
+      await api.put(`/groups/${detailGroup.id}`, {
         name: editName.trim(),
         description: editDescription.trim(),
       });
@@ -299,12 +339,10 @@ const GroupsPanel: React.FC = () => {
         await api.post(`/groups/${detailGroup.id}/members`, { memberIds: memberIdsToAdd });
       }
 
-      await Promise.all(
-        memberIdsToRemove.map((memberId) => api.delete(`/groups/${detailGroup.id}/members/${memberId}`)),
-      );
+      await Promise.all(memberIdsToRemove.map((memberId) => api.delete(`/groups/${detailGroup.id}/members/${memberId}`)));
 
-      const response = await api.get(`/groups/${detailGroup.id}`);
-      const updated = normalizeGroup(response.data ?? data);
+      const { data } = await api.get(`/groups/${detailGroup.id}`);
+      const updated = normalizeGroup(data);
 
       setDetailGroup(updated);
       setEditMembers(normalizeMembers(updated.members, users));
@@ -393,10 +431,11 @@ const GroupsPanel: React.FC = () => {
               multiline
               minRows={2}
             />
-            <Autocomplete
+            <Autocomplete<Member, true, false, false>
               multiple
               options={availableUsers}
               getOptionLabel={getMemberName}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
               value={selectedMembers}
               onChange={(_, value) => setSelectedMembers(value)}
               renderTags={(value, getTagProps) =>
@@ -428,7 +467,7 @@ const GroupsPanel: React.FC = () => {
 
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ pr: 10 }}>
-          {editing ? 'Edit Group' : (detailGroup?.name ?? 'Group')}
+          {editing ? 'Edit Group' : detailGroup?.name ?? 'Group'}
           {detailGroup && isManager && !editing ? (
             <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 12, top: 10 }}>
               <IconButton aria-label="Edit group" onClick={() => setEditing(true)}>
@@ -462,7 +501,7 @@ const GroupsPanel: React.FC = () => {
                     multiline
                     minRows={2}
                   />
-                  <Autocomplete
+                  <Autocomplete<Member, true, false, false>
                     multiple
                     options={editMemberOptions}
                     getOptionLabel={getMemberName}
@@ -516,9 +555,7 @@ const GroupsPanel: React.FC = () => {
                     {detailMembers.map((member) => (
                       <ListItem key={member.id} disableGutters>
                         <ListItemAvatar>
-                          <Avatar src={member.avatar ?? undefined}>
-                            {!member.avatar ? getInitials(member) : null}
-                          </Avatar>
+                          <Avatar src={member.avatar ?? undefined}>{!member.avatar ? getInitials(member) : null}</Avatar>
                         </ListItemAvatar>
                         <ListItemText primary={getMemberName(member)} secondary={member.username ?? ''} />
                       </ListItem>

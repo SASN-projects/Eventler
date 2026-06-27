@@ -16,10 +16,24 @@ const DecisionPage: FunctionComponent = () => {
     const [slidersQuestions, setSlidersQuestions] = useState<Question[]>([]);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState<boolean>(false);
+    const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(true);
+    const [questionsError, setQuestionsError] = useState<string>("");
 
     const fetchQuestions = async () => {
-        const questions = await fetchSlidesQuestions();
-        setSlidersQuestions(questions);
+        setIsLoadingQuestions(true);
+        setQuestionsError("");
+
+        try {
+            const questions = await fetchSlidesQuestions();
+            setSlidersQuestions(questions);
+            if (questions.length === 0) {
+                setQuestionsError("No sliding questions are available right now.");
+            }
+        } catch {
+            setQuestionsError("Failed to load sliding questions.");
+        } finally {
+            setIsLoadingQuestions(false);
+        }
     };
 
     const onBaseComplete = (id: string) => {
@@ -64,8 +78,19 @@ const DecisionPage: FunctionComponent = () => {
 
     const steps: Record<DecisionStep, ReactElement> = {
         base: <BaseQuestions onBaseComplete={onBaseComplete} />,
-        sliding: isGeneratingRecommendation ? (
+        sliding: isGeneratingRecommendation || isLoadingQuestions ? (
             loadingScreen
+        ) : questionsError ? (
+            <LoadingContainer>
+                <LoadingTextContainer>
+                    <LoadingTitle>
+                        {questionsError}
+                    </LoadingTitle>
+                    <LoadingSubtitle>
+                        Please go back and try again.
+                    </LoadingSubtitle>
+                </LoadingTextContainer>
+            </LoadingContainer>
         ) : (
             <Slider questions={slidersQuestions} handleAnswers={handleAnswers} />
         ),

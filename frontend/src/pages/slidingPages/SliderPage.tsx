@@ -1,6 +1,7 @@
 import type { FunctionComponent } from "react";
 import { useState } from "react";
 import { FullSizeContainer } from "../../components/layouts";
+import { Box, Typography } from "@mui/material";
 import Slide from "./Slide";
 import type { Answers, Question } from "./types";
 import { createAnswersObject } from "./utils";
@@ -18,11 +19,36 @@ export const Slider: FunctionComponent<SlidesProps> = ({
   const [answers, setAnswers] = useState<Answers>(
     createAnswersObject(questions),
   );
+  const currentQuestion = questions[currentStepIndex];
+
+  if (!currentQuestion) {
+    return (
+      <FullSizeContainer
+        sx={{
+          background: "linear-gradient(to right, #aed9ff, #d2b7f5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100vw",
+          height: "100vh",
+        }}
+      >
+        <Box sx={{ textAlign: "center", color: "white", px: 3 }}>
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+            No questions available
+          </Typography>
+          <Typography variant="body2">
+            Please try again in a moment.
+          </Typography>
+        </Box>
+      </FullSizeContainer>
+    );
+  }
 
   const handleNext = (answer: string) => {
     const updatedAnswers = {
       ...answers,
-      [questions[currentStepIndex].label]: answer,
+      [currentQuestion.label]: answer,
     };
 
     if (answer !== "") {
@@ -36,7 +62,6 @@ export const Slider: FunctionComponent<SlidesProps> = ({
     }
   };
 
-  const currentQuestion = questions[currentStepIndex];
   const backgroundImage = currentQuestion.imageUrl
     ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.35)), url(${currentQuestion.imageUrl})`
     : "linear-gradient(to right, #aed9ff, #d2b7f5)";

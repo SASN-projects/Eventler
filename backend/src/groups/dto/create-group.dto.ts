@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsArray, IsUUID } from 'class-validator';
 
 export class CreateGroupDto {
   @IsString()
@@ -9,11 +9,8 @@ export class CreateGroupDto {
   @IsOptional()
   description?: string;
 
-  @IsOptional()
   @IsArray()
+  @IsUUID('4', { each: true })
+  @IsOptional()
   memberIds?: string[];
-
-  @IsOptional()
-  @IsArray()
-  members?: any[];
 }
