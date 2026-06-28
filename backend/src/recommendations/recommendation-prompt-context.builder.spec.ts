@@ -277,17 +277,17 @@ describe('RecommendationPromptContextBuilder', () => {
 
     it('all six context fields are non-empty strings', () => {
       const context = builder.build(baseInput, twoAnswers);
-      for (const [key, value] of Object.entries(context)) {
+      for (const [, value] of Object.entries(context)) {
         expect(typeof value).toBe('string');
-        expect(value.length).toBeGreaterThan(0, `Field "${key}" must not be empty`);
+        expect(value.length).toBeGreaterThan(0);
       }
     });
 
     it('all six context fields are non-empty strings when historySummary is provided', () => {
       const context = builder.build(baseInput, twoAnswers, makeHistorySummary());
-      for (const [key, value] of Object.entries(context)) {
+      for (const [, value] of Object.entries(context)) {
         expect(typeof value).toBe('string');
-        expect(value.length).toBeGreaterThan(0, `Field "${key}" must not be empty`);
+        expect(value.length).toBeGreaterThan(0);
       }
     });
   });

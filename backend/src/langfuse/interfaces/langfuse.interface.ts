@@ -112,5 +112,6 @@ export class NoopLangfuseTrace implements ILangfuseTrace {
 
   update(): void {}
 
-  score(): void {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  score(_options: { name: string; value: number; comment?: string }): void {}
 }

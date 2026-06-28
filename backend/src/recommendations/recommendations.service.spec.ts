@@ -238,10 +238,12 @@ describe('RecommendationsService', () => {
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
       recommendationRepositoryMock.save.mockRejectedValue(new Error('DB connection lost'));
 
-      // Each retry creates a new span mock; collect all span mocks via the trace mock
+      // Collect all span mocks, tagged by name so we can isolate persist spans.
+      // (The retrieve-user-history span is also created here, so we cannot use index-based filtering.)
       const spanMocks: ILangfuseSpan[] = [];
-      (mockTrace.span as jest.Mock).mockImplementation(() => {
+      (mockTrace.span as jest.Mock).mockImplementation((opts: any) => {
         const s = makeSpanMock();
+        (s as any).__name = opts.name;
         spanMocks.push(s);
         return s;
       });
@@ -251,8 +253,12 @@ describe('RecommendationsService', () => {
       // Should have failed all retries → success: false
       expect(result.success).toBe(false);
 
-      // Every persist span (one per attempt) should have ended with ERROR
-      const persistSpans = spanMocks.filter((_, idx) => idx > 0 || spanMocks.length === 1);
+      // Isolate only persist-recommendations spans (one per retry attempt)
+      const persistSpans = spanMocks.filter(
+        (s) => (s as any).__name === 'persist-recommendations',
+      );
+      expect(persistSpans.length).toBeGreaterThan(0);
+
       for (const span of persistSpans) {
         // eslint-disable-next-line @typescript-eslint/unbound-method
         expect(span.end).toHaveBeenCalledWith(
