@@ -25,6 +25,12 @@ export interface JudgeInput {
     description: string;
     address: string;
   }>;
+  /**
+   * Safe, aggregated historical preference summary text produced by
+   * RecommendationHistoryService. Never contains raw event/answer content.
+   * Undefined when no history is available.
+   */
+  historySummaryText?: string;
 }
 
 export interface JudgeScores {
@@ -214,6 +220,10 @@ export class RecommendationJudgeService {
       ? input.userPreferences.map((p) => `  - ${p.question}: ${p.answerValue}`).join('\n')
       : '  No explicit user preferences were provided.';
 
+    const historicalSignalSection = input.historySummaryText
+      ? `Historical User Preference Signals (SECONDARY — must not override current-event preferences):\n${input.historySummaryText}`
+      : 'Historical User Preference Signals: No historical user selection data is available.';
+
     return `You are an expert event planning evaluator.
 Evaluate the following event recommendations against the event context and return ONLY a valid JSON object — no markdown, no explanation outside the JSON.
 
@@ -222,11 +232,21 @@ Event Context:
 - Location: ${input.locationCity}, ${input.locationCountry}
 - Date: ${input.targetDate}
 - Participants: ${input.participantCount}
-- User Preferences:
+- User Preferences (CURRENT EVENT — highest priority after hard constraints):
 ${preferenceLines}
+
+${historicalSignalSection}
 
 Generated Recommendations:
 ${recLines}
+
+Priority order used during generation: (1) hard constraints, (2) current-event explicit preferences, (3) historical signals (secondary).
+
+Note: Historical preference signals are a SECONDARY input that must never override explicit current-event preferences.
+When scoring preference_alignment:
+- Score LOWER if recommendations appear to ignore current-event explicit preferences in favour of historical behavior.
+- Score LOWER if recommendations overfit to history at the expense of current-event context.
+- Score HIGHER if recommendations respect current-event preferences first, then appropriately incorporate history as variety.
 
 Score each criterion on a scale of 0 to 1 (0=poor, 1=excellent).
 For hallucination_risk, use one of: "low", "medium", or "high".

@@ -425,6 +425,82 @@ To prevent Langfuse outages, network drops, or missing credentials from disrupti
 
 ---
 
+## Historical Personalization Signal
+
+The recommendation engine incorporates a **soft secondary personalization signal** derived from the user's previous event selections. This improves recommendation relevance over time without building a heavy ML system.
+
+### What historical data is used
+
+- **Source**: The `events` table, filtered to records owned by the current user (`created_by = userId`) that have a non-null `recommendation_id` — meaning the user explicitly selected that recommendation.
+- **Fields used (after aggregation)**: `event_type`, `location_city`, event participant count bucket, and keyword hints extracted from selected `recommendation.title` values against a fixed vocabulary (e.g., "restaurant", "outdoor", "museum").
+- **Limit**: At most the last **20** selected events are considered, ordered by recency (`finalized_at DESC`, falling back to `created_at DESC`).
+- **Current event is excluded**: The event currently being planned is never included in the history lookup.
+
+### Priority rules (strict)
+
+Historical preferences are a **soft secondary signal** only. The following strict priority order is enforced at every level (prompt, policy, judge):
+
+```
+1. Hard constraints from the current event   (location, date, participants, schema)
+2. Explicit current-event user preferences   (slide answers for this event)
+3. Historical user preference signals        (secondary — never override current preferences)
+4. Diversity, specificity, and general quality
+```
+
+If the user's current-event answers conflict with their historical behaviour, **current-event answers win**. Example: a user who historically chose restaurants but explicitly asks for an outdoor adventure will receive outdoor recommendations.
+
+### Privacy guarantees
+
+- **Raw history is never sent to Langfuse spans or logs.** The `retrieve-user-history` span contains only aggregate metadata:
+  - `historyItemsCount` (count)
+  - `historySignalUsed` (boolean)
+  - `dominantEventTypes` (top aggregated labels)
+  - `latencyMs`
+- Raw recommendation titles, descriptions, addresses, and previous user answers are **never** emitted to Langfuse or any log.
+- The aggregated `summaryText` passed to the Gemini prompt contains only keyword-level category labels derived from a fixed vocabulary — no raw text from past recommendations.
+
+### Where the signal appears in the prompt
+
+The historical summary is placed in the `{{optionalSignalsSummary}}` section of the prompt template. When history exists:
+
+```
+Historical user preference signals (secondary — must not override current-event preferences):
+- User often selected restaurant-related recommendations.
+- User frequently organized individual-type events.
+- User has previously preferred events in: Tel Aviv.
+- These signals are SECONDARY. The current event's explicit preferences and constraints take priority.
+```
+
+When no history is available, the fallback text is:
+
+```
+No historical user selection data is available.
+```
+
+### How to verify in Langfuse
+
+1. Open your [Langfuse dashboard](https://cloud.langfuse.com) and navigate to **Traces**.
+2. Click on any `generate-recommendations` trace.
+3. In the trace timeline, locate the **`retrieve-user-history`** span.
+   - Confirm the span's output contains only aggregate fields: `historyItemsCount`, `historySignalUsed`, `dominantEventTypes`, `latencyMs`.
+   - Confirm raw recommendation titles, descriptions, or addresses are **not present**.
+4. Click on the **`event-recommendation-planner (attempt N)`** generation.
+   - Open the **Input** tab and look at the `{{optionalSignalsSummary}}` section.
+   - Verify it contains either the historical summary or the no-history fallback message.
+   - Verify the `{{recommendationPolicy}}` section mentions: *"Historical preferences are only a soft secondary signal. They must never override explicit preferences or hard constraints provided for the current event."*
+5. Open the **Scores** tab — confirm all deterministic and judge scores still appear.
+
+### Implementation details
+
+| Component | Role |
+|---|---|
+| `RecommendationHistoryService` | Queries history, aggregates into safe summary struct, never throws |
+| `RecommendationPromptContextBuilder.build(…, historySummary?)` | Renders summary into `optionalSignalsSummary` |
+| `recommendations.service.ts` | `retrieve-user-history` span + wires history into prompt + judge |
+| `recommendation-judge.service.ts` | Updated `JudgeInput.historySummaryText?` + priority note in judge prompt |
+
+---
+
 ## License
 
 MIT
@@ -432,3 +508,4 @@ MIT
 ---
 
 Built with [NestJS](https://nestjs.com/) - A progressive Node.js framework for building efficient and scalable server-side applications.
+

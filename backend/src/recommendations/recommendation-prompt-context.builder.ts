@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { HistorySignalSummary } from './recommendation-history.service';
 
 /**
  * Structured context object for the event-recommendation-planner prompt.
@@ -28,15 +29,16 @@ export interface RecommendationPromptContext {
   constraintsSummary: string;
 
   /**
-   * Optional / future signals such as budget, weather, user history, etc.
-   * Currently always set to the "no signals" fallback until those sources
-   * are wired in a future PR.
+   * Optional signals: currently includes historical user preference signals
+   * derived from past event selections (secondary, never overrides current
+   * preferences). Falls back to a "no signals" message when unavailable.
    */
   optionalSignalsSummary: string;
 
   /**
-   * Prioritisation policy: hard constraints → preferences → relevance →
-   * diversity → specificity → practical usefulness → no hallucinations.
+   * Prioritisation policy: hard constraints → current-event preferences →
+   * historical signals (secondary) → relevance → diversity → specificity →
+   * practical usefulness → no hallucinations.
    */
   recommendationPolicy: string;
 
@@ -68,7 +70,8 @@ export interface RecommendationSlideAnswer {
 }
 
 /**
- * Builds the RecommendationPromptContext from event data and slide answers.
+ * Builds the RecommendationPromptContext from event data, slide answers,
+ * and an optional historical preference summary.
  *
  * Architecture notes:
  *  - Extending with a new future signal (budget, weather, etc.) means adding
@@ -76,24 +79,29 @@ export interface RecommendationSlideAnswer {
  *    template variables.
  *  - All section values are plain, sanitised strings — no undefined, null,
  *    JSON noise, or broken placeholders can leak through.
+ *  - Historical signals are always placed in optionalSignalsSummary and are
+ *    clearly marked as secondary — they must never override current-event
+ *    preferences or hard constraints.
  */
 @Injectable()
 export class RecommendationPromptContextBuilder {
   /**
    * Build the full RecommendationPromptContext for one recommendation request.
    *
-   * @param eventInput  Core event fields already extracted from the Event entity.
-   * @param eventAnswers Slide answers collected for this event (may be empty).
+   * @param eventInput     Core event fields already extracted from the Event entity.
+   * @param eventAnswers   Slide answers collected for this event (may be empty).
+   * @param historySummary Optional aggregated history signal from RecommendationHistoryService.
    */
   build(
     eventInput: RecommendationEventInput,
     eventAnswers: RecommendationSlideAnswer[] = [],
+    historySummary?: HistorySignalSummary,
   ): RecommendationPromptContext {
     return {
       eventCoreContext: this.buildEventCoreContext(eventInput),
       userPreferencesSummary: this.buildUserPreferencesSummary(eventAnswers),
       constraintsSummary: this.buildConstraintsSummary(eventInput),
-      optionalSignalsSummary: this.buildOptionalSignalsSummary(),
+      optionalSignalsSummary: this.buildOptionalSignalsSummary(historySummary),
       recommendationPolicy: this.buildRecommendationPolicy(),
       outputFormatInstructions: this.buildOutputFormatInstructions(),
     };
@@ -138,28 +146,48 @@ export class RecommendationPromptContextBuilder {
   }
 
   /**
-   * Placeholder for future optional signals (budget, weather, user history,
-   * preferred vibe, accessibility, etc.).
+   * Renders optional signals into the prompt context.
    *
-   * Future contributors: add enriched signal strings here without changing the
-   * prompt template variables. If a signal is unavailable, omit it gracefully.
+   * When a historySummary is provided and contains a meaningful signal
+   * (historySignalUsed=true), the aggregated summaryText is included here.
+   * The historical signal is explicitly marked as secondary.
+   *
+   * When no history is available, a clear fallback message is used so the
+   * model does not receive an empty section.
+   *
+   * Future contributors: additional signals (budget, weather, accessibility)
+   * can be appended here without changing the prompt template variables.
    */
-  private buildOptionalSignalsSummary(): string {
-    // No optional signals are wired yet. Future signals (budget, weather,
-    // user history, accessibility, preferred atmosphere, etc.) will be
-    // appended here as they become available.
-    return 'No additional optional signals were provided.';
+  private buildOptionalSignalsSummary(historySummary?: HistorySignalSummary): string {
+    const sections: string[] = [];
+
+    if (historySummary && historySummary.historySignalUsed && historySummary.summaryText.length > 0) {
+      sections.push(historySummary.summaryText);
+    } else {
+      sections.push('No historical user selection data is available.');
+    }
+
+    // Future signals (budget, weather, accessibility, preferred vibe, etc.)
+    // will be appended here as additional sections when they become available.
+
+    return sections.join('\n\n');
   }
 
   private buildRecommendationPolicy(): string {
     return [
-      '1. Hard constraints come first — never violate location, date, participant, or schema requirements.',
-      '2. User preferences come second — recommendations must reflect any stated preferences.',
-      '3. Relevance to event type — tailor suggestions to the nature of the event.',
-      '4. Diversity — each recommendation must be meaningfully different from the others.',
-      '5. Specificity — be concrete and actionable; avoid vague or generic suggestions.',
-      '6. Practical usefulness — recommendations should be realistic and achievable.',
-      '7. Avoid hallucinations — do not invent venues, phone numbers, or addresses.',
+      'PRIORITY ORDER — always follow this exact order:',
+      '1. Hard constraints come first — never violate location, date, participant count, or schema requirements.',
+      '2. Current-event explicit user preferences come second — recommendations must fully reflect any stated preferences for THIS event.',
+      '3. Historical user preference signals are a SOFT SECONDARY signal only — use them to break ties or add variety, not to override current preferences.',
+      '4. Relevance to event type — tailor suggestions to the nature of the event.',
+      '5. Diversity — each recommendation must be meaningfully different from the others.',
+      '6. Specificity — be concrete and actionable; avoid vague or generic suggestions.',
+      '7. Practical usefulness — recommendations should be realistic and achievable.',
+      '8. Avoid hallucinations — do not invent venues, phone numbers, or addresses.',
+      '',
+      'Historical preferences are only a soft secondary signal. They must never override explicit preferences or hard constraints provided for the current event.',
+      'If the current-event explicit preferences conflict with historical behavior, the current-event preferences win.',
+      'Avoid overfitting to historical behavior. Avoid assuming the user always wants the same type of recommendation.',
     ].join('\n');
   }
 

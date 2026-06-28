@@ -16,6 +16,10 @@ import {
   RecommendationPromptContextBuilder,
   RecommendationEventInput,
 } from './recommendation-prompt-context.builder';
+import {
+  RecommendationHistoryService,
+  HistorySignalSummary,
+} from './recommendation-history.service';
 
 export interface RecommendationResult {
   id: string;
@@ -115,6 +119,7 @@ export class RecommendationsService {
     private readonly qualityEvaluator: RecommendationQualityEvaluator,
     private readonly judgeService: RecommendationJudgeService,
     private readonly promptContextBuilder: RecommendationPromptContextBuilder,
+    private readonly historyService: RecommendationHistoryService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -214,6 +219,47 @@ export class RecommendationsService {
       eventType: event.eventType || 'casual',
     };
 
+    // ── Retrieve user history (soft secondary signal) ────────────────────
+    // History lookup is non-blocking: a failure returns the no-history fallback
+    // and the span is ended with ERROR metadata. Recommendation generation
+    // continues regardless.
+    const historyStartMs = Date.now();
+    const historySpan = trace.span({
+      name: 'retrieve-user-history',
+      input: { userId: event.createdById },
+    });
+
+    let historySummary: HistorySignalSummary | undefined;
+    try {
+      historySummary = await this.historyService.getHistorySummary(
+        event.createdById,
+        eventId,
+      );
+      historySpan.end({
+        output: {
+          // Only aggregate metadata — never raw titles, descriptions, or answers.
+          historyItemsCount: historySummary.historyItemsCount,
+          historySignalUsed: historySummary.historySignalUsed,
+          dominantEventTypes: historySummary.dominantEventTypes,
+          latencyMs: Date.now() - historyStartMs,
+        },
+      });
+    } catch (historyErr: any) {
+      // This path should not be reached (history service is non-throwing),
+      // but is kept as a safety net.
+      historySpan.end({
+        level: 'ERROR',
+        statusMessage: historyErr.message,
+        output: {
+          historyItemsCount: 0,
+          historySignalUsed: false,
+          latencyMs: Date.now() - historyStartMs,
+        },
+      });
+      this.logger.warn(`History span error (non-blocking): ${historyErr.message}`);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Fetch the managed prompt from Langfuse (or fall back to the hardcoded template).
     // This is done once before the retry loop so all retry attempts share the same
     // resolved version and source metadata.
@@ -230,7 +276,7 @@ export class RecommendationsService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const prompt = this.buildPrompt(eventInput, eventAnswers, template);
+        const prompt = this.buildPrompt(eventInput, eventAnswers, template, historySummary);
         const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt);
 
         // ── Quality evaluation (deterministic, fire-and-forget) ──────────
@@ -264,6 +310,11 @@ export class RecommendationsService {
                   description: r.description,
                   address: r.address,
                 })),
+                // Pass the safe aggregated summary text only — never raw history.
+                historySummaryText:
+                  historySummary?.historySignalUsed
+                    ? historySummary.summaryText
+                    : undefined,
               },
               trace,
             );
@@ -406,8 +457,9 @@ export class RecommendationsService {
     eventInput: RecommendationEventInput,
     eventAnswers: any[] = [],
     template: string = RECOMMENDATION_FALLBACK_TEMPLATE,
+    historySummary?: HistorySignalSummary,
   ): string {
-    const context = this.promptContextBuilder.build(eventInput, eventAnswers);
+    const context = this.promptContextBuilder.build(eventInput, eventAnswers, historySummary);
     return compileTemplate(template, context);
   }
 
