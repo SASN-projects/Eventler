@@ -9,6 +9,11 @@ export class DevUsersController {
 
   constructor(private readonly usersService: UsersService) {}
 
+  @Get()
+  async findAll() {
+    return this.usersService.findAll();
+  }
+
   @Get('me')
   async getMe() {
     return this.usersService.getMe(this.FIXED_USER_ID);
