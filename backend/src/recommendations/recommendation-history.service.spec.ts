@@ -76,7 +76,8 @@ describe('RecommendationHistoryService', () => {
 
       expect(result.historySignalUsed).toBe(false);
       expect(result.historyItemsCount).toBe(0);
-      expect(result.summaryText).toBe('');
+      expect(result.scope).toBe('user');
+      expect(result.summaryText).toBe('No historical user selection data is available.');
       expect(result.dominantEventTypes).toHaveLength(0);
       expect(result.preferredLocations).toHaveLength(0);
       expect(result.preferredCategories).toHaveLength(0);
@@ -98,6 +99,37 @@ describe('RecommendationHistoryService', () => {
         ([clause]) => typeof clause === 'string' && clause.includes('event.id != :currentEventId'),
       );
       expect(hasExclusionClause).toBe(true);
+    });
+  });
+
+  describe('group history lookup', () => {
+    it('queries by groupId when scope is group', async () => {
+      const qb = makeQbMock([]);
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(qb);
+      service = await buildService();
+
+      await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(qb.where).toHaveBeenCalledWith('event.groupId = :subjectId', { subjectId: 'group-123' });
+    });
+
+    it('returns group fallback text when no history exists', async () => {
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(makeQbMock([]));
+      service = await buildService();
+
+      const result = await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(result.scope).toBe('group');
+      expect(result.historySignalUsed).toBe(false);
+      expect(result.summaryText).toBe('No historical group selection data is available.');
     });
   });
 
@@ -150,6 +182,7 @@ describe('RecommendationHistoryService', () => {
 
       expect(result.dominantEventTypes).toContain('individual');
       expect(result.dominantEventTypes).not.toContain('group'); // only 1 occurrence
+      expect(result.scope).toBe('user');
     });
 
     it('returns empty dominantEventTypes when no type reaches minimum frequency', async () => {

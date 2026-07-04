@@ -21,9 +21,18 @@ const twoAnswers: RecommendationSlideAnswer[] = [
   { question: 'Budget', answerValue: 'Medium' },
 ];
 
+const groupAnswers: RecommendationSlideAnswer[] = [
+  { question: 'Vibe', answerValue: 'Relaxed' },
+  { question: 'Vibe', answerValue: 'Relaxed' },
+  { question: 'Vibe', answerValue: 'Energetic' },
+  { question: 'Budget', answerValue: 'Medium' },
+  { question: 'Budget', answerValue: 'Medium' },
+];
+
 const makeHistorySummary = (
   partial: Partial<HistorySignalSummary> = {},
 ): HistorySignalSummary => ({
+  scope: 'user',
   historyItemsCount: 5,
   historySignalUsed: true,
   dominantEventTypes: ['individual'],
@@ -111,6 +120,20 @@ describe('RecommendationPromptContextBuilder', () => {
       expect(userPreferencesSummary).toContain('Vibe');
       expect(userPreferencesSummary).toContain('Relaxed');
     });
+
+    it('group flow renders a final group summary instead of raw individual answers', () => {
+      const { userPreferencesSummary } = builder.build(
+        baseInput,
+        groupAnswers,
+        makeHistorySummary({ scope: 'group' }),
+        { preferenceScope: 'group' },
+      );
+
+      expect(userPreferencesSummary).toContain('Final group answers/preferences');
+      expect(userPreferencesSummary).toContain('Vibe');
+      expect(userPreferencesSummary).toContain('Budget');
+      expect(userPreferencesSummary).toContain('Relaxed');
+    });
   });
 
   // ── constraintsSummary ────────────────────────────────────────────────────
@@ -144,7 +167,7 @@ describe('RecommendationPromptContextBuilder', () => {
     it('contains the "no historical data" fallback when historySummary.historySignalUsed is false', () => {
       const noHistorySummary = makeHistorySummary({
         historySignalUsed: false,
-        summaryText: '',
+        summaryText: 'No historical user selection data is available.',
       });
       const { optionalSignalsSummary } = builder.build(baseInput, [], noHistorySummary);
       expect(optionalSignalsSummary).toContain(
@@ -183,6 +206,39 @@ describe('RecommendationPromptContextBuilder', () => {
       expect(optionalSignalsSummary).not.toContain(
         'No historical user selection data is available.',
       );
+    });
+
+    it('includes group history summary when group scope is provided', () => {
+      const history = makeHistorySummary({
+        scope: 'group',
+        summaryText:
+          'Historical group preference signals (secondary — must not override current-event preferences):\n- This group often selected restaurant-related recommendations.',
+      });
+      const { optionalSignalsSummary } = builder.build(
+        baseInput,
+        groupAnswers,
+        history,
+        { preferenceScope: 'group' },
+      );
+
+      expect(optionalSignalsSummary).toContain('Historical group preference signals');
+      expect(optionalSignalsSummary).not.toContain('No historical group selection data is available.');
+    });
+
+    it('uses a group fallback when group history is empty', () => {
+      const history = makeHistorySummary({
+        scope: 'group',
+        historySignalUsed: false,
+        summaryText: 'No historical group selection data is available.',
+      });
+      const { optionalSignalsSummary } = builder.build(
+        baseInput,
+        groupAnswers,
+        history,
+        { preferenceScope: 'group' },
+      );
+
+      expect(optionalSignalsSummary).toContain('No historical group selection data is available.');
     });
 
     it('does not dump raw recommendation titles or addresses into optionalSignalsSummary', () => {
@@ -230,6 +286,18 @@ describe('RecommendationPromptContextBuilder', () => {
     it('says current-event preferences win if they conflict with history', () => {
       const { recommendationPolicy } = builder.build(baseInput, []);
       expect(recommendationPolicy.toLowerCase()).toContain('current-event preferences win');
+    });
+
+    it('includes group-specific priority rules when scope is group', () => {
+      const { recommendationPolicy } = builder.build(
+        baseInput,
+        groupAnswers,
+        makeHistorySummary({ scope: 'group' }),
+        { preferenceScope: 'group' },
+      );
+
+      expect(recommendationPolicy.toLowerCase()).toContain('final group answers/preferences');
+      expect(recommendationPolicy.toLowerCase()).toContain('historical group preference signals');
     });
 
     it('mentions avoiding overfitting to historical behavior', () => {

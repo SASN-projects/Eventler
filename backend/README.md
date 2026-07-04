@@ -259,6 +259,37 @@ npm run test:cov
 
 This project has production-grade integration with [Langfuse](https://langfuse.com/) for LLM/AI observability.
 
+## Historical Personalization Signals
+
+Historical personalization is a soft secondary signal only. It never overrides current-event hard constraints or explicit preferences.
+
+### Individual flow
+
+- Uses previous selected or chosen recommendations for the same user.
+- Appears only as a secondary signal in `optionalSignalsSummary`.
+- Priority: current event constraints > current user preferences > historical user preferences.
+
+### Group flow
+
+- Uses previous selected or chosen recommendations for the same group.
+- Uses group-level history only, not private histories from every group member.
+- Priority: current group event constraints > final group answers/preferences > historical group preferences.
+
+### Privacy
+
+- Raw user history is not sent to Langfuse spans.
+- Raw group history is not sent to Langfuse spans.
+- Raw group member answers are not sent to Langfuse spans.
+- Only aggregate metadata is sent to history spans.
+
+### Prompt and observability
+
+- Historical signals appear in `optionalSignalsSummary`.
+- Current-event preferences still appear in the current preference summary section.
+- In Langfuse, look for `retrieve-user-history` or `retrieve-group-history` on `generate-recommendations` traces.
+- The history span should contain only aggregate metadata such as scope, counts, and safe category/location hints.
+- `event-recommendation-planner` generations should still include prompt management metadata and scores.
+
 ### Configuration Environment Variables
 Add the following configuration settings to your `.env` file:
 

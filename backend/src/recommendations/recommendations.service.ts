@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
+import { EventType } from '../events/enums/event.enums';
 import { EventStatus } from '../events/enums/event-status.enum';
 import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
@@ -20,6 +21,7 @@ import {
 import {
   RecommendationHistoryService,
   HistorySignalSummary,
+  HistoryScope,
 } from './recommendation-history.service';
 
 export interface RecommendationResult {
@@ -122,7 +124,7 @@ export class RecommendationsService {
     private readonly promptContextBuilder: RecommendationPromptContextBuilder,
     private readonly historyService: RecommendationHistoryService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   private getPromptName(): string {
     return this.configService.get<string>('LANGFUSE_PROMPT_NAME') || RECOMMENDATION_PROMPT_NAME;
@@ -220,28 +222,41 @@ export class RecommendationsService {
       eventType: event.eventType || 'casual',
     };
 
+    const preferenceScope: HistoryScope =
+      event.eventType === EventType.GROUP && !!event.groupId ? 'group' : 'user';
+    const currentPreferencesSummary =
+      preferenceScope === 'group'
+        ? this.buildGroupPreferencesSummary(eventAnswers)
+        : undefined;
+
     // ── Retrieve user history (soft secondary signal) ────────────────────
     // History lookup is non-blocking: a failure returns the no-history fallback
     // and the span is ended with ERROR metadata. Recommendation generation
     // continues regardless.
     const historyStartMs = Date.now();
     const historySpan = trace.span({
-      name: 'retrieve-user-history',
-      input: { userId: event.createdById },
+      name: preferenceScope === 'group' ? 'retrieve-group-history' : 'retrieve-user-history',
+      input: {
+        historyScope: preferenceScope,
+        subjectId: preferenceScope === 'group' ? event.groupId : event.createdById,
+      },
     });
 
     let historySummary: HistorySignalSummary | undefined;
     try {
-      historySummary = await this.historyService.getHistorySummary(
-        event.createdById,
-        eventId,
-      );
+      historySummary = await this.historyService.getHistorySignal({
+        scope: preferenceScope,
+        subjectId: preferenceScope === 'group' ? event.groupId : event.createdById,
+        currentEventId: eventId,
+      });
       historySpan.end({
         output: {
-          // Only aggregate metadata — never raw titles, descriptions, or answers.
+          historyScope: preferenceScope,
           historyItemsCount: historySummary.historyItemsCount,
           historySignalUsed: historySummary.historySignalUsed,
           dominantEventTypes: historySummary.dominantEventTypes,
+          preferredLocations: historySummary.preferredLocations,
+          preferredCategories: historySummary.preferredCategories,
           latencyMs: Date.now() - historyStartMs,
         },
       });
@@ -252,6 +267,7 @@ export class RecommendationsService {
         level: 'ERROR',
         statusMessage: historyErr.message,
         output: {
+          historyScope: preferenceScope,
           historyItemsCount: 0,
           historySignalUsed: false,
           latencyMs: Date.now() - historyStartMs,
@@ -277,7 +293,16 @@ export class RecommendationsService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const prompt = this.buildPrompt(eventInput, eventAnswers, template, historySummary);
+        const prompt = this.buildPrompt(
+          eventInput,
+          eventAnswers,
+          template,
+          historySummary,
+          {
+            preferenceScope,
+            currentPreferencesSummary,
+          },
+        );
         const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt);
 
         // ── Quality evaluation (deterministic, fire-and-forget) ──────────
@@ -302,20 +327,24 @@ export class RecommendationsService {
                 locationCountry: eventInput.locationCountry,
                 participantCount: eventInput.participantCount,
                 targetDate: String(eventInput.targetDate),
-                userPreferences: eventAnswers.map((p) => ({
-                  question: p.question,
-                  answerValue: p.answerValue,
-                })),
+                preferenceScope,
+                currentPreferencesSummary:
+                  currentPreferencesSummary ?? undefined,
+                userPreferences:
+                  preferenceScope === 'group'
+                    ? []
+                    : eventAnswers.map((p) => ({
+                      question: p.question,
+                      answerValue: p.answerValue,
+                    })),
                 recommendations: recommendedEvents.map((r) => ({
                   title: r.title,
                   description: r.description,
                   address: r.address,
                 })),
                 // Pass the safe aggregated summary text only — never raw history.
-                historySummaryText:
-                  historySummary?.historySignalUsed
-                    ? historySummary.summaryText
-                    : undefined,
+                historyScope: historySummary?.scope,
+                historySummaryText: historySummary?.summaryText,
               },
               trace,
             );
@@ -468,9 +497,56 @@ export class RecommendationsService {
     eventAnswers: any[] = [],
     template: string = RECOMMENDATION_FALLBACK_TEMPLATE,
     historySummary?: HistorySignalSummary,
+    options: {
+      preferenceScope: HistoryScope;
+      currentPreferencesSummary?: string;
+    } = { preferenceScope: 'user' },
   ): string {
-    const context = this.promptContextBuilder.build(eventInput, eventAnswers, historySummary);
+    const context = this.promptContextBuilder.build(
+      eventInput,
+      eventAnswers,
+      historySummary,
+      options,
+    );
     return compileTemplate(template, context);
+  }
+
+  private buildGroupPreferencesSummary(eventAnswers: any[] = []): string {
+    if (!eventAnswers || eventAnswers.length === 0) {
+      return 'No final group answers were provided.';
+    }
+
+    const groupedAnswers = new Map<string, Map<string, number>>();
+
+    for (const answer of eventAnswers) {
+      const question = typeof answer?.question === 'string' ? answer.question.trim() : '';
+      const answerValue = typeof answer?.answerValue === 'string' ? answer.answerValue.trim() : '';
+
+      if (!question || !answerValue) {
+        continue;
+      }
+
+      const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
+      answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
+      groupedAnswers.set(question, answersByQuestion);
+    }
+
+    if (groupedAnswers.size === 0) {
+      return 'No final group answers were provided.';
+    }
+
+    const lines = ['Final group answers/preferences (highest priority after hard constraints):'];
+
+    for (const [question, answersByQuestion] of groupedAnswers.entries()) {
+      const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
+      const [winningAnswer, winningCount] = [...answersByQuestion.entries()].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )[0];
+
+      lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
+    }
+
+    return lines.join('\n');
   }
 
   private async callGeminiModel(

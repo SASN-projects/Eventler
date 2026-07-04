@@ -3,6 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from '../events/entities/event.entity';
 
+export type HistoryScope = 'user' | 'group';
+
+export interface HistorySignalQuery {
+  scope: HistoryScope;
+  subjectId: string;
+  currentEventId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -17,6 +25,9 @@ import { Event } from '../events/entities/event.entity';
  * query raw history records directly.
  */
 export interface HistorySignalSummary {
+  /** Scope used to resolve the history signal. */
+  scope: HistoryScope;
+
   /** Number of past events with a user-selected recommendation. */
   historyItemsCount: number;
 
@@ -106,34 +117,28 @@ export class RecommendationHistoryService {
   constructor(
     @InjectRepository(Event)
     private readonly eventRepository: Repository<Event>,
-  ) {}
+  ) { }
 
   /**
-   * Retrieve and aggregate historical user choices into a safe summary.
+   * Retrieve and aggregate historical choices into a safe summary.
    *
    * This method:
-   *  1. Queries past events for the given user that have a selected recommendation.
+   *  1. Queries past events for the given subject that have a selected recommendation.
    *  2. Excludes the current event.
    *  3. Limits to HISTORY_LIMIT most-recent records.
    *  4. Aggregates raw data into category/location/type signals.
    *  5. Returns a HistorySignalSummary — never raw history objects.
-   *
-   * @param userId        The user whose history to look up.
-   * @param currentEventId The event currently being planned (excluded from lookup).
-   * @returns A safe, aggregated HistorySignalSummary. Never throws.
    */
-  async getHistorySummary(
-    userId: string,
-    currentEventId: string,
-  ): Promise<HistorySignalSummary> {
-    const noHistory = this.buildNoHistorySummary();
+  async getHistorySignal(query: HistorySignalQuery): Promise<HistorySignalSummary> {
+    const noHistory = this.buildNoHistorySummary(query.scope);
 
     try {
+      const subjectField = query.scope === 'group' ? 'event.groupId' : 'event.createdById';
       const historicEvents = await this.eventRepository
         .createQueryBuilder('event')
         .leftJoinAndSelect('event.recommendation', 'recommendation')
-        .where('event.createdById = :userId', { userId })
-        .andWhere('event.id != :currentEventId', { currentEventId })
+        .where(`${subjectField} = :subjectId`, { subjectId: query.subjectId })
+        .andWhere('event.id != :currentEventId', { currentEventId: query.currentEventId })
         .andWhere('event.recommendation IS NOT NULL')
         .orderBy('COALESCE(event.finalizedAt, event.createdAt)', 'DESC')
         .limit(HISTORY_LIMIT)
@@ -143,13 +148,22 @@ export class RecommendationHistoryService {
         return noHistory;
       }
 
-      return this.buildSummary(historicEvents);
+      return this.buildSummary(query.scope, historicEvents);
     } catch (err: any) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `History lookup failed for user (redacted): ${err.message}`,
+        `History lookup failed for ${query.scope} (redacted): ${errorMessage}`,
       );
       return noHistory;
     }
+  }
+
+  async getHistorySummary(userId: string, currentEventId: string): Promise<HistorySignalSummary> {
+    return this.getHistorySignal({
+      scope: 'user',
+      subjectId: userId,
+      currentEventId,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -160,7 +174,7 @@ export class RecommendationHistoryService {
    * Aggregate raw history events into a HistorySignalSummary.
    * Never exposes raw event data — only aggregated signals.
    */
-  private buildSummary(events: Event[]): HistorySignalSummary {
+  private buildSummary(scope: HistoryScope, events: Event[]): HistorySignalSummary {
     const dominantEventTypes = this.topValues(
       events.map((e) => e.eventType).filter(Boolean),
       MIN_FREQUENCY,
@@ -176,6 +190,7 @@ export class RecommendationHistoryService {
     const preferredCategories = this.extractCategories(events);
 
     const summaryText = this.buildSummaryText(
+      scope,
       events.length,
       dominantEventTypes,
       preferredLocations,
@@ -183,6 +198,7 @@ export class RecommendationHistoryService {
     );
 
     return {
+      scope,
       historyItemsCount: events.length,
       historySignalUsed: summaryText.length > 0,
       dominantEventTypes,
@@ -250,13 +266,15 @@ export class RecommendationHistoryService {
    * Does not contain any raw event/recommendation content.
    */
   private buildSummaryText(
+    scope: HistoryScope,
     count: number,
     eventTypes: string[],
     locations: string[],
     categories: string[],
   ): string {
+    const subjectLabel = scope === 'group' ? 'group' : 'user';
     const lines: string[] = [
-      `Historical user preference signals (secondary — must not override current-event preferences):`,
+      `Historical ${subjectLabel} preference signals (secondary — must not override current-event preferences):`,
     ];
 
     if (categories.length > 0) {
@@ -274,12 +292,12 @@ export class RecommendationHistoryService {
         eventTypes.length === 1
           ? `${eventTypes[0]}-type events`
           : `${eventTypes.join(' or ')} events`;
-      lines.push(`- User frequently organized ${typeLabel}.`);
+      lines.push(`- ${subjectLabel === 'group' ? 'This group' : 'User'} frequently organized ${typeLabel}.`);
     }
 
     if (locations.length > 0) {
       lines.push(
-        `- User has previously preferred events in: ${locations.join(', ')}.`,
+        `- ${subjectLabel === 'group' ? 'This group' : 'User'} has previously preferred events in: ${locations.join(', ')}.`,
       );
     }
 
@@ -291,21 +309,25 @@ export class RecommendationHistoryService {
     }
 
     lines.push(
-      `- These signals are SECONDARY. The current event's explicit preferences and constraints take priority.`,
+      '- These signals are SECONDARY. The current event\'s explicit preferences and constraints take priority.',
     );
 
     return lines.join('\n');
   }
 
   /** The canonical no-history fallback returned on empty result or error. */
-  private buildNoHistorySummary(): HistorySignalSummary {
+  private buildNoHistorySummary(scope: HistoryScope): HistorySignalSummary {
     return {
+      scope,
       historyItemsCount: 0,
       historySignalUsed: false,
       dominantEventTypes: [],
       preferredLocations: [],
       preferredCategories: [],
-      summaryText: '',
+      summaryText:
+        scope === 'group'
+          ? 'No historical group selection data is available.'
+          : 'No historical user selection data is available.',
     };
   }
 }

@@ -425,7 +425,7 @@ describe('RecommendationJudgeService', () => {
       );
 
       // trace.score should only have numeric score names — no raw history text
-      for (const [call] of (trace.score as jest.Mock).mock.calls) {
+      for (const [call] of (trace.score).mock.calls) {
         expect(typeof call.value).toBe('number');
         expect(call.name).not.toContain('cafe');
         expect(call.name).not.toContain('Paris');
