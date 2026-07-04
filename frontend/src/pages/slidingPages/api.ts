@@ -15,20 +15,30 @@ export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     }
 };
 
-export const postNewEvent = async (time: Date, place: string, participantAmount: number) => {
-    const eventDetails = {
-        "title": "",
-        "description": "",
-        "status": "collecting_responses",
-        "eventType": "individual",
-        "targetDate": time,
-        "targetDateFrom": time,
-        "targetDateTo": new Date(time.getTime() + msInTwoHours),
-        "deadlineAt": new Date(time.getTime() + msInTwoHours),
-        "participantCount": participantAmount,
-        "locationCity": place,
-        "locationCountry": ""
+export const postNewEvent = async (
+    time: Date,
+    place: string,
+    participantAmount: number,
+    eventType: string = 'individual',
+    groupId?: string,
+) => {
+    const eventDetails: Record<string, unknown> = {
+        title: '',
+        description: '',
+        status: 'collecting_responses',
+        eventType,
+        targetDate: time,
+        targetDateFrom: time,
+        targetDateTo: new Date(time.getTime() + msInTwoHours),
+        deadlineAt: new Date(time.getTime() + msInTwoHours),
+        participantCount: participantAmount,
+        locationCity: place,
+        locationCountry: '',
     };
+
+    if (groupId) {
+        eventDetails.groupId = groupId;
+    }
 
     try {
         const { data } = await api.post('/events', eventDetails);

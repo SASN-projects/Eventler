@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
+import { EventStatus } from '../events/enums/event-status.enum';
 import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
@@ -376,6 +377,8 @@ export class RecommendationsService {
     }
 
     event.recommendation = recommendation;
+    event.status = EventStatus.FINALIZED;
+    event.finalizedAt = new Date();
     await this.eventRepository.save(event);
 
     return {
