@@ -304,21 +304,31 @@ const GroupsPanel: React.FC = () => {
     setError('');
 
     try {
-      const memberIds = selectedMembers.map((member) => member.id);
-      const { data } = await api.post('/groups', {
+      const memberIds = selectedMembers
+        .map((member) => member.id?.trim())
+        .filter((id): id is string => Boolean(id));
+
+      const payload: Record<string, unknown> = {
         name: newName.trim(),
         description: newDescription.trim(),
-        memberIds,
-      });
+      };
+
+      if (memberIds.length > 0) {
+        payload.memberIds = memberIds;
+      }
+
+      const { data } = await api.post('/groups', payload);
       const created = normalizeGroup(data);
       const [hydratedCreated] = await hydrateGroupMembers([created]);
 
       setGroups((previous) => [hydratedCreated, ...previous]);
       setCreateOpen(false);
       resetCreateForm();
+      await loadGroups();
     } catch (err) {
       console.error('Failed to create group', err);
-      setError('Could not create the group.');
+      const apiMessage = (err as any)?.response?.data?.message;
+      setError(apiMessage ?? 'Could not create the group.');
     } finally {
       setCreating(false);
     }
@@ -394,34 +404,76 @@ const GroupsPanel: React.FC = () => {
   const editMemberOptions = mergeMembersById(users, detailMembers, creatorMember ? [creatorMember] : []);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {error ? (
-        <Alert severity="error" onClose={() => setError('')}>
-          {error}
-        </Alert>
-      ) : null}
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Box
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          backgroundColor: 'white',
+          pt: 2,
+          pb: 1,
+          px: 1,
+          borderBottom: '1px solid rgba(0,0,0,0.04)',
+        }}
+      >
+        {error ? (
+          <Alert severity="error" onClose={() => setError('')} sx={{ mb: 1 }}>
+            {error}
+          </Alert>
+        ) : null}
 
-      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-        <PrimeButton startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          Create New Group
-        </PrimeButton>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <PrimeButton startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            Create New Group
+          </PrimeButton>
+        </Box>
       </Box>
 
-      {loading ? (
-        <Typography align="center" sx={{ pt: 4 }}>
-          Loading groups...
-        </Typography>
-      ) : groups.length === 0 ? (
-        <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '24px', border: '1px dashed rgba(0,0,0,0.12)' }}>
-          You have not created or joined any groups yet.
-        </Paper>
-      ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {groups.map((group) => (
-            <GroupCard key={group.id} group={group} users={users} onOpen={openGroup} />
-          ))}
-        </Box>
-      )}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          px: 1,
+          pb: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          '&::-webkit-scrollbar': {
+            width: '10px',
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: '#f3f3f5',
+            borderRadius: '999px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: '#d6a8ff',
+            borderRadius: '999px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            backgroundColor: '#b67cff',
+          },
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#d6a8ff #f3f3f5',
+        }}
+      >
+        {loading ? (
+          <Typography align="center" sx={{ pt: 4 }}>
+            Loading groups...
+          </Typography>
+        ) : groups.length === 0 ? (
+          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '24px', border: '1px dashed rgba(0,0,0,0.12)' }}>
+            You have not created or joined any groups yet.
+          </Paper>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {groups.map((group) => (
+              <GroupCard key={group.id} group={group} users={users} onOpen={openGroup} />
+            ))}
+          </Box>
+        )}
+      </Box>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Create New Group</DialogTitle>
