@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   Alert,
   Autocomplete,
@@ -19,14 +19,18 @@ import {
   Stack,
   TextField,
   Typography,
-} from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import api from '../config/api';
-import { PrimeButton } from '../components/buttons';
-import { AuthContext } from '../contexts/AuthContext';
-import { HistoryCard, OverflowAvatar, ParticipantAvatar } from './slidingPages/profile.styles';
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import api from "../config/api";
+import { PrimeButton } from "../components/buttons";
+import { AuthContext } from "../contexts/AuthContext";
+import {
+  HistoryCard,
+  OverflowAvatar,
+  ParticipantAvatar,
+} from "./slidingPages/profile.styles";
 
 type Member = {
   id: string;
@@ -48,50 +52,64 @@ type Group = {
 };
 
 const getMemberName = (member?: Partial<Member> | null) => {
-  if (!member) return 'Member';
+  if (!member) return "Member";
 
   return (
     member.name ||
-    `${member.firstName ?? ''} ${member.lastName ?? ''}`.trim() ||
+    `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim() ||
     member.username ||
     member.id ||
-    'Member'
+    "Member"
   );
 };
 
 const getInitials = (member: Member) =>
   getMemberName(member)
-    .split(' ')
+    .split(" ")
     .map((part) => part[0])
-    .join('')
+    .join("")
     .slice(0, 2)
     .toUpperCase();
 
 const normalizeGroup = (group: Group): Group => ({
   ...group,
   members: group.members ?? [],
-  description: group.description ?? '',
+  description: group.description ?? "",
 });
 
-const normalizeMembers = (members: Array<Member | string | null | undefined> | undefined, users: Member[]) =>
+const normalizeMembers = (
+  members: Array<Member | string | null | undefined> | undefined,
+  users: Member[],
+) =>
   (members ?? [])
     .map((member) => {
       if (!member) return null;
 
-      if (typeof member !== 'string') {
+      if (typeof member !== "string") {
         if (member.user) return member.user;
         if (member.id) return member;
         if (member.userId) {
-          return users.find((user) => user.id === member.userId) ?? { id: member.userId, name: member.userId };
+          return (
+            users.find((user) => user.id === member.userId) ?? {
+              id: member.userId,
+              name: member.userId,
+            }
+          );
         }
 
         return member;
       }
 
-      return users.find((user) => user.id === member) ?? { id: member, name: member };
+      return (
+        users.find((user) => user.id === member) ?? { id: member, name: member }
+      );
     })
     .filter((member): member is Member => Boolean(member))
-    .map((member, index) => (member.id ? member : { ...member, id: `member-${index}-${getMemberName(member)}` }));
+    .map((member, index) =>
+      member.id
+        ? member
+        : { ...member, id: `member-${index}-${getMemberName(member)}` },
+    );
 
 const mergeMembersById = (...memberGroups: Member[][]): Member[] => {
   const membersById = new Map<string, Member>();
@@ -110,53 +128,89 @@ const AvatarStack: React.FC<{ members: Member[] }> = ({ members }) => {
   const extra = Math.max(0, members.length - visible.length);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', width: 72, flexShrink: 0 }}>
-      <Box sx={{ display: 'flex', position: 'relative', width: 62, height: 26 }}>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        width: 72,
+        flexShrink: 0,
+      }}
+    >
+      <Box
+        sx={{ display: "flex", position: "relative", width: 62, height: 26 }}
+      >
         {visible.map((member, index) => (
           <ParticipantAvatar
             key={member.id}
             src={member.avatar ?? undefined}
-            sx={{ position: 'absolute', left: index * 18, zIndex: 10 - index }}
+            sx={{ position: "absolute", left: index * 18, zIndex: 10 - index }}
           >
             {!member.avatar ? getInitials(member) : null}
           </ParticipantAvatar>
         ))}
         {extra > 0 && (
-          <OverflowAvatar sx={{ position: 'absolute', left: visible.length * 18, zIndex: 1 }}>+{extra}</OverflowAvatar>
+          <OverflowAvatar
+            sx={{ position: "absolute", left: visible.length * 18, zIndex: 1 }}
+          >
+            +{extra}
+          </OverflowAvatar>
         )}
       </Box>
     </Box>
   );
 };
 
-const GroupCard: React.FC<{ group: Group; users: Member[]; onOpen: (id: string) => void }> = ({
-  group,
-  users,
-  onOpen,
-}) => {
+const GroupCard: React.FC<{
+  group: Group;
+  users: Member[];
+  onOpen: (id: string) => void;
+}> = ({ group, users, onOpen }) => {
   const members = normalizeMembers(group.members, users);
 
   return (
     <HistoryCard
       elevation={0}
-      sx={{ p: 2, mb: 0, width: '100%', minHeight: 96, boxSizing: 'border-box', cursor: 'pointer' }}
+      sx={{
+        p: 2,
+        mb: 0,
+        width: "100%",
+        minHeight: 96,
+        boxSizing: "border-box",
+        cursor: "pointer",
+      }}
       onClick={() => onOpen(group.id)}
     >
       <Box
         sx={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) 72px',
-          alignItems: 'center',
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 72px",
+          alignItems: "center",
           columnGap: 2,
-          width: '100%',
+          width: "100%",
         }}
       >
-        <Box sx={{ minWidth: 0, width: '100%', justifySelf: 'start', textAlign: 'left' }}>
-          <Typography variant="h6" sx={{ display: 'block', fontWeight: 700, textAlign: 'left' }} noWrap>
+        <Box
+          sx={{
+            minWidth: 0,
+            width: "100%",
+            justifySelf: "start",
+            textAlign: "left",
+          }}
+        >
+          <Typography
+            variant="h6"
+            sx={{ display: "block", fontWeight: 700, textAlign: "left" }}
+            noWrap
+          >
             {group.name}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ display: 'block', textAlign: 'left' }}>
-            {members.length} {members.length === 1 ? 'member' : 'members'}
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ display: "block", textAlign: "left" }}
+          >
+            {members.length} {members.length === 1 ? "member" : "members"}
           </Typography>
         </Box>
         <AvatarStack members={members} />
@@ -170,11 +224,11 @@ const GroupsPanel: React.FC = () => {
   const [users, setUsers] = useState<Member[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDescription, setNewDescription] = useState('');
+  const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<Member[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -182,8 +236,8 @@ const GroupsPanel: React.FC = () => {
   const [detailGroup, setDetailGroup] = useState<Group | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editMembers, setEditMembers] = useState<Member[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -192,7 +246,7 @@ const GroupsPanel: React.FC = () => {
   const currentUser = auth?.user
     ? {
         id: auth.user.id,
-        name: `${auth.user.firstName ?? ''} ${auth.user.lastName ?? ''}`.trim(),
+        name: `${auth.user.firstName ?? ""} ${auth.user.lastName ?? ""}`.trim(),
         firstName: auth.user.firstName,
         lastName: auth.user.lastName,
       }
@@ -202,12 +256,12 @@ const GroupsPanel: React.FC = () => {
     setUsersLoading(true);
 
     try {
-      const { data } = await api.get('/users');
+      const { data } = await api.get("/users");
       setUsers(data ?? []);
     } catch (err) {
-      console.error('Failed to fetch users for group members', err);
+      console.error("Failed to fetch users for group members", err);
       setUsers([]);
-      setError('Could not load users for group members.');
+      setError("Could not load users for group members.");
     } finally {
       setUsersLoading(false);
     }
@@ -224,7 +278,7 @@ const GroupsPanel: React.FC = () => {
           const { data } = await api.get(`/groups/${group.id}`);
           return normalizeGroup({ ...group, ...data });
         } catch (err) {
-          console.error('Failed to hydrate group members', err);
+          console.error("Failed to hydrate group members", err);
           return group;
         }
       }),
@@ -233,16 +287,16 @@ const GroupsPanel: React.FC = () => {
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const { data } = await api.get('/groups');
+      const { data } = await api.get("/groups");
       const loadedGroups = (data ?? []).map(normalizeGroup);
       const hydratedGroups = await hydrateGroupMembers(loadedGroups);
       setGroups(hydratedGroups);
     } catch (err) {
-      console.error('Failed to fetch groups', err);
-      setError('Could not load groups right now.');
+      console.error("Failed to fetch groups", err);
+      setError("Could not load groups right now.");
     } finally {
       setLoading(false);
     }
@@ -250,12 +304,12 @@ const GroupsPanel: React.FC = () => {
 
   useEffect(() => {
     loadGroups();
-    loadUsers().catch((err) => console.error('Failed to fetch users', err));
+    loadUsers().catch((err) => console.error("Failed to fetch users", err));
   }, [loadGroups, loadUsers]);
 
   const resetCreateForm = () => {
-    setNewName('');
-    setNewDescription('');
+    setNewName("");
+    setNewDescription("");
     setSelectedMembers([]);
   };
 
@@ -263,7 +317,9 @@ const GroupsPanel: React.FC = () => {
     if (!group?.createdById) return null;
 
     return (
-      normalizeMembers(group.members, users).find((member) => member.id === group.createdById) ??
+      normalizeMembers(group.members, users).find(
+        (member) => member.id === group.createdById,
+      ) ??
       users.find((user) => user.id === group.createdById) ??
       (currentUser?.id === group.createdById ? currentUser : null)
     );
@@ -274,7 +330,7 @@ const GroupsPanel: React.FC = () => {
     setDetailLoading(true);
     setDetailGroup(null);
     setEditing(false);
-    setError('');
+    setError("");
 
     try {
       const { data } = await api.get(`/groups/${id}`);
@@ -282,16 +338,16 @@ const GroupsPanel: React.FC = () => {
       const members = normalizeMembers(group.members, users);
       setDetailGroup(group);
       setEditName(group.name);
-      setEditDescription(group.description ?? '');
+      setEditDescription(group.description ?? "");
       setEditMembers(members);
     } catch (err) {
-      console.error('Failed to fetch group', err);
+      console.error("Failed to fetch group", err);
       const fallbackGroup = groups.find((group) => group.id === id) ?? null;
       setDetailGroup(fallbackGroup);
-      setEditName(fallbackGroup?.name ?? '');
-      setEditDescription(fallbackGroup?.description ?? '');
+      setEditName(fallbackGroup?.name ?? "");
+      setEditDescription(fallbackGroup?.description ?? "");
       setEditMembers(normalizeMembers(fallbackGroup?.members, users));
-      setError('Could not refresh this group.');
+      setError("Could not refresh this group.");
     } finally {
       setDetailLoading(false);
     }
@@ -301,7 +357,7 @@ const GroupsPanel: React.FC = () => {
     if (!newName.trim()) return;
 
     setCreating(true);
-    setError('');
+    setError("");
 
     try {
       const memberIds = selectedMembers
@@ -317,7 +373,7 @@ const GroupsPanel: React.FC = () => {
         payload.memberIds = memberIds;
       }
 
-      const { data } = await api.post('/groups', payload);
+      const { data } = await api.post("/groups", payload);
       const created = normalizeGroup(data);
       const [hydratedCreated] = await hydrateGroupMembers([created]);
 
@@ -326,9 +382,9 @@ const GroupsPanel: React.FC = () => {
       resetCreateForm();
       await loadGroups();
     } catch (err) {
-      console.error('Failed to create group', err);
+      console.error("Failed to create group", err);
       const apiMessage = (err as any)?.response?.data?.message;
-      setError(apiMessage ?? 'Could not create the group.');
+      setError(apiMessage ?? "Could not create the group.");
     } finally {
       setCreating(false);
     }
@@ -338,7 +394,7 @@ const GroupsPanel: React.FC = () => {
     if (!detailGroup || !editName.trim()) return;
 
     setSaving(true);
-    setError('');
+    setError("");
 
     try {
       await api.put(`/groups/${detailGroup.id}`, {
@@ -346,19 +402,27 @@ const GroupsPanel: React.FC = () => {
         description: editDescription.trim(),
       });
 
-      const existingMemberIds = new Set(normalizeMembers(detailGroup.members, users).map((member) => member.id));
+      const existingMemberIds = new Set(
+        normalizeMembers(detailGroup.members, users).map((member) => member.id),
+      );
       const selectedMemberIds = new Set(editMembers.map((member) => member.id));
       const memberIdsToAdd = editMembers
         .map((member) => member.id)
         .filter((memberId) => !existingMemberIds.has(memberId));
-      const memberIdsToRemove = Array.from(existingMemberIds).filter((memberId) => !selectedMemberIds.has(memberId));
+      const memberIdsToRemove = Array.from(existingMemberIds).filter(
+        (memberId) => !selectedMemberIds.has(memberId),
+      );
 
       if (memberIdsToAdd.length > 0) {
-        await api.post(`/groups/${detailGroup.id}/members`, { memberIds: memberIdsToAdd });
+        await api.post(`/groups/${detailGroup.id}/members`, {
+          memberIds: memberIdsToAdd,
+        });
       }
 
       await Promise.all(
-        memberIdsToRemove.map((memberId) => api.delete(`/groups/${detailGroup.id}/members/${memberId}`)),
+        memberIdsToRemove.map((memberId) =>
+          api.delete(`/groups/${detailGroup.id}/members/${memberId}`),
+        ),
       );
 
       const { data } = await api.get(`/groups/${detailGroup.id}`);
@@ -366,11 +430,13 @@ const GroupsPanel: React.FC = () => {
 
       setDetailGroup(updated);
       setEditMembers(normalizeMembers(updated.members, users));
-      setGroups((previous) => previous.map((group) => (group.id === updated.id ? updated : group)));
+      setGroups((previous) =>
+        previous.map((group) => (group.id === updated.id ? updated : group)),
+      );
       setEditing(false);
     } catch (err) {
-      console.error('Failed to update group', err);
-      setError('Could not update the group.');
+      console.error("Failed to update group", err);
+      setError("Could not update the group.");
     } finally {
       setSaving(false);
     }
@@ -380,51 +446,72 @@ const GroupsPanel: React.FC = () => {
     if (!detailGroup) return;
 
     setDeleting(true);
-    setError('');
+    setError("");
 
     try {
       await api.delete(`/groups/${detailGroup.id}`);
-      setGroups((previous) => previous.filter((group) => group.id !== detailGroup.id));
+      setGroups((previous) =>
+        previous.filter((group) => group.id !== detailGroup.id),
+      );
       setDetailOpen(false);
       setDetailGroup(null);
       setEditing(false);
     } catch (err) {
-      console.error('Failed to delete group', err);
-      setError('Could not delete the group. Only the creator can delete it.');
+      console.error("Failed to delete group", err);
+      setError("Could not delete the group. Only the creator can delete it.");
     } finally {
       setDeleting(false);
     }
   };
 
-  const availableUsers = currentUser ? users.filter((user) => user.id !== currentUser.id) : users;
-  const noSelectableUsersText = usersLoading ? 'Loading users...' : 'No users found';
+  const availableUsers = currentUser
+    ? users.filter((user) => user.id !== currentUser.id)
+    : users;
+  const noSelectableUsersText = usersLoading
+    ? "Loading users..."
+    : "No users found";
   const detailMembers = normalizeMembers(detailGroup?.members, users);
   const creatorMember = getCreatorMember(detailGroup);
-  const isManager = !!detailGroup?.createdById && detailGroup.createdById === currentUser?.id;
-  const editMemberOptions = mergeMembersById(users, detailMembers, creatorMember ? [creatorMember] : []);
+  const isManager =
+    !!detailGroup?.createdById && detailGroup.createdById === currentUser?.id;
+  const editMemberOptions = mergeMembersById(
+    users,
+    detailMembers,
+    creatorMember ? [creatorMember] : [],
+  );
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
-          position: 'sticky',
+          position: "sticky",
           top: 0,
           zIndex: 10,
-          backgroundColor: 'white',
+          backgroundColor: "white",
           pt: 2,
           pb: 1,
           px: 1,
-          borderBottom: '1px solid rgba(0,0,0,0.04)',
+          borderBottom: "1px solid rgba(0,0,0,0.04)",
         }}
       >
         {error ? (
-          <Alert severity="error" onClose={() => setError('')} sx={{ mb: 1 }}>
+          <Alert severity="error" onClose={() => setError("")} sx={{ mb: 1 }}>
             {error}
           </Alert>
         ) : null}
 
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-          <PrimeButton startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+        <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <PrimeButton
+            startIcon={<AddIcon />}
+            onClick={() => setCreateOpen(true)}
+          >
             Create New Group
           </PrimeButton>
         </Box>
@@ -434,28 +521,28 @@ const GroupsPanel: React.FC = () => {
         sx={{
           flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
+          overflowY: "auto",
           px: 1,
           pb: 2,
-          display: 'flex',
-          flexDirection: 'column',
+          display: "flex",
+          flexDirection: "column",
           gap: 2,
-          '&::-webkit-scrollbar': {
-            width: '10px',
+          "&::-webkit-scrollbar": {
+            width: "10px",
           },
-          '&::-webkit-scrollbar-track': {
-            backgroundColor: '#f3f3f5',
-            borderRadius: '999px',
+          "&::-webkit-scrollbar-track": {
+            backgroundColor: "#f3f3f5",
+            borderRadius: "999px",
           },
-          '&::-webkit-scrollbar-thumb': {
-            backgroundColor: '#d6a8ff',
-            borderRadius: '999px',
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "#d6a8ff",
+            borderRadius: "999px",
           },
-          '&::-webkit-scrollbar-thumb:hover': {
-            backgroundColor: '#b67cff',
+          "&::-webkit-scrollbar-thumb:hover": {
+            backgroundColor: "#b67cff",
           },
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#d6a8ff #f3f3f5',
+          scrollbarWidth: "thin",
+          scrollbarColor: "#d6a8ff #f3f3f5",
         }}
       >
         {loading ? (
@@ -463,19 +550,36 @@ const GroupsPanel: React.FC = () => {
             Loading groups...
           </Typography>
         ) : groups.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '24px', border: '1px dashed rgba(0,0,0,0.12)' }}>
+          <Paper
+            sx={{
+              p: 4,
+              textAlign: "center",
+              borderRadius: "24px",
+              border: "1px dashed rgba(0,0,0,0.12)",
+            }}
+          >
             You have not created or joined any groups yet.
           </Paper>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {groups.map((group) => (
-              <GroupCard key={group.id} group={group} users={users} onOpen={openGroup} />
+              <GroupCard
+                key={group.id}
+                group={group}
+                users={users}
+                onOpen={openGroup}
+              />
             ))}
           </Box>
         )}
       </Box>
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Create New Group</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -505,18 +609,31 @@ const GroupsPanel: React.FC = () => {
               onChange={(_, value) => setSelectedMembers(value)}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
-                  <Chip label={getMemberName(option)} {...getTagProps({ index })} key={option.id} />
+                  <Chip
+                    label={getMemberName(option)}
+                    {...getTagProps({ index })}
+                    key={option.id}
+                  />
                 ))
               }
               renderOption={(props, option) => (
                 <li {...props} key={option.id}>
-                  <Avatar src={option.avatar ?? undefined} sx={{ mr: 1, width: 32, height: 32 }}>
+                  <Avatar
+                    src={option.avatar ?? undefined}
+                    sx={{ mr: 1, width: 32, height: 32 }}
+                  >
                     {!option.avatar ? getInitials(option) : null}
                   </Avatar>
                   {getMemberName(option)}
                 </li>
               )}
-              renderInput={(params) => <TextField {...params} label="Add members" placeholder="Select users" />}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Add members"
+                  placeholder="Select users"
+                />
+              )}
             />
           </Stack>
         </DialogContent>
@@ -524,21 +641,41 @@ const GroupsPanel: React.FC = () => {
           <Button onClick={() => setCreateOpen(false)} disabled={creating}>
             Cancel
           </Button>
-          <PrimeButton onClick={createGroup} disabled={creating || !newName.trim()}>
-            {creating ? 'Creating...' : 'Create'}
+          <PrimeButton
+            onClick={createGroup}
+            disabled={creating || !newName.trim()}
+          >
+            {creating ? "Creating..." : "Create"}
           </PrimeButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle sx={{ pr: 10 }}>
-          {editing ? 'Edit Group' : (detailGroup?.name ?? 'Group')}
+          {editing ? "Edit Group" : (detailGroup?.name ?? "Group")}
           {detailGroup && isManager && !editing ? (
-            <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 12, top: 10 }}>
-              <IconButton aria-label="Edit group" onClick={() => setEditing(true)}>
+            <Stack
+              direction="row"
+              spacing={0.5}
+              sx={{ position: "absolute", right: 12, top: 10 }}
+            >
+              <IconButton
+                aria-label="Edit group"
+                onClick={() => setEditing(true)}
+              >
                 <EditOutlinedIcon />
               </IconButton>
-              <IconButton aria-label="Delete group" color="error" onClick={deleteGroup} disabled={deleting}>
+              <IconButton
+                aria-label="Delete group"
+                color="error"
+                onClick={deleteGroup}
+                disabled={deleting}
+              >
                 <DeleteOutlineIcon />
               </IconButton>
             </Stack>
@@ -570,7 +707,9 @@ const GroupsPanel: React.FC = () => {
                     multiple
                     options={editMemberOptions}
                     getOptionLabel={getMemberName}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    isOptionEqualToValue={(option, value) =>
+                      option.id === value.id
+                    }
                     loading={usersLoading}
                     noOptionsText={noSelectableUsersText}
                     value={editMembers}
@@ -589,7 +728,11 @@ const GroupsPanel: React.FC = () => {
 
                         return (
                           <Chip
-                            label={isCreator ? `${getMemberName(option)} (manager)` : getMemberName(option)}
+                            label={
+                              isCreator
+                                ? `${getMemberName(option)} (manager)`
+                                : getMemberName(option)
+                            }
                             {...tagProps}
                             onDelete={isCreator ? undefined : tagProps.onDelete}
                             key={option.id}
@@ -599,21 +742,30 @@ const GroupsPanel: React.FC = () => {
                     }
                     renderOption={(props, option) => (
                       <li {...props} key={option.id}>
-                        <Avatar src={option.avatar ?? undefined} sx={{ mr: 1, width: 32, height: 32 }}>
+                        <Avatar
+                          src={option.avatar ?? undefined}
+                          sx={{ mr: 1, width: 32, height: 32 }}
+                        >
                           {!option.avatar ? getInitials(option) : null}
                         </Avatar>
                         {getMemberName(option)}
                       </li>
                     )}
                     renderInput={(params) => (
-                      <TextField {...params} label="Group members" placeholder="Add or remove users" />
+                      <TextField
+                        {...params}
+                        label="Group members"
+                        placeholder="Add or remove users"
+                      />
                     )}
                   />
                 </>
               ) : (
                 <>
                   {detailGroup.description ? (
-                    <Typography color="text.secondary">{detailGroup.description}</Typography>
+                    <Typography color="text.secondary">
+                      {detailGroup.description}
+                    </Typography>
                   ) : null}
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                     Members
@@ -626,7 +778,10 @@ const GroupsPanel: React.FC = () => {
                             {!member.avatar ? getInitials(member) : null}
                           </Avatar>
                         </ListItemAvatar>
-                        <ListItemText primary={getMemberName(member)} secondary={member.username ?? ''} />
+                        <ListItemText
+                          primary={getMemberName(member)}
+                          secondary={member.username ?? ""}
+                        />
                       </ListItem>
                     ))}
                   </List>
@@ -643,8 +798,11 @@ const GroupsPanel: React.FC = () => {
               <Button onClick={() => setEditing(false)} disabled={saving}>
                 Cancel
               </Button>
-              <PrimeButton onClick={saveGroup} disabled={saving || !editName.trim()}>
-                {saving ? 'Saving...' : 'Save'}
+              <PrimeButton
+                onClick={saveGroup}
+                disabled={saving || !editName.trim()}
+              >
+                {saving ? "Saving..." : "Save"}
               </PrimeButton>
             </>
           ) : (
