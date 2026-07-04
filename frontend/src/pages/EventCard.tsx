@@ -45,6 +45,25 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const canContinue =
     ["draft", "collecting_responses"].includes(normalizedStatus) ||
     normalizedStatus === "recommended";
+  const hasAnsweredCurrentUser = Boolean(event.hasAnsweredCurrentUser);
+  const isSlidingState = ["draft", "collecting_responses"].includes(
+    normalizedStatus,
+  );
+  const isCreatorDecisionState =
+    normalizedStatus === "recommended" && isEventCreator;
+  const isWaitingForHostDecisionState =
+    normalizedStatus === "recommended" &&
+    !isEventCreator &&
+    hasAnsweredCurrentUser;
+  const showContinueButton = canContinue && !isWaitingForHostDecisionState;
+  const continueButtonText = isSlidingState
+    ? "Continue Sliding"
+    : isCreatorDecisionState
+      ? "Ready to Decide?"
+      : "Continue";
+  const showStatusChip =
+    isWaitingForHostDecisionState ||
+    !(isSlidingState || isCreatorDecisionState);
 
   return (
     <HistoryCard>
@@ -129,7 +148,7 @@ const EventCard: FunctionComponent<EventCardProps> = ({
           </Box>
 
           <Stack direction="row" spacing={1} alignItems="center">
-            {canContinue && (
+            {showContinueButton && (
               <Button
                 size="small"
                 variant="outlined"
@@ -152,41 +171,43 @@ const EventCard: FunctionComponent<EventCardProps> = ({
                   },
                 }}
               >
-                Continue
+                {continueButtonText}
               </Button>
             )}
 
-            <Chip
-              label={
-                canContinue
-                  ? normalizedStatus === "recommended"
-                    ? isEventCreator
-                      ? "Ready to Review"
-                      : "Ready to Answer"
-                    : "In Progress"
-                  : hasRecommendation
-                    ? "Recommendation Selected"
-                    : normalizedStatus === "recommended"
-                      ? "Shared Event"
-                      : "Created Event"
-              }
-              size="small"
-              sx={{
-                bgcolor: canContinue
-                  ? "#fff3e0"
-                  : hasRecommendation
-                    ? "#e8f5e9"
-                    : "#e3f2fd",
-                color: canContinue
-                  ? "#ef6c00"
-                  : hasRecommendation
-                    ? "#2e7d32"
-                    : "#1565c0",
-                fontWeight: 700,
-                fontSize: "10px",
-                height: "20px",
-              }}
-            />
+            {showStatusChip && (
+              <Chip
+                label={
+                  isWaitingForHostDecisionState
+                    ? "Waiting for host decision"
+                    : canContinue
+                    ? normalizedStatus === "recommended"
+                      ? "Ready to Answer"
+                      : "In Progress"
+                    : hasRecommendation
+                      ? "Recommendation Selected"
+                      : normalizedStatus === "recommended"
+                        ? "Shared Event"
+                        : "Created Event"
+                }
+                size="small"
+                sx={{
+                  bgcolor: canContinue
+                    ? "#fff3e0"
+                    : hasRecommendation
+                      ? "#e8f5e9"
+                      : "#e3f2fd",
+                  color: canContinue
+                    ? "#ef6c00"
+                    : hasRecommendation
+                      ? "#2e7d32"
+                      : "#1565c0",
+                  fontWeight: 700,
+                  fontSize: "10px",
+                  height: "20px",
+                }}
+              />
+            )}
           </Stack>
         </Stack>
       </HistoryCardContent>
