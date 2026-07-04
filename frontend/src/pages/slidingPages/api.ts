@@ -5,7 +5,7 @@ import type { Answers, Question } from "./types";
 export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     try {
         const { data } = await api.get('/slides');
-        return data.map((question: any) => ({
+        return data.map((question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
             ...question,
             imageUrl: question.image_url ?? question.imageUrl,
         }));
@@ -15,20 +15,30 @@ export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     }
 };
 
-export const postNewEvent = async (time: Date, place: string, participantAmount: number) => {
-    const eventDetails = {
-        "title": "",
-        "description": "",
-        "status": "collecting_responses",
-        "eventType": "individual",
-        "targetDate": time,
-        "targetDateFrom": time,
-        "targetDateTo": new Date(time.getTime() + msInTwoHours),
-        "deadlineAt": new Date(time.getTime() + msInTwoHours),
-        "participantCount": participantAmount,
-        "locationCity": place,
-        "locationCountry": ""
+export const postNewEvent = async (
+    time: Date,
+    place: string,
+    participantAmount: number,
+    eventType: string = 'individual',
+    groupId?: string,
+) => {
+    const eventDetails: Record<string, unknown> = {
+        title: '',
+        description: '',
+        status: 'collecting_responses',
+        eventType,
+        targetDate: time,
+        targetDateFrom: time,
+        targetDateTo: new Date(time.getTime() + msInTwoHours),
+        deadlineAt: new Date(time.getTime() + msInTwoHours),
+        participantCount: participantAmount,
+        locationCity: place,
+        locationCountry: '',
     };
+
+    if (groupId) {
+        eventDetails.groupId = groupId;
+    }
 
     try {
         const { data } = await api.post('/events', eventDetails);
@@ -45,9 +55,20 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     };
 
     try {
-        api.post(`/slides/submit-answers/${eventId}`, data);
+        await api.post(`/slides/submit-answers/${eventId}`, data);
     } catch {
         console.log('failing to post answers');
+        throw new Error('Failed to submit slide answers');
+    }
+};
+
+export const getEventAnswers = async (eventId: string) => {
+    try {
+        const { data } = await api.get(`/slides/event-answers/${eventId}`);
+        return data || [];
+    } catch {
+        console.log('failing to fetch event answers');
+        return [];
     }
 };
 
@@ -63,3 +84,13 @@ export const getRecomendationsById = async (eventId: string) => {
 
 export const postSelectedRecommendation = async (eventId: string, recommendationId: string) =>
     await api.post(`/recommendations/events/${eventId}/select/${recommendationId}`);
+
+export const getEventDetails = async (eventId: string) => {
+    try {
+        const { data } = await api.get(`/events/${eventId}`);
+        return data;
+    } catch {
+        console.log('failing to fetch event details');
+        return null;
+    }
+};
