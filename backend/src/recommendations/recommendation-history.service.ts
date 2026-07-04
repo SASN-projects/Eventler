@@ -283,7 +283,7 @@ export class RecommendationHistoryService {
           ? `${categories[0]}-related`
           : categories.slice(0, -1).join(', ') + ', or ' + categories[categories.length - 1] + '-related';
       lines.push(
-        `- User often selected ${categoryList} recommendations.`,
+        `- ${subjectLabel === 'group' ? 'This group' : 'User'} often selected ${categoryList} recommendations.`,
       );
     }
 

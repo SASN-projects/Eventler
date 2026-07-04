@@ -16,9 +16,13 @@ export interface RecommendationPromptContext {
   eventCoreContext: string;
 
   /**
-    * Safe summary of the current-event preferences.
-    * For individual events this reflects the user's answers.
-    * For group events this reflects the final aggregated group answers.
+   * Safe summary of the current-event preferences.
+   * For individual events this reflects the user's answers.
+   * For group events this reflects the current/provisional group preference summary derived
+   * from current group member answers.
+   *
+   * NOTE: A canonical finalized group-answer artifact does not yet exist. When it does,
+   * this field should reflect that finalized artifact instead of the provisional summary.
    */
   userPreferencesSummary: string;
 
@@ -156,9 +160,22 @@ export class RecommendationPromptContextBuilder {
     return `The following preferences were collected from participant answers — every recommendation must reflect these:\n${lines}`;
   }
 
+  /**
+   * Builds a current/provisional group preference summary from raw group member answers.
+   *
+   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
+   * collected from group members for this event. This is a provisional approach because a
+   * canonical finalized group-answer artifact does not yet exist.
+   *
+   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
+   * should be replaced by consuming that artifact instead.
+   *
+   * TODO: Once finalized group answers exist, replace this derivation with the finalized
+   * group-answer artifact.
+   */
   private buildGroupPreferencesSummary(eventAnswers: RecommendationSlideAnswer[]): string {
     if (!eventAnswers || eventAnswers.length === 0) {
-      return 'No final group answers were provided.';
+      return 'No current group member answers were provided.';
     }
 
     const groupedAnswers = new Map<string, Map<string, number>>();
@@ -175,7 +192,8 @@ export class RecommendationPromptContextBuilder {
       groupedAnswers.set(question, answersByQuestion);
     }
 
-    const lines = ['Final group answers/preferences (highest priority after hard constraints):'];
+    // Header reflects provisional/current state — not finalized group answers.
+    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
 
     for (const [question, answersByQuestion] of groupedAnswers.entries()) {
       const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
@@ -186,7 +204,7 @@ export class RecommendationPromptContextBuilder {
       lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
     }
 
-    return lines.length > 1 ? lines.join('\n') : 'No final group answers were provided.';
+    return lines.length > 1 ? lines.join('\n') : 'No current group member answers were provided.';
   }
 
   private buildConstraintsSummary(input: RecommendationEventInput): string {
@@ -236,8 +254,14 @@ export class RecommendationPromptContextBuilder {
   }
 
   private buildRecommendationPolicy(preferenceScope: HistoryScope): string {
+    // CURRENT GROUP BEHAVIOR: The policy uses the current/provisional group preference summary
+    // (derived from current group member answers) as the second-priority signal.
+    //
+    // TODO: When finalized group answers exist, this label should become
+    // 'finalized group answers/preferences' and the policy order will be:
+    //   current group event hard constraints > finalized group answers/preferences > historical group preferences
     const currentPreferenceLabel = preferenceScope === 'group'
-      ? 'final group answers/preferences'
+      ? 'current/provisional group preference summary'
       : 'current user preferences';
     const historicalLabel = preferenceScope === 'group'
       ? 'historical group preference signals'

@@ -345,4 +345,99 @@ describe('RecommendationHistoryService', () => {
       expect(result.historySignalUsed).toBe(false);
     });
   });
+
+  // ── Group history wording ──────────────────────────────────────────────────
+
+  describe('group history wording', () => {
+    it('category sentence says "This group often selected..." for group scope', async () => {
+      const events = [
+        makeEvent({ id: '1', recommendation: { id: 'r1', title: 'Museum Evening' } }),
+        makeEvent({ id: '2', recommendation: { id: 'r2', title: 'Art Museum Tour' } }),
+      ];
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(makeQbMock(events));
+      service = await buildService();
+
+      const result = await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'current-event-id',
+      });
+
+      // For group scope: "This group often selected ..." not "User often selected ..."
+      expect(result.summaryText).toContain('This group often selected');
+      expect(result.summaryText).not.toMatch(/^- User often selected/m);
+    });
+
+    it('category sentence says "User often selected..." for user scope', async () => {
+      const events = [
+        makeEvent({ id: '1', recommendation: { id: 'r1', title: 'Nice Restaurant' } }),
+        makeEvent({ id: '2', recommendation: { id: 'r2', title: 'Italian Restaurant' } }),
+      ];
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(makeQbMock(events));
+      service = await buildService();
+
+      const result = await service.getHistorySignal({
+        scope: 'user',
+        subjectId: 'user-abc',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(result.summaryText).toContain('User often selected');
+      expect(result.summaryText).not.toContain('This group often selected');
+    });
+
+    it('event type sentence says "This group frequently organized..." for group scope', async () => {
+      const events = [
+        makeEvent({ id: '1', eventType: 'group' }),
+        makeEvent({ id: '2', eventType: 'group' }),
+      ];
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(makeQbMock(events));
+      service = await buildService();
+
+      const result = await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(result.summaryText).toContain('This group frequently organized');
+    });
+
+    it('location sentence says "This group has previously preferred..." for group scope', async () => {
+      const events = [
+        makeEvent({ id: '1', locationCity: 'Berlin' }),
+        makeEvent({ id: '2', locationCity: 'Berlin' }),
+      ];
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(makeQbMock(events));
+      service = await buildService();
+
+      const result = await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(result.summaryText).toContain('This group has previously preferred');
+    });
+
+    it('group history uses groupId field, not createdById', async () => {
+      const qb = makeQbMock([]);
+      eventRepositoryMock.createQueryBuilder.mockReturnValue(qb);
+      service = await buildService();
+
+      await service.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-xyz',
+        currentEventId: 'current-event-id',
+      });
+
+      expect(qb.where).toHaveBeenCalledWith('event.groupId = :subjectId', { subjectId: 'group-xyz' });
+      // Must NOT use createdById for group scope
+      const whereCalls: string[][] = (qb.where as jest.Mock).mock.calls;
+      const usesCreatedById = whereCalls.some(
+        ([clause]) => typeof clause === 'string' && clause.includes('createdById'),
+      );
+      expect(usesCreatedById).toBe(false);
+    });
+  });
 });

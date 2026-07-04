@@ -269,11 +269,32 @@ Historical personalization is a soft secondary signal only. It never overrides c
 - Appears only as a secondary signal in `optionalSignalsSummary`.
 - Priority: current event constraints > current user preferences > historical user preferences.
 
-### Group flow
+### Group flow (current — provisional)
 
 - Uses previous selected or chosen recommendations for the same group.
 - Uses group-level history only, not private histories from every group member.
-- Priority: current group event constraints > final group answers/preferences > historical group preferences.
+- The model receives a **current/provisional group preference summary** derived from the existing group member answer flow.
+  - The group answers are aggregated using a majority-vote approach to produce the summary.
+  - This is a **provisional** approach because a canonical finalized group-answer artifact does not yet exist.
+- Group historical preferences are added only as a **secondary signal** and must never override the current/provisional group preference summary.
+- Current priority order:
+  ```
+  current group event hard constraints
+  > current/provisional group preference summary
+  > historical group preferences (secondary only)
+  ```
+
+### Group flow (future — planned)
+
+> **Not yet implemented.** When a canonical finalized group-answer artifact exists:
+>
+> - The recommendation flow should consume the finalized group-answer artifact instead of deriving the summary directly from raw member answers.
+> - The priority order will become:
+>   ```
+>   current group event hard constraints
+>   > finalized group answers/preferences
+>   > historical group preferences (secondary only)
+>   ```
 
 ### Privacy
 
@@ -282,13 +303,13 @@ Historical personalization is a soft secondary signal only. It never overrides c
 - Raw group member answers are not sent to Langfuse spans.
 - Only aggregate metadata is sent to history spans.
 
-### Prompt and observability
+### Langfuse verification
 
-- Historical signals appear in `optionalSignalsSummary`.
-- Current-event preferences still appear in the current preference summary section.
-- In Langfuse, look for `retrieve-user-history` or `retrieve-group-history` on `generate-recommendations` traces.
-- The history span should contain only aggregate metadata such as scope, counts, and safe category/location hints.
-- `event-recommendation-planner` generations should still include prompt management metadata and scores.
+- Individual flow uses span name: `retrieve-user-history`, `historyScope = user`
+- Group flow uses span name: `retrieve-group-history`, `historyScope = group`
+- Group fallback text: `No historical group selection data is available.`
+- History spans include only aggregate metadata: `historyItemsCount`, `historySignalUsed`, `dominantEventTypes`, `preferredLocations`, `preferredCategories`, `latencyMs`.
+- Raw group member answers and raw group history are **not** sent to history spans.
 
 ### Configuration Environment Variables
 Add the following configuration settings to your `.env` file:

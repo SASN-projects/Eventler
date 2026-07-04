@@ -121,7 +121,7 @@ describe('RecommendationPromptContextBuilder', () => {
       expect(userPreferencesSummary).toContain('Relaxed');
     });
 
-    it('group flow renders a final group summary instead of raw individual answers', () => {
+    it('group flow renders a current/provisional group preference summary instead of raw individual answers', () => {
       const { userPreferencesSummary } = builder.build(
         baseInput,
         groupAnswers,
@@ -129,10 +129,24 @@ describe('RecommendationPromptContextBuilder', () => {
         { preferenceScope: 'group' },
       );
 
-      expect(userPreferencesSummary).toContain('Final group answers/preferences');
+      // Must use provisional/current wording — not finalized group answers
+      expect(userPreferencesSummary).toContain('Current/provisional group preference summary');
+      expect(userPreferencesSummary).not.toContain('Final group answers/preferences');
       expect(userPreferencesSummary).toContain('Vibe');
       expect(userPreferencesSummary).toContain('Budget');
       expect(userPreferencesSummary).toContain('Relaxed');
+    });
+
+    it('group flow summary is secondary to the current/provisional summary (not finalized artifact)', () => {
+      // Demonstrates that the group preference summary is marked as provisional
+      // because no finalized group-answer artifact exists yet.
+      const { userPreferencesSummary } = builder.build(
+        baseInput,
+        groupAnswers,
+        undefined,
+        { preferenceScope: 'group' },
+      );
+      expect(userPreferencesSummary).toContain('Current/provisional group preference summary');
     });
   });
 
@@ -288,7 +302,7 @@ describe('RecommendationPromptContextBuilder', () => {
       expect(recommendationPolicy.toLowerCase()).toContain('current-event preferences win');
     });
 
-    it('includes group-specific priority rules when scope is group', () => {
+    it('includes group-specific priority rules when scope is group — uses provisional/current wording', () => {
       const { recommendationPolicy } = builder.build(
         baseInput,
         groupAnswers,
@@ -296,7 +310,9 @@ describe('RecommendationPromptContextBuilder', () => {
         { preferenceScope: 'group' },
       );
 
-      expect(recommendationPolicy.toLowerCase()).toContain('final group answers/preferences');
+      // Must use provisional/current wording — not finalized group answers
+      expect(recommendationPolicy.toLowerCase()).toContain('current/provisional group preference summary');
+      expect(recommendationPolicy.toLowerCase()).not.toContain('final group answers/preferences');
       expect(recommendationPolicy.toLowerCase()).toContain('historical group preference signals');
     });
 

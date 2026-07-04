@@ -511,9 +511,24 @@ export class RecommendationsService {
     return compileTemplate(template, context);
   }
 
+  /**
+   * Builds a current/provisional group preference summary from raw group member answers.
+   *
+   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
+   * collected from group members for this event. This is a provisional approach because a
+   * canonical finalized group-answer artifact does not yet exist.
+   *
+   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
+   * should be replaced by consuming that artifact instead of deriving the summary from raw
+   * member answers.
+   *
+   * TODO: Once finalized group answers exist, replace this derivation with the finalized
+   * group-answer artifact. The policy order will then become:
+   *   current group event hard constraints > finalized group answers/preferences > historical group preferences
+   */
   private buildGroupPreferencesSummary(eventAnswers: any[] = []): string {
     if (!eventAnswers || eventAnswers.length === 0) {
-      return 'No final group answers were provided.';
+      return 'No current group member answers were provided.';
     }
 
     const groupedAnswers = new Map<string, Map<string, number>>();
@@ -532,10 +547,11 @@ export class RecommendationsService {
     }
 
     if (groupedAnswers.size === 0) {
-      return 'No final group answers were provided.';
+      return 'No current group member answers were provided.';
     }
 
-    const lines = ['Final group answers/preferences (highest priority after hard constraints):'];
+    // Header reflects provisional/current state — not finalized group answers.
+    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
 
     for (const [question, answersByQuestion] of groupedAnswers.entries()) {
       const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
