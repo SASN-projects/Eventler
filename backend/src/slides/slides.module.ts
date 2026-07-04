@@ -7,9 +7,10 @@ import { EventResponse } from 'src/events/entities/event-response.entity';
 import { SliderQuestion } from './entities/slider-question.entity';
 import { User } from 'src/auth/entities/user.entity';
 import { Event } from '../events/entities/event.entity';
+import { Group } from '../groups/entities/group.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SlideAnswer, EventResponse, SliderQuestion, Event, User])],
+  imports: [TypeOrmModule.forFeature([SlideAnswer, EventResponse, SliderQuestion, Event, User, Group])],
   controllers: [SlidesController],
   providers: [SlidesService],
   exports: [SlidesService],

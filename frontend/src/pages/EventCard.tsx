@@ -44,7 +44,7 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const remainingParticipants = participantCount > 3 ? participantCount - 3 : 0;
   const canContinue =
     ["draft", "collecting_responses"].includes(normalizedStatus) ||
-    (normalizedStatus === "recommended" && isEventCreator);
+    normalizedStatus === "recommended";
 
   return (
     <HistoryCard>
@@ -160,7 +160,9 @@ const EventCard: FunctionComponent<EventCardProps> = ({
               label={
                 canContinue
                   ? normalizedStatus === "recommended"
-                    ? "Ready to Review"
+                    ? isEventCreator
+                      ? "Ready to Review"
+                      : "Ready to Answer"
                     : "In Progress"
                   : hasRecommendation
                     ? "Recommendation Selected"

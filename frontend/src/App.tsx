@@ -23,7 +23,7 @@ import {
 } from "./pages/slidingPages/profile.styles";
 
 const AppContent: FunctionComponent = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [resumeEvent, setResumeEvent] = useState<{
@@ -49,12 +49,24 @@ const AppContent: FunctionComponent = () => {
     setResetKey((prev) => prev + 1);
   };
 
-  const handleContinueEvent = (event: { id: string; status?: string }) => {
+  const handleContinueEvent = (event: {
+    id: string;
+    status?: string;
+    createdById?: string;
+    creator?: { id?: string };
+  }) => {
+    const normalizedStatus = (event.status || "").toLowerCase();
+    const currentUserId = user?.id;
+    const creatorId = event.creator?.id || event.createdById;
+    const isEventCreator = Boolean(
+      currentUserId && creatorId && creatorId === currentUserId,
+    );
+
     setShowProfile(false);
     setResumeEvent({
       eventId: event.id,
       mode:
-        (event.status || "").toLowerCase() === "recommended"
+        normalizedStatus === "recommended" && isEventCreator
           ? "recommendations"
           : "slides",
     });

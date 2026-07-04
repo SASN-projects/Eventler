@@ -13,6 +13,7 @@ import RestoreIcon from "@mui/icons-material/Restore";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import PeopleOutlineIcon from "@mui/icons-material/PeopleOutline";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../config/api";
 import type { User } from "./slidingPages/profile.types";
 import { ProfileContainer, TabButton } from "./slidingPages/profile.styles";
@@ -39,11 +40,13 @@ export default function ProfilePage({
   onClose: () => void;
   onContinueEvent?: (event: { id: string; status?: string }) => void;
 }) {
+  const [searchParams] = useSearchParams();
   const [openEdit, setOpenEdit] = useState(false);
   const [openPrefs, setOpenPrefs] = useState(false);
+  const tabParam = searchParams.get("tab") as "history" | "favorites" | "groups" | null;
   const [activeTab, setActiveTab] = useState<
     "history" | "favorites" | "groups"
-  >("history");
+  >(tabParam || "history");
   const [events, setEvents] = useState<any[]>([]);
   const [preferences, setPreferences] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +60,12 @@ export default function ProfilePage({
     dateOfBirth: "",
     occupation: "",
   });
+
+  useEffect(() => {
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   useEffect(() => {
     const loadData = async () => {

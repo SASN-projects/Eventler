@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SlideAnswer } from './entities/slide-answer.entity';
@@ -8,6 +8,8 @@ import { EventResponse } from '../events/entities/event-response.entity';
 import { Event } from '../events/entities/event.entity';
 import { EventStatus } from '../events/enums/event-status.enum';
 import { User } from '../auth/entities/user.entity';
+import { Group } from '../groups/entities/group.entity';
+import { EventType } from '../events/enums/event.enums';
 
 @Injectable()
 export class SlidesService {
@@ -22,6 +24,8 @@ export class SlidesService {
     private eventRepository: Repository<Event>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Group)
+    private groupRepository: Repository<Group>,
   ) { }
 
   async getSlides(userId: string): Promise<SliderQuestion[]> {
@@ -75,26 +79,26 @@ export class SlidesService {
     userId: string,
     createSlideAnswersDto: CreateSlideAnswersDto,
   ) {
-    // ensure the (connected) user exists and fetch their data
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User with id ${userId} not found`);
     }
 
+    const event = await this.eventRepository.findOne({ where: { id: eventId } });
+    if (!event) {
+      throw new NotFoundException(`Event with id ${eventId} not found`);
+    }
+
     const existingResponses = await this.eventResponseRepository.find({
       where: { eventId, userId },
     });
-    const existingByQuestion = new Map(existingResponses.map((response) => [response.question, response]));
+
+    if (existingResponses.length > 0) {
+      throw new BadRequestException('You have already submitted your slide answers for this event.');
+    }
 
     const answersToSave = createSlideAnswersDto.answers.map((answer) => {
-      const existingResponse = existingByQuestion.get(answer.question);
       const normalizedWeight = typeof answer.weight === 'number' ? answer.weight : 0;
-
-      if (existingResponse) {
-        existingResponse.answerValue = answer.answerValue;
-        existingResponse.weight = normalizedWeight;
-        return existingResponse;
-      }
 
       return this.eventResponseRepository.create({
         eventId,
@@ -108,10 +112,42 @@ export class SlidesService {
 
     await this.eventResponseRepository.save(answersToSave);
 
-    await this.eventRepository.update(
-      { id: eventId },
-      { status: EventStatus.RECOMMENDED },
-    );
+    // Only transition to RECOMMENDED when all group members have answered (for group events)
+    if (event.eventType === EventType.GROUP && event.groupId) {
+      const group = await this.groupRepository.findOne({
+        where: { id: event.groupId },
+        relations: ['members'],
+      });
+
+      if (group && group.members && group.members.length > 0) {
+        const groupMemberIds = group.members.map((m) => m.userId);
+        const answeredUserIds = new Set(
+          (
+            await this.eventResponseRepository.find({
+              where: { eventId },
+              select: ['userId'],
+            })
+          ).map((r) => r.userId),
+        );
+
+        const allMembersAnswered = groupMemberIds.every((memberId) =>
+          answeredUserIds.has(memberId),
+        );
+
+        if (allMembersAnswered) {
+          await this.eventRepository.update(
+            { id: eventId },
+            { status: EventStatus.RECOMMENDED },
+          );
+        }
+      }
+    } else {
+      // For individual events, immediately transition to RECOMMENDED
+      await this.eventRepository.update(
+        { id: eventId },
+        { status: EventStatus.RECOMMENDED },
+      );
+    }
 
     return {
       message: 'Slide answers submitted successfully',

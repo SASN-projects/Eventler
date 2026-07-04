@@ -58,6 +58,7 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
         await api.post(`/slides/submit-answers/${eventId}`, data);
     } catch {
         console.log('failing to post answers');
+        throw new Error('Failed to submit slide answers');
     }
 };
 
@@ -83,3 +84,13 @@ export const getRecomendationsById = async (eventId: string) => {
 
 export const postSelectedRecommendation = async (eventId: string, recommendationId: string) =>
     await api.post(`/recommendations/events/${eventId}/select/${recommendationId}`);
+
+export const getEventDetails = async (eventId: string) => {
+    try {
+        const { data } = await api.get(`/events/${eventId}`);
+        return data;
+    } catch {
+        console.log('failing to fetch event details');
+        return null;
+    }
+};
