@@ -1,4 +1,4 @@
-import { Box, Stack, Typography, Chip } from "@mui/material";
+import { Box, Stack, Typography, Chip, Button } from "@mui/material";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import PersonIcon from "@mui/icons-material/Person";
@@ -13,9 +13,10 @@ import type { FunctionComponent } from "react";
 
 interface EventCardProps {
   event: any;
+  onContinue?: (event: { id: string; status?: string }) => void;
 }
 
-const EventCard: FunctionComponent<EventCardProps> = ({ event }) => {
+const EventCard: FunctionComponent<EventCardProps> = ({ event, onContinue }) => {
   const hasRecommendation = !!event.recommendation;
   const title = hasRecommendation ? event.recommendation.title : event.title || "Custom Event";
   const description = hasRecommendation ? event.recommendation.description : event.description;
@@ -24,6 +25,7 @@ const EventCard: FunctionComponent<EventCardProps> = ({ event }) => {
   const timeStr = formatTimeRange(event.targetDateFrom, event.targetDateTo);
   const participantCount = event.participantCount || 1;
   const remainingParticipants = participantCount > 3 ? participantCount - 3 : 0;
+  const canContinue = ["draft", "collecting_responses", "recommended"].includes((event.status || "").toLowerCase());
 
   return (
     <HistoryCard>
@@ -68,17 +70,43 @@ const EventCard: FunctionComponent<EventCardProps> = ({ event }) => {
             )}
           </Box>
 
-          <Chip
-            label={hasRecommendation ? "Recommendation Selected" : "Created Event"}
-            size="small"
-            sx={{
-              bgcolor: hasRecommendation ? "#e8f5e9" : "#e3f2fd",
-              color: hasRecommendation ? "#2e7d32" : "#1565c0",
-              fontWeight: 700,
-              fontSize: "10px",
-              height: "20px",
-            }}
-          />
+          <Stack direction="row" spacing={1} alignItems="center">
+            {canContinue && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onContinue?.(event);
+                }}
+                sx={{
+                  borderRadius: "999px",
+                  textTransform: "none",
+                  fontWeight: 700,
+                  fontSize: "11px",
+                  borderColor: "#edb53c",
+                  color: "#edb53c",
+                  px: 1.2,
+                  py: 0.3,
+                  '&:hover': { borderColor: "#d89d1f", bgcolor: "rgba(237, 181, 60, 0.08)" },
+                }}
+              >
+                Continue
+              </Button>
+            )}
+
+            <Chip
+              label={canContinue ? ((event.status || "").toLowerCase() === "recommended" ? "Ready to Review" : "In Progress") : hasRecommendation ? "Recommendation Selected" : "Created Event"}
+              size="small"
+              sx={{
+                bgcolor: canContinue ? "#fff3e0" : hasRecommendation ? "#e8f5e9" : "#e3f2fd",
+                color: canContinue ? "#ef6c00" : hasRecommendation ? "#2e7d32" : "#1565c0",
+                fontWeight: 700,
+                fontSize: "10px",
+                height: "20px",
+              }}
+            />
+          </Stack>
         </Stack>
       </HistoryCardContent>
     </HistoryCard>

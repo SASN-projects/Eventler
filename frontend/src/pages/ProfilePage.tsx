@@ -18,7 +18,7 @@ const PREF_MAP: Record<string, string> = {
   crowd: "👥 Crowd", "planning-style": "📅 Plan", "location-type": "📍 Vibe", "evening-structure": "🍻 Structure"
 };
 
-export default function ProfilePage({ onClose }: { onClose: () => void }) {
+export default function ProfilePage({ onClose, onContinueEvent }: { onClose: () => void; onContinueEvent?: (event: { id: string; status?: string }) => void }) {
   const [openEdit, setOpenEdit] = useState(false);
   const [openPrefs, setOpenPrefs] = useState(false);
   const [activeTab, setActiveTab] = useState<"history" | "favorites" | "groups">("history");
@@ -66,7 +66,7 @@ export default function ProfilePage({ onClose }: { onClose: () => void }) {
         <Box sx={{ flex: 1, overflowY: "auto", px: 1, pb: 2 }}>
           {activeTab === "history" && (loading ? <Box display="flex" justifyContent="center" py={8}><CircularProgress color="secondary" /></Box> :
             events.length === 0 ? <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px", border: "1px dashed rgba(0,0,0,0.12)" }}>No events in history.</Paper> :
-            events.map((e) => <EventCard key={e.id} event={e} />))}
+            events.map((e) => <EventCard key={e.id} event={e} onContinue={onContinueEvent} />))}
           {activeTab === "favorites" && <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px" }}>No favorite venues.</Paper>}
           {activeTab === "groups" && <GroupsPanel />}
         </Box>

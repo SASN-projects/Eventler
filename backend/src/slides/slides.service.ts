@@ -5,6 +5,8 @@ import { SlideAnswer } from './entities/slide-answer.entity';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
 import { SliderQuestion } from './entities/slider-question.entity';
 import { EventResponse } from '../events/entities/event-response.entity';
+import { Event } from '../events/entities/event.entity';
+import { EventStatus } from '../events/enums/event-status.enum';
 import { User } from '../auth/entities/user.entity';
 
 @Injectable()
@@ -16,6 +18,8 @@ export class SlidesService {
     private eventResponseRepository: Repository<EventResponse>,
     @InjectRepository(SliderQuestion)
     private sliderQuestionRepository: Repository<SliderQuestion>,
+    @InjectRepository(Event)
+    private eventRepository: Repository<Event>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) { }
@@ -76,22 +80,42 @@ export class SlidesService {
     if (!user) {
       throw new NotFoundException(`User with id ${userId} not found`);
     }
-    const answers = createSlideAnswersDto.answers.map((answer) =>
-      this.eventResponseRepository.create({
+
+    const existingResponses = await this.eventResponseRepository.find({
+      where: { eventId, userId },
+    });
+    const existingByQuestion = new Map(existingResponses.map((response) => [response.question, response]));
+
+    const answersToSave = createSlideAnswersDto.answers.map((answer) => {
+      const existingResponse = existingByQuestion.get(answer.question);
+      const normalizedWeight = typeof answer.weight === 'number' ? answer.weight : 0;
+
+      if (existingResponse) {
+        existingResponse.answerValue = answer.answerValue;
+        existingResponse.weight = normalizedWeight;
+        return existingResponse;
+      }
+
+      return this.eventResponseRepository.create({
         eventId,
         userId,
         question: answer.question,
         answerValue: answer.answerValue,
-        weight: answer.weight,
-        user, // set relation to the fetched user entity
-      }),
-    );
+        weight: normalizedWeight,
+        user,
+      });
+    });
 
-    await this.eventResponseRepository.save(answers);
+    await this.eventResponseRepository.save(answersToSave);
+
+    await this.eventRepository.update(
+      { id: eventId },
+      { status: EventStatus.RECOMMENDED },
+    );
 
     return {
       message: 'Slide answers submitted successfully',
-      count: answers.length,
+      count: answersToSave.length,
     };
   }
 

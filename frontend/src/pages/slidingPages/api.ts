@@ -5,7 +5,7 @@ import type { Answers, Question } from "./types";
 export const fetchSlidesQuestions = async (): Promise<Question[]> => {
     try {
         const { data } = await api.get('/slides');
-        return data.map((question: any) => ({
+        return data.map((question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
             ...question,
             imageUrl: question.image_url ?? question.imageUrl,
         }));
@@ -55,9 +55,19 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     };
 
     try {
-        api.post(`/slides/submit-answers/${eventId}`, data);
+        await api.post(`/slides/submit-answers/${eventId}`, data);
     } catch {
         console.log('failing to post answers');
+    }
+};
+
+export const getEventAnswers = async (eventId: string) => {
+    try {
+        const { data } = await api.get(`/slides/event-answers/${eventId}`);
+        return data || [];
+    } catch {
+        console.log('failing to fetch event answers');
+        return [];
     }
 };
 

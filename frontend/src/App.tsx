@@ -19,6 +19,7 @@ const AppContent: FunctionComponent = () => {
   const { isAuthenticated, loading } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [resumeEvent, setResumeEvent] = useState<{ eventId: string; mode: 'slides' | 'recommendations' } | null>(null);
 
   if (loading) {
     return <div style={{ height: '100vh', width: '100vw' }} />;
@@ -34,6 +35,16 @@ const AppContent: FunctionComponent = () => {
 
   const handlePlusClick = () => {
     setShowProfile(false);
+    setResumeEvent(null);
+    setResetKey((prev) => prev + 1);
+  };
+
+  const handleContinueEvent = (event: { id: string; status?: string }) => {
+    setShowProfile(false);
+    setResumeEvent({
+      eventId: event.id,
+      mode: (event.status || '').toLowerCase() === 'recommended' ? 'recommendations' : 'slides',
+    });
     setResetKey((prev) => prev + 1);
   };
 
@@ -54,9 +65,9 @@ const AppContent: FunctionComponent = () => {
             <AppContainer>
               <MainContentArea>
                 {showProfile ? (
-                  <ProfilePage onClose={() => setShowProfile(false)} />
+                  <ProfilePage onClose={() => setShowProfile(false)} onContinueEvent={handleContinueEvent} />
                 ) : (
-                  <DecisionPage key={resetKey} />
+                  <DecisionPage key={resetKey} resumeEvent={resumeEvent} />
                 )}
               </MainContentArea>
 
