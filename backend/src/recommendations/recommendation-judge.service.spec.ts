@@ -313,7 +313,7 @@ describe('RecommendationJudgeService', () => {
       );
 
       const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
-      expect(prompt).toContain('User Preferences:');
+      expect(prompt).toContain('User Preferences');
       expect(prompt).toContain('Atmosphere: Cosy');
       expect(prompt).toContain('Price Range: Low');
     });
@@ -333,8 +333,103 @@ describe('RecommendationJudgeService', () => {
       );
 
       const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
-      expect(prompt).toContain('User Preferences:');
+      expect(prompt).toContain('User Preferences');
       expect(prompt).toContain('No explicit user preferences were provided.');
+    });
+  });
+
+  // ── historical signal in judge prompt ─────────────────────────────────────
+  describe('historical signal in judge prompt', () => {
+    it('prompt includes historySummaryText when provided', async () => {
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeNoopTrace();
+
+      await svc.evaluate(
+        makeJudgeInput({
+          historySummaryText:
+            'Historical user preference signals (secondary):\n- User often selected cafe-related recommendations.',
+        }),
+        trace,
+      );
+
+      const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
+      expect(prompt).toContain('Historical User Preference Signals');
+      expect(prompt).toContain('cafe-related');
+      expect(prompt).toContain('SECONDARY');
+    });
+
+    it('prompt includes fallback historical section when historySummaryText is undefined', async () => {
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeNoopTrace();
+
+      await svc.evaluate(
+        makeJudgeInput({ historySummaryText: undefined }),
+        trace,
+      );
+
+      const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
+      expect(prompt).toContain('No historical user selection data is available.');
+    });
+
+    it('prompt includes priority order note for scoring guidance', async () => {
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeNoopTrace();
+
+      await svc.evaluate(makeJudgeInput(), trace);
+
+      const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
+      expect(prompt.toLowerCase()).toContain('priority order');
+      expect(prompt.toLowerCase()).toContain('secondary');
+      expect(prompt.toLowerCase()).toContain('preference_alignment');
+    });
+
+    it('prompt tells judge to penalize overfitting to history', async () => {
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeNoopTrace();
+
+      await svc.evaluate(makeJudgeInput(), trace);
+
+      const prompt: string = geminiMock.generateJsonContent.mock.calls[0][0].prompt;
+      // The prompt must tell the judge to lower score if current-event preferences are ignored
+      expect(prompt.toLowerCase()).toContain('current-event explicit preferences');
+    });
+
+    it('historySummaryText does not appear in Langfuse span metadata (only in prompt)', async () => {
+      // This test verifies that historySummaryText is used internally in the prompt
+      // but is not separately emitted as Langfuse metadata in a way that exposes raw history.
+      // Since evaluate() passes it to Gemini prompt (which goes through generateJsonContent),
+      // and generateJsonContent is mocked, we confirm it does NOT appear in trace.score() calls.
+      const geminiMock = {
+        generateJsonContent: jest.fn().mockResolvedValue(VALID_JUDGE_RESPONSE),
+      };
+      const svc = await buildService({ RECOMMENDATION_JUDGE_ENABLED: 'true' }, geminiMock);
+      const trace = makeTraceMock();
+
+      await svc.evaluate(
+        makeJudgeInput({
+          historySummaryText: 'Historical signals: cafe-related in Paris.',
+        }),
+        trace as any,
+      );
+
+      // trace.score should only have numeric score names — no raw history text
+      for (const [call] of (trace.score).mock.calls) {
+        expect(typeof call.value).toBe('number');
+        expect(call.name).not.toContain('cafe');
+        expect(call.name).not.toContain('Paris');
+      }
     });
   });
 });

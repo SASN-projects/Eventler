@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
+import { EventType } from '../events/enums/event.enums';
 import { EventStatus } from '../events/enums/event-status.enum';
 import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
@@ -17,6 +18,11 @@ import {
   RecommendationPromptContextBuilder,
   RecommendationEventInput,
 } from './recommendation-prompt-context.builder';
+import {
+  RecommendationHistoryService,
+  HistorySignalSummary,
+  HistoryScope,
+} from './recommendation-history.service';
 
 export interface RecommendationResult {
   id: string;
@@ -116,8 +122,9 @@ export class RecommendationsService {
     private readonly qualityEvaluator: RecommendationQualityEvaluator,
     private readonly judgeService: RecommendationJudgeService,
     private readonly promptContextBuilder: RecommendationPromptContextBuilder,
+    private readonly historyService: RecommendationHistoryService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   private getPromptName(): string {
     return this.configService.get<string>('LANGFUSE_PROMPT_NAME') || RECOMMENDATION_PROMPT_NAME;
@@ -215,6 +222,61 @@ export class RecommendationsService {
       eventType: event.eventType || 'casual',
     };
 
+    const preferenceScope: HistoryScope =
+      event.eventType === EventType.GROUP && !!event.groupId ? 'group' : 'user';
+    const currentPreferencesSummary =
+      preferenceScope === 'group'
+        ? this.buildGroupPreferencesSummary(eventAnswers)
+        : undefined;
+
+    // ── Retrieve user history (soft secondary signal) ────────────────────
+    // History lookup is non-blocking: a failure returns the no-history fallback
+    // and the span is ended with ERROR metadata. Recommendation generation
+    // continues regardless.
+    const historyStartMs = Date.now();
+    const historySpan = trace.span({
+      name: preferenceScope === 'group' ? 'retrieve-group-history' : 'retrieve-user-history',
+      input: {
+        historyScope: preferenceScope,
+        subjectId: preferenceScope === 'group' ? event.groupId : event.createdById,
+      },
+    });
+
+    let historySummary: HistorySignalSummary | undefined;
+    try {
+      historySummary = await this.historyService.getHistorySignal({
+        scope: preferenceScope,
+        subjectId: preferenceScope === 'group' ? event.groupId : event.createdById,
+        currentEventId: eventId,
+      });
+      historySpan.end({
+        output: {
+          historyScope: preferenceScope,
+          historyItemsCount: historySummary.historyItemsCount,
+          historySignalUsed: historySummary.historySignalUsed,
+          dominantEventTypes: historySummary.dominantEventTypes,
+          preferredLocations: historySummary.preferredLocations,
+          preferredCategories: historySummary.preferredCategories,
+          latencyMs: Date.now() - historyStartMs,
+        },
+      });
+    } catch (historyErr: any) {
+      // This path should not be reached (history service is non-throwing),
+      // but is kept as a safety net.
+      historySpan.end({
+        level: 'ERROR',
+        statusMessage: historyErr.message,
+        output: {
+          historyScope: preferenceScope,
+          historyItemsCount: 0,
+          historySignalUsed: false,
+          latencyMs: Date.now() - historyStartMs,
+        },
+      });
+      this.logger.warn(`History span error (non-blocking): ${historyErr.message}`);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Fetch the managed prompt from Langfuse (or fall back to the hardcoded template).
     // This is done once before the retry loop so all retry attempts share the same
     // resolved version and source metadata.
@@ -231,7 +293,16 @@ export class RecommendationsService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const prompt = this.buildPrompt(eventInput, eventAnswers, template);
+        const prompt = this.buildPrompt(
+          eventInput,
+          eventAnswers,
+          template,
+          historySummary,
+          {
+            preferenceScope,
+            currentPreferencesSummary,
+          },
+        );
         const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt);
 
         // ── Quality evaluation (deterministic, fire-and-forget) ──────────
@@ -256,15 +327,24 @@ export class RecommendationsService {
                 locationCountry: eventInput.locationCountry,
                 participantCount: eventInput.participantCount,
                 targetDate: String(eventInput.targetDate),
-                userPreferences: eventAnswers.map((p) => ({
-                  question: p.question,
-                  answerValue: p.answerValue,
-                })),
+                preferenceScope,
+                currentPreferencesSummary:
+                  currentPreferencesSummary ?? undefined,
+                userPreferences:
+                  preferenceScope === 'group'
+                    ? []
+                    : eventAnswers.map((p) => ({
+                      question: p.question,
+                      answerValue: p.answerValue,
+                    })),
                 recommendations: recommendedEvents.map((r) => ({
                   title: r.title,
                   description: r.description,
                   address: r.address,
                 })),
+                // Pass the safe aggregated summary text only — never raw history.
+                historyScope: historySummary?.scope,
+                historySummaryText: historySummary?.summaryText,
               },
               trace,
             );
@@ -416,9 +496,73 @@ export class RecommendationsService {
     eventInput: RecommendationEventInput,
     eventAnswers: any[] = [],
     template: string = RECOMMENDATION_FALLBACK_TEMPLATE,
+    historySummary?: HistorySignalSummary,
+    options: {
+      preferenceScope: HistoryScope;
+      currentPreferencesSummary?: string;
+    } = { preferenceScope: 'user' },
   ): string {
-    const context = this.promptContextBuilder.build(eventInput, eventAnswers);
+    const context = this.promptContextBuilder.build(
+      eventInput,
+      eventAnswers,
+      historySummary,
+      options,
+    );
     return compileTemplate(template, context);
+  }
+
+  /**
+   * Builds a current/provisional group preference summary from raw group member answers.
+   *
+   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
+   * collected from group members for this event. This is a provisional approach because a
+   * canonical finalized group-answer artifact does not yet exist.
+   *
+   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
+   * should be replaced by consuming that artifact instead of deriving the summary from raw
+   * member answers.
+   *
+   * TODO: Once finalized group answers exist, replace this derivation with the finalized
+   * group-answer artifact. The policy order will then become:
+   *   current group event hard constraints > finalized group answers/preferences > historical group preferences
+   */
+  private buildGroupPreferencesSummary(eventAnswers: any[] = []): string {
+    if (!eventAnswers || eventAnswers.length === 0) {
+      return 'No current group member answers were provided.';
+    }
+
+    const groupedAnswers = new Map<string, Map<string, number>>();
+
+    for (const answer of eventAnswers) {
+      const question = typeof answer?.question === 'string' ? answer.question.trim() : '';
+      const answerValue = typeof answer?.answerValue === 'string' ? answer.answerValue.trim() : '';
+
+      if (!question || !answerValue) {
+        continue;
+      }
+
+      const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
+      answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
+      groupedAnswers.set(question, answersByQuestion);
+    }
+
+    if (groupedAnswers.size === 0) {
+      return 'No current group member answers were provided.';
+    }
+
+    // Header reflects provisional/current state — not finalized group answers.
+    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
+
+    for (const [question, answersByQuestion] of groupedAnswers.entries()) {
+      const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
+      const [winningAnswer, winningCount] = [...answersByQuestion.entries()].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )[0];
+
+      lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
+    }
+
+    return lines.join('\n');
   }
 
   private async callGeminiModel(

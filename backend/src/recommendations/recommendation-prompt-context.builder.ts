@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { HistorySignalSummary, HistoryScope } from './recommendation-history.service';
 
 /**
  * Structured context object for the event-recommendation-planner prompt.
@@ -15,9 +16,13 @@ export interface RecommendationPromptContext {
   eventCoreContext: string;
 
   /**
-   * Safe summary of user answers/preferences from slide responses.
-   * Personalises the recommendations. Falls back to a clear "no preferences"
-   * message when the event has no collected answers.
+   * Safe summary of the current-event preferences.
+   * For individual events this reflects the user's answers.
+   * For group events this reflects the current/provisional group preference summary derived
+   * from current group member answers.
+   *
+   * NOTE: A canonical finalized group-answer artifact does not yet exist. When it does,
+   * this field should reflect that finalized artifact instead of the provisional summary.
    */
   userPreferencesSummary: string;
 
@@ -28,15 +33,16 @@ export interface RecommendationPromptContext {
   constraintsSummary: string;
 
   /**
-   * Optional / future signals such as budget, weather, user history, etc.
-   * Currently always set to the "no signals" fallback until those sources
-   * are wired in a future PR.
+    * Optional signals: includes historical user or group preference signals
+    * derived from past selected events (secondary, never overrides current
+    * preferences). Falls back to a no-history message when unavailable.
    */
   optionalSignalsSummary: string;
 
   /**
-   * Prioritisation policy: hard constraints → preferences → relevance →
-   * diversity → specificity → practical usefulness → no hallucinations.
+  * Prioritisation policy: hard constraints → current-event preferences →
+  * historical signals (secondary) → relevance → diversity → specificity →
+  * practical usefulness → no hallucinations.
    */
   recommendationPolicy: string;
 
@@ -67,8 +73,14 @@ export interface RecommendationSlideAnswer {
   answerValue: string;
 }
 
+export interface RecommendationPromptContextOptions {
+  preferenceScope?: HistoryScope;
+  currentPreferencesSummary?: string;
+}
+
 /**
- * Builds the RecommendationPromptContext from event data and slide answers.
+ * Builds the RecommendationPromptContext from event data, slide answers,
+ * and an optional historical preference summary.
  *
  * Architecture notes:
  *  - Extending with a new future signal (budget, weather, etc.) means adding
@@ -76,25 +88,37 @@ export interface RecommendationSlideAnswer {
  *    template variables.
  *  - All section values are plain, sanitised strings — no undefined, null,
  *    JSON noise, or broken placeholders can leak through.
+ *  - Historical signals are always placed in optionalSignalsSummary and are
+ *    clearly marked as secondary — they must never override current-event
+ *    preferences or hard constraints.
  */
 @Injectable()
 export class RecommendationPromptContextBuilder {
   /**
    * Build the full RecommendationPromptContext for one recommendation request.
    *
-   * @param eventInput  Core event fields already extracted from the Event entity.
-   * @param eventAnswers Slide answers collected for this event (may be empty).
+   * @param eventInput     Core event fields already extracted from the Event entity.
+   * @param eventAnswers   Slide answers collected for this event (may be empty).
+   * @param historySummary Optional aggregated history signal from RecommendationHistoryService.
    */
   build(
     eventInput: RecommendationEventInput,
     eventAnswers: RecommendationSlideAnswer[] = [],
+    historySummary?: HistorySignalSummary,
+    options: RecommendationPromptContextOptions = {},
   ): RecommendationPromptContext {
+    const preferenceScope = options.preferenceScope ?? 'user';
+
     return {
       eventCoreContext: this.buildEventCoreContext(eventInput),
-      userPreferencesSummary: this.buildUserPreferencesSummary(eventAnswers),
+      userPreferencesSummary: this.buildCurrentPreferencesSummary(
+        eventAnswers,
+        preferenceScope,
+        options.currentPreferencesSummary,
+      ),
       constraintsSummary: this.buildConstraintsSummary(eventInput),
-      optionalSignalsSummary: this.buildOptionalSignalsSummary(),
-      recommendationPolicy: this.buildRecommendationPolicy(),
+      optionalSignalsSummary: this.buildOptionalSignalsSummary(historySummary, preferenceScope),
+      recommendationPolicy: this.buildRecommendationPolicy(preferenceScope),
       outputFormatInstructions: this.buildOutputFormatInstructions(),
     };
   }
@@ -112,9 +136,19 @@ export class RecommendationPromptContextBuilder {
     ].join('\n');
   }
 
-  private buildUserPreferencesSummary(
+  private buildCurrentPreferencesSummary(
     eventAnswers: RecommendationSlideAnswer[],
+    preferenceScope: HistoryScope,
+    currentPreferencesSummary?: string,
   ): string {
+    if (currentPreferencesSummary && currentPreferencesSummary.trim().length > 0) {
+      return currentPreferencesSummary.trim();
+    }
+
+    if (preferenceScope === 'group') {
+      return this.buildGroupPreferencesSummary(eventAnswers);
+    }
+
     if (!eventAnswers || eventAnswers.length === 0) {
       return 'No explicit user preferences were provided.';
     }
@@ -124,6 +158,53 @@ export class RecommendationPromptContextBuilder {
       .join('\n');
 
     return `The following preferences were collected from participant answers — every recommendation must reflect these:\n${lines}`;
+  }
+
+  /**
+   * Builds a current/provisional group preference summary from raw group member answers.
+   *
+   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
+   * collected from group members for this event. This is a provisional approach because a
+   * canonical finalized group-answer artifact does not yet exist.
+   *
+   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
+   * should be replaced by consuming that artifact instead.
+   *
+   * TODO: Once finalized group answers exist, replace this derivation with the finalized
+   * group-answer artifact.
+   */
+  private buildGroupPreferencesSummary(eventAnswers: RecommendationSlideAnswer[]): string {
+    if (!eventAnswers || eventAnswers.length === 0) {
+      return 'No current group member answers were provided.';
+    }
+
+    const groupedAnswers = new Map<string, Map<string, number>>();
+
+    for (const answer of eventAnswers) {
+      const question = answer.question?.trim();
+      const answerValue = answer.answerValue?.trim();
+      if (!question || !answerValue) {
+        continue;
+      }
+
+      const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
+      answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
+      groupedAnswers.set(question, answersByQuestion);
+    }
+
+    // Header reflects provisional/current state — not finalized group answers.
+    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
+
+    for (const [question, answersByQuestion] of groupedAnswers.entries()) {
+      const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
+      const [winningAnswer, winningCount] = [...answersByQuestion.entries()].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )[0];
+
+      lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
+    }
+
+    return lines.length > 1 ? lines.join('\n') : 'No current group member answers were provided.';
   }
 
   private buildConstraintsSummary(input: RecommendationEventInput): string {
@@ -138,28 +219,68 @@ export class RecommendationPromptContextBuilder {
   }
 
   /**
-   * Placeholder for future optional signals (budget, weather, user history,
-   * preferred vibe, accessibility, etc.).
+   * Renders optional signals into the prompt context.
    *
-   * Future contributors: add enriched signal strings here without changing the
-   * prompt template variables. If a signal is unavailable, omit it gracefully.
+   * When a historySummary is provided and contains a meaningful signal
+   * (historySignalUsed=true), the aggregated summaryText is included here.
+   * The historical signal is explicitly marked as secondary.
+   *
+   * When no history is available, a clear fallback message is used so the
+   * model does not receive an empty section.
+   *
+   * Future contributors: additional signals (budget, weather, accessibility)
+   * can be appended here without changing the prompt template variables.
    */
-  private buildOptionalSignalsSummary(): string {
-    // No optional signals are wired yet. Future signals (budget, weather,
-    // user history, accessibility, preferred atmosphere, etc.) will be
-    // appended here as they become available.
-    return 'No additional optional signals were provided.';
+  private buildOptionalSignalsSummary(
+    historySummary: HistorySignalSummary | undefined,
+    preferenceScope: HistoryScope,
+  ): string {
+    const sections: string[] = [];
+
+    if (historySummary && historySummary.summaryText.trim().length > 0) {
+      sections.push(historySummary.summaryText);
+    } else {
+      sections.push(
+        preferenceScope === 'group'
+          ? 'No historical group selection data is available.'
+          : 'No historical user selection data is available.',
+      );
+    }
+
+    // Future signals (budget, weather, accessibility, preferred vibe, etc.)
+    // will be appended here as additional sections when they become available.
+
+    return sections.join('\n\n');
   }
 
-  private buildRecommendationPolicy(): string {
+  private buildRecommendationPolicy(preferenceScope: HistoryScope): string {
+    // CURRENT GROUP BEHAVIOR: The policy uses the current/provisional group preference summary
+    // (derived from current group member answers) as the second-priority signal.
+    //
+    // TODO: When finalized group answers exist, this label should become
+    // 'finalized group answers/preferences' and the policy order will be:
+    //   current group event hard constraints > finalized group answers/preferences > historical group preferences
+    const currentPreferenceLabel = preferenceScope === 'group'
+      ? 'current/provisional group preference summary'
+      : 'current user preferences';
+    const historicalLabel = preferenceScope === 'group'
+      ? 'historical group preference signals'
+      : 'historical user preference signals';
+
     return [
-      '1. Hard constraints come first — never violate location, date, participant, or schema requirements.',
-      '2. User preferences come second — recommendations must reflect any stated preferences.',
-      '3. Relevance to event type — tailor suggestions to the nature of the event.',
-      '4. Diversity — each recommendation must be meaningfully different from the others.',
-      '5. Specificity — be concrete and actionable; avoid vague or generic suggestions.',
-      '6. Practical usefulness — recommendations should be realistic and achievable.',
-      '7. Avoid hallucinations — do not invent venues, phone numbers, or addresses.',
+      'PRIORITY ORDER — always follow this exact order:',
+      '1. Hard constraints come first — never violate location, date, participant count, or schema requirements.',
+      `2. ${currentPreferenceLabel} come second — recommendations must fully reflect the current event's explicit preferences for THIS event.`,
+      `3. ${historicalLabel} are a SOFT SECONDARY signal only — use them to break ties or add variety, not to override current preferences.`,
+      '4. Relevance to event type — tailor suggestions to the nature of the event.',
+      '5. Diversity — each recommendation must be meaningfully different from the others.',
+      '6. Specificity — be concrete and actionable; avoid vague or generic suggestions.',
+      '7. Practical usefulness — recommendations should be realistic and achievable.',
+      '8. Avoid hallucinations — do not invent venues, phone numbers, or addresses.',
+      '',
+      'Historical preferences are only a soft secondary signal. They must never override explicit current-event preferences or hard constraints.',
+      'If current-event preferences conflict with historical behavior, current-event preferences win.',
+      'Avoid overfitting to historical behavior. Avoid assuming the user always wants the same type of recommendation.',
     ].join('\n');
   }
 

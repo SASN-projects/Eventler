@@ -80,12 +80,12 @@ export class GroupsService {
         joinedAt: row.joined_at,
         user: row.id
           ? {
-              id: row.id,
-              firstName: row.first_name,
-              lastName: row.last_name,
-              username: row.username,
-              email: row.email,
-            }
+            id: row.id,
+            firstName: row.first_name,
+            lastName: row.last_name,
+            username: row.username,
+            email: row.email,
+          }
           : undefined,
       } as GroupMember;
       const groupMembers = membersByGroupId.get(member.groupId) ?? [];

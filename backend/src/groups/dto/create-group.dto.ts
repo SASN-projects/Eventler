@@ -3,14 +3,14 @@ import { IsArray, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validat
 export class CreateGroupDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+    name: string;
 
   @IsString()
   @IsOptional()
-  description?: string;
+    description?: string;
 
   @IsArray()
   @IsUUID('4', { each: true })
   @IsOptional()
-  memberIds?: string[];
+    memberIds?: string[];
 }
