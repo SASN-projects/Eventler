@@ -2,9 +2,10 @@ import api from "../../config/api";
 import { msInTwoHours } from "./consts";
 import type { Answers, Question } from "./types";
 
-export const fetchSlidesQuestions = async (): Promise<Question[]> => {
+export const fetchSlidesQuestions = async (vibes?: string): Promise<Question[]> => {
     try {
-        const { data } = await api.get('/slides');
+        const url = vibes ? `/slides?vibes=${encodeURIComponent(vibes)}` : '/slides';
+        const { data } = await api.get(url);
         return data.map((question: any) => ({
             ...question,
             imageUrl: question.image_url ?? question.imageUrl,

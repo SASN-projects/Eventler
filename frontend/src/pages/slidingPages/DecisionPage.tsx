@@ -5,6 +5,7 @@ import { FullSizeContainer } from "../../components/layouts";
 import BaseQuestions from "./BaseQuestions";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
+import { PreferencesConfirm } from "./PreferencesConfirm";
 import { fetchSlidesQuestions, getRecomendationsById, submitAnswers } from "./api";
 import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
 import { LoadingContainer, LoadingSubtitle, LoadingTextContainer, LoadingTitle } from "./styles";
@@ -22,9 +23,21 @@ const DecisionPage: FunctionComponent = () => {
         setSlidersQuestions(questions);
     };
 
+    const handleVibeSelect = async (vibe: string) => {
+        const questions = await fetchSlidesQuestions(vibe);
+        setSlidersQuestions(questions);
+    };
+
     const onBaseComplete = (id: string) => {
-        setDecisionStep("sliding");
         setEventId(id);
+        setDecisionStep("preferences-confirm");
+    };
+
+    const onPreferencesConfirm = async (_selected: string[]) => {
+        // Refetch questions to capture the updated preferences immediately
+        const questions = await fetchSlidesQuestions();
+        setSlidersQuestions(questions);
+        setDecisionStep("sliding");
     };
 
     const handleAnswers = async (answers: Answers) => {
@@ -64,10 +77,15 @@ const DecisionPage: FunctionComponent = () => {
 
     const steps: Record<DecisionStep, ReactElement> = {
         base: <BaseQuestions onBaseComplete={onBaseComplete} />,
+        "preferences-confirm": <PreferencesConfirm onConfirm={onPreferencesConfirm} />,
         sliding: isGeneratingRecommendation ? (
             loadingScreen
         ) : (
-            <Slider questions={slidersQuestions} handleAnswers={handleAnswers} />
+            <Slider 
+                questions={slidersQuestions} 
+                handleAnswers={handleAnswers} 
+                onVibeSelect={handleVibeSelect}
+            />
         ),
         recommendation: (
             <RecommendationsPage

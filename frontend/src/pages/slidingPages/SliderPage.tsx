@@ -1,5 +1,5 @@
 import type { FunctionComponent } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FullSizeContainer } from "../../components/layouts";
 import Slide from "./Slide";
 import type { Answers, Question } from "./types";
@@ -8,18 +8,29 @@ import { createAnswersObject } from "./utils";
 interface SlidesProps {
   questions: Question[];
   handleAnswers: (answers: Answers) => void;
+  onVibeSelect?: (vibe: string) => Promise<void>;
 }
 
 export const Slider: FunctionComponent<SlidesProps> = ({
   questions,
   handleAnswers,
+  onVibeSelect,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Answers>(
     createAnswersObject(questions),
   );
 
-  const handleNext = (answer: string) => {
+  useEffect(() => {
+    setAnswers((prevAnswers) => ({
+      ...createAnswersObject(questions),
+      ...prevAnswers,
+    }));
+  }, [questions]);
+
+  const handleNext = async (answer: string) => {
+    const isFirstQuestion = currentStepIndex === 0 && questions[0]?.code === 'vibe';
+
     const updatedAnswers = {
       ...answers,
       [questions[currentStepIndex].label]: answer,
@@ -27,6 +38,10 @@ export const Slider: FunctionComponent<SlidesProps> = ({
 
     if (answer !== "") {
       setAnswers(updatedAnswers);
+    }
+
+    if (isFirstQuestion && onVibeSelect) {
+      await onVibeSelect(answer);
     }
 
     if (currentStepIndex < questions.length - 1) {
