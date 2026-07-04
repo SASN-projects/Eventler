@@ -84,6 +84,7 @@ describe('RecommendationsService', () => {
       save: jest.fn((entities) =>
         entities.map((e: any, idx: number) => ({ id: `rec-${idx + 1}`, ...e })),
       ),
+      findOne: jest.fn(),
     };
 
     slideAnswerServiceMock = {
@@ -202,6 +203,42 @@ describe('RecommendationsService', () => {
 
     expect(result.success).toBe(false);
     expect(langfuseServiceMock.trace).not.toHaveBeenCalled();
+  });
+
+  it('marks the event as finalized when a recommendation is selected', async () => {
+    const event = makeEvent({ status: 'collecting_responses' });
+    eventRepositoryMock.findOne.mockResolvedValue(event);
+    recommendationRepositoryMock.findOne.mockResolvedValue({
+      id: 'rec-1',
+      title: 'Event 1',
+      description: 'Desc 1',
+      address: 'Addr 1',
+    });
+
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'user-123');
+
+    expect(result.success).toBe(true);
+    expect(eventRepositoryMock.save).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'finalized',
+      finalizedAt: expect.any(Date),
+    }));
+  });
+
+  it('blocks non-creators from selecting a recommendation', async () => {
+    const event = makeEvent({ status: 'collecting_responses', createdById: 'creator-1' });
+    eventRepositoryMock.findOne.mockResolvedValue(event);
+    recommendationRepositoryMock.findOne.mockResolvedValue({
+      id: 'rec-1',
+      title: 'Event 1',
+      description: 'Desc 1',
+      address: 'Addr 1',
+    });
+
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'other-user');
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Only the event creator');
+    expect(eventRepositoryMock.save).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import type { FunctionComponent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FullSizeContainer } from "../../components/layouts";
 import Slide from "./Slide";
 import type { Answers, Question } from "./types";
@@ -8,16 +8,30 @@ import { createAnswersObject } from "./utils";
 interface SlidesProps {
   questions: Question[];
   handleAnswers: (answers: Answers) => void;
+  initialAnswers?: Answers;
 }
 
 export const Slider: FunctionComponent<SlidesProps> = ({
   questions,
   handleAnswers,
+  initialAnswers,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Answers>(
-    createAnswersObject(questions),
+    initialAnswers ?? createAnswersObject(questions),
   );
+
+  useEffect(() => {
+    const baseAnswers = initialAnswers ?? createAnswersObject(questions);
+    setAnswers(baseAnswers);
+
+    const firstUnansweredIndex = questions.findIndex((question) => {
+      const value = baseAnswers[question.label] ?? "";
+      return value === "";
+    });
+
+    setCurrentStepIndex(firstUnansweredIndex >= 0 ? firstUnansweredIndex : 0);
+  }, [questions, initialAnswers]);
 
   const handleNext = (answer: string) => {
     const updatedAnswers = {
