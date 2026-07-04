@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { UserPreferences } from './entities/user-preferences.entity';
 import { Event } from '../events/entities/event.entity';
+import { EventResponse } from '../events/entities/event-response.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 
@@ -16,6 +17,8 @@ export class UsersService {
     private preferencesRepository: Repository<UserPreferences>,
     @InjectRepository(Event)
     private eventRepository: Repository<Event>,
+    @InjectRepository(EventResponse)
+    private eventResponseRepository: Repository<EventResponse>,
   ) {}
 
   async getMe(userId: string) {
@@ -127,6 +130,24 @@ export class UsersService {
       order: { createdAt: 'DESC' },
     });
 
-    return events;
+    if (events.length === 0) {
+      return [];
+    }
+
+    const eventIds = events.map((event) => event.id);
+    const responses = await this.eventResponseRepository.find({
+      where: {
+        eventId: In(eventIds),
+        userId,
+      },
+      select: ['eventId'],
+    });
+
+    const answeredEventIds = new Set(responses.map((response) => response.eventId));
+
+    return events.map((event) => ({
+      ...event,
+      hasAnsweredCurrentUser: answeredEventIds.has(event.id),
+    }));
   }
 }

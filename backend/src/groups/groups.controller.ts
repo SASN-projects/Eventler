@@ -21,6 +21,11 @@ export class GroupsController {
     return await this.groupsService.findAll(req.user.sub);
   }
 
+  @Get(':id/events')
+  async findEvents(@Request() req: AuthRequest, @Param('id') id: string) {
+    return await this.groupsService.findGroupEvents(id, req.user.sub);
+  }
+
   @Get(':id')
   async findOne(@Request() req: AuthRequest, @Param('id') id: string) {
     return await this.groupsService.findOne(id, req.user.sub);

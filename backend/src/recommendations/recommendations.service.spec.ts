@@ -4,6 +4,7 @@ import { RecommendationsService } from './recommendations.service';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
 import { RecommendationPromptContextBuilder } from './recommendation-prompt-context.builder';
+import { RecommendationHistoryService } from './recommendation-history.service';
 import { RECOMMENDATION_PROMPT_NAME, RECOMMENDATION_FALLBACK_TEMPLATE, compileTemplate } from './recommendations.service';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
@@ -67,6 +68,7 @@ describe('RecommendationsService', () => {
   let geminiServiceMock: any;
   let judgeServiceMock: any;
   let promptContextBuilderMock: any;
+  let historyServiceMock: any;
   let mockTrace: ILangfuseTrace;
 
   beforeEach(async () => {
@@ -82,6 +84,7 @@ describe('RecommendationsService', () => {
       save: jest.fn((entities) =>
         entities.map((e: any, idx: number) => ({ id: `rec-${idx + 1}`, ...e })),
       ),
+      findOne: jest.fn(),
     };
 
     slideAnswerServiceMock = {
@@ -116,13 +119,44 @@ describe('RecommendationsService', () => {
 
     // Default context builder returns a minimal but complete context.
     promptContextBuilderMock = {
-      build: jest.fn().mockReturnValue({
+      build: jest.fn().mockImplementation((input: any, answers: any, history: any, options: any) => ({
         eventCoreContext: 'Event Type: casual',
-        userPreferencesSummary: 'No explicit user preferences were provided.',
+        userPreferencesSummary: options?.preferenceScope === 'group'
+          ? 'Current/provisional group preference summary (highest priority after hard constraints):\n- Vibe: Relaxed (2/3 responses)'
+          : 'No explicit user preferences were provided.',
         constraintsSummary: 'Location: New York, USA.',
-        optionalSignalsSummary: 'No additional optional signals were provided.',
-        recommendationPolicy: 'Hard constraints first.',
+        optionalSignalsSummary:
+          history?.summaryText ||
+          (options?.preferenceScope === 'group'
+            ? 'No historical group selection data is available.'
+            : 'No historical user selection data is available.'),
+        recommendationPolicy:
+          options?.preferenceScope === 'group'
+            ? 'Hard constraints first. Current/provisional group preference summary before historical group preferences.'
+            : 'Hard constraints first. Historical preferences are secondary.',
         outputFormatInstructions: 'Return JSON with key "recommendedEvents".',
+      })),
+    };
+
+    // Default history service returns the no-history fallback.
+    historyServiceMock = {
+      getHistorySignal: jest.fn().mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 0,
+        historySignalUsed: false,
+        dominantEventTypes: [],
+        preferredLocations: [],
+        preferredCategories: [],
+        summaryText: 'No historical user selection data is available.',
+      }),
+      getHistorySummary: jest.fn().mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 0,
+        historySignalUsed: false,
+        dominantEventTypes: [],
+        preferredLocations: [],
+        preferredCategories: [],
+        summaryText: 'No historical user selection data is available.',
       }),
     };
 
@@ -145,6 +179,7 @@ describe('RecommendationsService', () => {
         { provide: GeminiService, useValue: geminiServiceMock },
         { provide: RecommendationJudgeService, useValue: judgeServiceMock },
         { provide: RecommendationPromptContextBuilder, useValue: promptContextBuilderMock },
+        { provide: RecommendationHistoryService, useValue: historyServiceMock },
         { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compile();
@@ -166,14 +201,14 @@ describe('RecommendationsService', () => {
     expect(result.data?.[0].title).toBe('Event 1');
 
     // Langfuse trace created with correct userId and sessionId
-     
+
     expect(langfuseServiceMock.trace).toHaveBeenCalledWith(
       'generate-recommendations',
       expect.objectContaining({ userId: 'user-123', sessionId: 'test-event-uuid' }),
     );
 
     // DB save was called
-     
+
     expect(recommendationRepositoryMock.save).toHaveBeenCalled();
   });
 
@@ -187,6 +222,42 @@ describe('RecommendationsService', () => {
 
     expect(result.success).toBe(false);
     expect(langfuseServiceMock.trace).not.toHaveBeenCalled();
+  });
+
+  it('marks the event as finalized when a recommendation is selected', async () => {
+    const event = makeEvent({ status: 'collecting_responses' });
+    eventRepositoryMock.findOne.mockResolvedValue(event);
+    recommendationRepositoryMock.findOne.mockResolvedValue({
+      id: 'rec-1',
+      title: 'Event 1',
+      description: 'Desc 1',
+      address: 'Addr 1',
+    });
+
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'user-123');
+
+    expect(result.success).toBe(true);
+    expect(eventRepositoryMock.save).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'finalized',
+      finalizedAt: expect.any(Date),
+    }));
+  });
+
+  it('blocks non-creators from selecting a recommendation', async () => {
+    const event = makeEvent({ status: 'collecting_responses', createdById: 'creator-1' });
+    eventRepositoryMock.findOne.mockResolvedValue(event);
+    recommendationRepositoryMock.findOne.mockResolvedValue({
+      id: 'rec-1',
+      title: 'Event 1',
+      description: 'Desc 1',
+      address: 'Addr 1',
+    });
+
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'other-user');
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Only the event creator');
+    expect(eventRepositoryMock.save).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
@@ -223,10 +294,12 @@ describe('RecommendationsService', () => {
       geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
       recommendationRepositoryMock.save.mockRejectedValue(new Error('DB connection lost'));
 
-      // Each retry creates a new span mock; collect all span mocks via the trace mock
+      // Collect all span mocks, tagged by name so we can isolate persist spans.
+      // (The retrieve-user-history span is also created here, so we cannot use index-based filtering.)
       const spanMocks: ILangfuseSpan[] = [];
-      (mockTrace.span as jest.Mock).mockImplementation(() => {
+      (mockTrace.span as jest.Mock).mockImplementation((opts: any) => {
         const s = makeSpanMock();
+        (s as any).__name = opts.name;
         spanMocks.push(s);
         return s;
       });
@@ -236,8 +309,12 @@ describe('RecommendationsService', () => {
       // Should have failed all retries → success: false
       expect(result.success).toBe(false);
 
-      // Every persist span (one per attempt) should have ended with ERROR
-      const persistSpans = spanMocks.filter((_, idx) => idx > 0 || spanMocks.length === 1);
+      // Isolate only persist-recommendations spans (one per retry attempt)
+      const persistSpans = spanMocks.filter(
+        (s) => (s as any).__name === 'persist-recommendations',
+      );
+      expect(persistSpans.length).toBeGreaterThan(0);
+
       for (const span of persistSpans) {
         // eslint-disable-next-line @typescript-eslint/unbound-method
         expect(span.end).toHaveBeenCalledWith(
@@ -483,8 +560,505 @@ describe('RecommendationsService', () => {
 
 
   // -------------------------------------------------------------------------
-  // Langfuse Prompt Management — promptSource and promptVersion metadata
+  // History signal tests
   // -------------------------------------------------------------------------
+  describe('retrieve-user-history span', () => {
+    it('creates a retrieve-user-history span for each recommendation generation', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const spanNames = (mockTrace.span as jest.Mock).mock.calls.map(
+        (call: any[]) => call[0].name,
+      );
+      expect(spanNames).toContain('retrieve-user-history');
+    });
+
+    it('retrieve-user-history span output contains only aggregate metadata (not raw titles)', async () => {
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 3,
+        historySignalUsed: true,
+        dominantEventTypes: ['individual'],
+        preferredLocations: ['Tel Aviv'],
+        preferredCategories: ['restaurant'],
+        summaryText: 'Historical user preference signals (secondary)...',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const spanMocks: ILangfuseSpan[] = [];
+      (mockTrace.span as jest.Mock).mockImplementation((opts: any) => {
+        const s = makeSpanMock();
+        spanMocks.push(s);
+        // tag the mock so we can identify the history span
+        (s as any).__name = opts.name;
+        return s;
+      });
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const historySpan = spanMocks.find((s) => (s as any).__name === 'retrieve-user-history');
+      expect(historySpan).toBeDefined();
+
+      const endCall = (historySpan!.end as jest.Mock).mock.calls[0][0];
+      const serialized = JSON.stringify(endCall);
+
+      // Aggregate metadata is present
+      expect(endCall.output.historyItemsCount).toBe(3);
+      expect(endCall.output.historySignalUsed).toBe(true);
+
+      // Raw sensitive content is NOT present
+      expect(serialized).not.toContain('Historical user preference signals');
+      expect(serialized).not.toContain('summaryText');
+      expect(serialized).not.toContain('Raw Title');
+    });
+
+    it('generation succeeds when history lookup throws an unexpected error', async () => {
+      historyServiceMock.getHistorySignal.mockRejectedValue(
+        new Error('Unexpected history error'),
+      );
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('history span ends with ERROR level when getHistorySignal throws', async () => {
+      historyServiceMock.getHistorySignal.mockRejectedValue(new Error('DB crash'));
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const spanMocks: ILangfuseSpan[] = [];
+      (mockTrace.span as jest.Mock).mockImplementation((opts: any) => {
+        const s = makeSpanMock();
+        spanMocks.push(s);
+        (s as any).__name = opts.name;
+        return s;
+      });
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const historySpan = spanMocks.find((s) => (s as any).__name === 'retrieve-user-history');
+      expect(historySpan).toBeDefined();
+
+      const endCall = (historySpan!.end as jest.Mock).mock.calls[0][0];
+      expect(endCall.level).toBe('ERROR');
+      expect(endCall.statusMessage).toContain('DB crash');
+    });
+
+    it('passes historySummary to promptContextBuilder.build when history is available', async () => {
+      const mockHistory = {
+        scope: 'user',
+        historyItemsCount: 4,
+        historySignalUsed: true,
+        dominantEventTypes: ['group'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText: 'Historical signals: museum, Berlin.',
+      };
+      historyServiceMock.getHistorySignal.mockResolvedValue(mockHistory);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(promptContextBuilderMock.build).toHaveBeenCalledWith(
+        expect.anything(), // eventInput
+        expect.anything(), // eventAnswers
+        mockHistory,       // historySummary
+        expect.objectContaining({ preferenceScope: 'user' }),
+      );
+    });
+
+    it('creates a retrieve-group-history span and emits only aggregate metadata for group flow', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({
+        eventType: 'group',
+        groupId: 'group-123',
+      }));
+
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'group',
+        historyItemsCount: 2,
+        historySignalUsed: true,
+        dominantEventTypes: ['group'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText: 'Historical group preference signals (secondary)...',
+      });
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const spanMocks: ILangfuseSpan[] = [];
+      (mockTrace.span as jest.Mock).mockImplementation((opts: any) => {
+        const s = makeSpanMock();
+        spanMocks.push(s);
+        (s as any).__name = opts.name;
+        return s;
+      });
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const historySpan = spanMocks.find((s) => (s as any).__name === 'retrieve-group-history');
+      expect(historySpan).toBeDefined();
+
+      const endCall = (historySpan!.end as jest.Mock).mock.calls[0][0];
+      expect(endCall.output.historyScope).toBe('group');
+      expect(endCall.output.historyItemsCount).toBe(2);
+      expect(JSON.stringify(endCall)).not.toContain('Historical group preference signals');
+      expect(JSON.stringify(endCall)).not.toContain('Raw Title');
+    });
+
+    it('Gemini receives prompt that includes historical signal when history is available', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 2,
+        historySignalUsed: true,
+        dominantEventTypes: ['individual'],
+        preferredLocations: ['Paris'],
+        preferredCategories: ['cafe'],
+        summaryText:
+          'Historical user preference signals (secondary):\n- User often selected cafe-related recommendations.',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+      expect(prompt).toContain('secondary');
+      expect(prompt).toContain('cafe-related');
+    });
+
+    it('Gemini receives prompt with no-history fallback when history is empty', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 0,
+        historySignalUsed: false,
+        dominantEventTypes: [],
+        preferredLocations: [],
+        preferredCategories: [],
+        summaryText: 'No historical user selection data is available.',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+      expect(prompt).toContain('No historical user selection data is available.');
+    });
+
+    it('API response shape is unchanged after adding history signal', async () => {
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      const result = await service.generateRecommendation('test-event-uuid');
+
+      expect(result.success).toBe(true);
+      expect(Array.isArray(result.data)).toBe(true);
+      const item = result.data![0];
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('description');
+      expect(item).toHaveProperty('address');
+      // No extra fields leaked from history
+      expect(item).not.toHaveProperty('historySummary');
+      expect(item).not.toHaveProperty('historySignalUsed');
+    });
+
+    it('prompt policy contains priority order: constraints > preferences > historical', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+      // Policy must state the priority order explicitly
+      expect(prompt.toLowerCase()).toContain('hard constraints');
+      expect(prompt.toLowerCase()).toContain('secondary');
+      expect(prompt.toLowerCase()).toContain('must never override');
+    });
+
+    it('group flow uses group history and current/provisional group preference summary, not raw member answers', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+
+      eventRepositoryMock.findOne.mockResolvedValue(
+        makeEvent({
+          eventType: 'group',
+          groupId: 'group-123',
+        }),
+      );
+
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Vibe', answerValue: 'Energetic' },
+        { question: 'Budget', answerValue: 'Medium' },
+      ]);
+
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'group',
+        historyItemsCount: 2,
+        historySignalUsed: true,
+        dominantEventTypes: ['group'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText:
+          'Historical group preference signals (secondary):\n- This group often selected museum-related recommendations.',
+      });
+
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(historyServiceMock.getHistorySignal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: 'group',
+          subjectId: 'group-123',
+          currentEventId: 'test-event-uuid',
+        }),
+      );
+
+      const promptCall = (promptContextBuilderMock.build as jest.Mock).mock.calls[0];
+      expect(promptCall[3]).toEqual(expect.objectContaining({ preferenceScope: 'group' }));
+      // Must use provisional/current wording — not finalized group answers
+      expect(promptCall[3].currentPreferencesSummary).toContain('Current/provisional group preference summary');
+      expect(promptCall[3].currentPreferencesSummary).not.toContain('Final group answers/preferences');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      expect(geminiCallArg.prompt).toContain('Historical group preference signals');
+      expect(geminiCallArg.prompt).toContain('Current/provisional group preference summary');
+      expect(geminiCallArg.prompt).not.toContain('answerValue: Relaxed');
+    });
+
+    it('group prompt policy uses current/provisional group preference summary as second priority', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123' }));
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Vibe', answerValue: 'Relaxed' },
+      ]);
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+
+      // Policy must state group priority order with provisional/current wording
+      expect(prompt.toLowerCase()).toContain('hard constraints');
+      expect(prompt.toLowerCase()).toContain('current/provisional group preference summary');
+      expect(prompt.toLowerCase()).toContain('historical group preference signals');
+      expect(prompt.toLowerCase()).toContain('secondary');
+      // Must NOT use finalized wording
+      expect(prompt.toLowerCase()).not.toContain('final group answers/preferences');
+    });
+
+    it('group history is secondary to the current/provisional group preference summary', async () => {
+      const realBuilder = new RecommendationPromptContextBuilder();
+      promptContextBuilderMock.build.mockImplementation(
+        (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
+      );
+
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123' }));
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Vibe', answerValue: 'Relaxed' },
+      ]);
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'group',
+        historyItemsCount: 3,
+        historySignalUsed: true,
+        dominantEventTypes: ['group'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText:
+          'Historical group preference signals (secondary — must not override current-event preferences):\n- This group often selected museum-related recommendations.\n- These signals are SECONDARY.',
+      });
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      const geminiCallArg = geminiServiceMock.generateJsonContent.mock.calls[0][0];
+      const prompt: string = geminiCallArg.prompt;
+
+      // Both the provisional current summary and the historical signal must be in the prompt
+      expect(prompt).toContain('Current/provisional group preference summary');
+      expect(prompt).toContain('Historical group preference signals');
+      // History is explicitly secondary
+      expect(prompt.toLowerCase()).toContain('secondary');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // LLM Judge — history signal passed to judge
+  // -------------------------------------------------------------------------
+  describe('LLM Judge — history signal integration', () => {
+    it('passes historySummaryText to judge when history is available', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 3,
+        historySignalUsed: true,
+        dominantEventTypes: ['individual'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText: 'Historical signals: museum in Berlin.',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(judgeServiceMock.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          historySummaryText: 'Historical signals: museum in Berlin.',
+        }),
+        mockTrace,
+      );
+    });
+
+    it('does not pass historySummaryText to judge when history is empty', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'user',
+        historyItemsCount: 0,
+        historySignalUsed: false,
+        dominantEventTypes: [],
+        preferredLocations: [],
+        preferredCategories: [],
+        summaryText: 'No historical user selection data is available.',
+      });
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(judgeServiceMock.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          historySummaryText: 'No historical user selection data is available.',
+        }),
+        mockTrace,
+      );
+    });
+
+    it('passes minimized group context to judge without raw member answers', async () => {
+      judgeServiceMock.shouldSample.mockReturnValue(true);
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({
+        eventType: 'group',
+        groupId: 'group-123',
+      }));
+      slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
+        { question: 'Vibe', answerValue: 'Relaxed' },
+        { question: 'Vibe', answerValue: 'Energetic' },
+      ]);
+      historyServiceMock.getHistorySignal.mockResolvedValue({
+        scope: 'group',
+        historyItemsCount: 2,
+        historySignalUsed: true,
+        dominantEventTypes: ['group'],
+        preferredLocations: ['Berlin'],
+        preferredCategories: ['museum'],
+        summaryText: 'Historical group preference signals (secondary)...',
+      });
+      geminiServiceMock.generateJsonContent.mockResolvedValue(threeRecommendations);
+
+      await service.generateRecommendation('test-event-uuid');
+
+      expect(judgeServiceMock.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preferenceScope: 'group',
+          currentPreferencesSummary: expect.stringContaining('Current/provisional group preference summary'),
+          userPreferences: [],
+          historyScope: 'group',
+          historySummaryText: 'Historical group preference signals (secondary)...',
+        }),
+        mockTrace,
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Group history wording
+  // -------------------------------------------------------------------------
+  describe('group history wording', () => {
+    it('group history summary text says "This group..." not "User..." for categories', async () => {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const { RecommendationHistoryService: RealHistoryService } =
+        require('./recommendation-history.service') as typeof import('./recommendation-history.service');
+      const { getRepositoryToken: getToken } = require('@nestjs/typeorm') as typeof import('@nestjs/typeorm');
+      const { Event: EventEntity } = require('../events/entities/event.entity') as typeof import('../events/entities/event.entity');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+
+      // Build a fake event repository that returns two group events with matching recommendation titles
+      const fakeQb: any = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          {
+            id: 'e1', groupId: 'group-123', createdById: 'u1',
+            eventType: 'group', locationCity: 'Berlin', locationCountry: 'Germany',
+            finalizedAt: new Date(), createdAt: new Date(),
+            recommendation: { id: 'r1', title: 'Museum Evening', description: '', address: '' },
+          },
+          {
+            id: 'e2', groupId: 'group-123', createdById: 'u2',
+            eventType: 'group', locationCity: 'Berlin', locationCountry: 'Germany',
+            finalizedAt: new Date(), createdAt: new Date(),
+            recommendation: { id: 'r2', title: 'Art Museum Tour', description: '', address: '' },
+          },
+        ]),
+      };
+      const fakeEventRepo = { createQueryBuilder: jest.fn().mockReturnValue(fakeQb) };
+
+      const testMod = await Test.createTestingModule({
+        providers: [
+          RealHistoryService,
+          { provide: getToken(EventEntity), useValue: fakeEventRepo },
+        ],
+      }).compile();
+
+      const realHistorySvc = testMod.get<InstanceType<typeof RealHistoryService>>(RealHistoryService);
+      const result = await realHistorySvc.getHistorySignal({
+        scope: 'group',
+        subjectId: 'group-123',
+        currentEventId: 'other-event',
+      });
+
+      // Category sentence must say "This group often selected...", not "User often selected..."
+      expect(result.summaryText).toContain('This group often selected');
+      expect(result.summaryText).not.toMatch(/^- User often selected/m);
+    });
+  });
+
   describe('Langfuse Prompt Management metadata', () => {
     it('passes promptSource: "fallback" to Gemini metadata when getPrompt returns fallback', async () => {
       langfuseServiceMock.getPrompt.mockResolvedValue({

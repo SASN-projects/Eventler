@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SlideAnswer } from './entities/slide-answer.entity';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
 import { SliderQuestion } from './entities/slider-question.entity';
 import { EventResponse } from '../events/entities/event-response.entity';
+import { Event } from '../events/entities/event.entity';
+import { EventStatus } from '../events/enums/event-status.enum';
 import { User } from '../auth/entities/user.entity';
+import { Group } from '../groups/entities/group.entity';
+import { EventType } from '../events/enums/event.enums';
 
 @Injectable()
 export class SlidesService {
@@ -16,8 +20,12 @@ export class SlidesService {
     private eventResponseRepository: Repository<EventResponse>,
     @InjectRepository(SliderQuestion)
     private sliderQuestionRepository: Repository<SliderQuestion>,
+    @InjectRepository(Event)
+    private eventRepository: Repository<Event>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Group)
+    private groupRepository: Repository<Group>,
   ) { }
 
   async getSlides(userId: string, vibes?: string[]): Promise<SliderQuestion[]> {
@@ -124,15 +132,16 @@ export class SlidesService {
 
     // 8. Select follow-ups to fill up to 6 questions total (vibe + preferred + follow-ups)
     const targetTotal = 6;
-    const needed = Math.max(0, targetTotal - (vibeQuestion ? 1 : 0) - preferredQuestions.length);
+    const includeVibe = (vibeQuestion && (!vibes || vibes.length === 0)) ? 1 : 0;
+    const needed = Math.max(0, targetTotal - includeVibe - preferredQuestions.length);
     const selectedFollowUps = shuffledFollowUps.slice(0, needed);
 
     // 9. Assemble final list in the correct logical order:
-    //    - What's your vibe? (First)
+    //    - What's your vibe? (First, if not already filtered)
     //    - Preferred questions
     //    - Tag-based follow-ups
     const resultQuestions: SliderQuestion[] = [];
-    if (vibeQuestion) {
+    if (vibeQuestion && includeVibe) {
       resultQuestions.push(vibeQuestion);
     }
     resultQuestions.push(...preferredQuestions);
@@ -155,27 +164,79 @@ export class SlidesService {
     userId: string,
     createSlideAnswersDto: CreateSlideAnswersDto,
   ) {
-    // ensure the (connected) user exists and fetch their data
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User with id ${userId} not found`);
     }
-    const answers = createSlideAnswersDto.answers.map((answer) =>
-      this.eventResponseRepository.create({
+
+    const event = await this.eventRepository.findOne({ where: { id: eventId } });
+    if (!event) {
+      throw new NotFoundException(`Event with id ${eventId} not found`);
+    }
+
+    const existingResponses = await this.eventResponseRepository.find({
+      where: { eventId, userId },
+    });
+
+    if (existingResponses.length > 0) {
+      throw new BadRequestException('You have already submitted your slide answers for this event.');
+    }
+
+    const answersToSave = createSlideAnswersDto.answers.map((answer) => {
+      const normalizedWeight = typeof answer.weight === 'number' ? answer.weight : 0;
+
+      return this.eventResponseRepository.create({
         eventId,
         userId,
         question: answer.question,
         answerValue: answer.answerValue,
-        weight: answer.weight,
-        user, // set relation to the fetched user entity
-      }),
-    );
+        weight: normalizedWeight,
+        user,
+      });
+    });
 
-    await this.eventResponseRepository.save(answers);
+    await this.eventResponseRepository.save(answersToSave);
+
+    // Only transition to RECOMMENDED when all group members have answered (for group events)
+    if (event.eventType === EventType.GROUP && event.groupId) {
+      const group = await this.groupRepository.findOne({
+        where: { id: event.groupId },
+        relations: ['members'],
+      });
+
+      if (group && group.members && group.members.length > 0) {
+        const groupMemberIds = group.members.map((m) => m.userId);
+        const answeredUserIds = new Set(
+          (
+            await this.eventResponseRepository.find({
+              where: { eventId },
+              select: ['userId'],
+            })
+          ).map((r) => r.userId),
+        );
+
+        const allMembersAnswered = groupMemberIds.every((memberId) =>
+          answeredUserIds.has(memberId),
+        );
+
+        if (allMembersAnswered) {
+          await this.eventRepository.update(
+            { id: eventId },
+            { status: EventStatus.RECOMMENDED },
+          );
+        }
+      }
+    } else {
+      // For individual events, immediately transition to RECOMMENDED
+      await this.eventRepository.update(
+        { id: eventId },
+        { status: EventStatus.RECOMMENDED },
+      );
+    }
 
     return {
       message: 'Slide answers submitted successfully',
-      count: answers.length,
+      count: answersToSave.length,
     };
   }
 

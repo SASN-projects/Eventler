@@ -8,29 +8,30 @@ import { createAnswersObject } from "./utils";
 interface SlidesProps {
   questions: Question[];
   handleAnswers: (answers: Answers) => void;
-  onVibeSelect?: (vibe: string) => Promise<void>;
+  initialAnswers?: Answers;
 }
 
 export const Slider: FunctionComponent<SlidesProps> = ({
   questions,
   handleAnswers,
-  onVibeSelect,
+  initialAnswers,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [answers, setAnswers] = useState<Answers>(
-    createAnswersObject(questions),
-  );
+  const [answers, setAnswers] = useState<Answers>({});
 
   useEffect(() => {
-    setAnswers((prevAnswers) => ({
-      ...createAnswersObject(questions),
-      ...prevAnswers,
-    }));
-  }, [questions]);
+    const baseAnswers = initialAnswers ?? createAnswersObject(questions);
+    setAnswers(baseAnswers);
 
-  const handleNext = async (answer: string) => {
-    const isFirstQuestion = currentStepIndex === 0 && questions[0]?.code === 'vibe';
+    const firstUnansweredIndex = questions.findIndex((question) => {
+      const value = baseAnswers[question.label] ?? "";
+      return value === "";
+    });
 
+    setCurrentStepIndex(firstUnansweredIndex >= 0 ? firstUnansweredIndex : 0);
+  }, [questions, initialAnswers]);
+
+  const handleNext = (answer: string) => {
     const updatedAnswers = {
       ...answers,
       [questions[currentStepIndex].label]: answer,
@@ -38,10 +39,6 @@ export const Slider: FunctionComponent<SlidesProps> = ({
 
     if (answer !== "") {
       setAnswers(updatedAnswers);
-    }
-
-    if (isFirstQuestion && onVibeSelect) {
-      await onVibeSelect(answer);
     }
 
     if (currentStepIndex < questions.length - 1) {
@@ -52,6 +49,11 @@ export const Slider: FunctionComponent<SlidesProps> = ({
   };
 
   const currentQuestion = questions[currentStepIndex];
+
+  if (!currentQuestion) {
+    return null;
+  }
+
   const backgroundImage = currentQuestion.imageUrl
     ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.35)), url(${currentQuestion.imageUrl})`
     : "linear-gradient(to right, #aed9ff, #d2b7f5)";

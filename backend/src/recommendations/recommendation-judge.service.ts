@@ -15,7 +15,11 @@ export interface JudgeInput {
   locationCountry: string;
   participantCount: number;
   targetDate: string;
-  /** Actual user preferences. */
+  /** Indicates whether the current event is user-scoped or group-scoped. */
+  preferenceScope: 'user' | 'group';
+  /** Minimized current-event preference summary when raw answers should not be exposed. */
+  currentPreferencesSummary?: string;
+  /** Actual user preferences for individual flow. */
   userPreferences: Array<{
     question: string;
     answerValue: string;
@@ -25,6 +29,14 @@ export interface JudgeInput {
     description: string;
     address: string;
   }>;
+  /**
+   * Safe, aggregated historical preference summary text produced by
+   * RecommendationHistoryService. Never contains raw event/answer content.
+   * Undefined when no history is available.
+   */
+  historySummaryText?: string;
+  /** Scope of the historical summary when provided. */
+  historyScope?: 'user' | 'group';
 }
 
 export interface JudgeScores {
@@ -210,9 +222,27 @@ export class RecommendationJudgeService {
       )
       .join('\n\n');
 
-    const preferenceLines = input.userPreferences && input.userPreferences.length > 0
-      ? input.userPreferences.map((p) => `  - ${p.question}: ${p.answerValue}`).join('\n')
-      : '  No explicit user preferences were provided.';
+    const currentPreferenceLabel = input.preferenceScope === 'group'
+      ? 'Final Group Answers/Preferences (CURRENT GROUP EVENT — highest priority after hard constraints):'
+      : 'User Preferences (CURRENT EVENT — highest priority after hard constraints):';
+
+    const preferenceLines = input.currentPreferencesSummary && input.currentPreferencesSummary.trim().length > 0
+      ? input.currentPreferencesSummary
+      : input.userPreferences && input.userPreferences.length > 0
+        ? input.userPreferences.map((p) => `  - ${p.question}: ${p.answerValue}`).join('\n')
+        : input.preferenceScope === 'group'
+          ? '  No final group answers were provided.'
+          : '  No explicit user preferences were provided.';
+
+    const historicalLabel = input.historyScope === 'group'
+      ? 'Historical Group Preference Signals'
+      : 'Historical User Preference Signals';
+    const historicalFallback = input.historyScope === 'group'
+      ? 'No historical group selection data is available.'
+      : 'No historical user selection data is available.';
+    const historicalSignalSection = input.historySummaryText
+      ? `${historicalLabel} (SECONDARY — must not override current-event preferences):\n${input.historySummaryText}`
+      : `${historicalLabel}: ${historicalFallback}`;
 
     return `You are an expert event planning evaluator.
 Evaluate the following event recommendations against the event context and return ONLY a valid JSON object — no markdown, no explanation outside the JSON.
@@ -222,11 +252,21 @@ Event Context:
 - Location: ${input.locationCity}, ${input.locationCountry}
 - Date: ${input.targetDate}
 - Participants: ${input.participantCount}
-- User Preferences:
+${currentPreferenceLabel}
 ${preferenceLines}
+
+${historicalSignalSection}
 
 Generated Recommendations:
 ${recLines}
+
+Priority order used during generation: (1) hard constraints, (2) current-event explicit preferences or final group answers, (3) historical signals (secondary).
+
+Note: Historical preference signals are a SECONDARY input that must never override explicit current-event preferences.
+When scoring preference_alignment:
+- Score LOWER if recommendations appear to ignore current-event explicit preferences or final group answers in favour of historical behavior.
+- Score LOWER if recommendations overfit to history at the expense of current-event context.
+- Score HIGHER if recommendations respect current-event preferences first, then appropriately incorporate history as variety.
 
 Score each criterion on a scale of 0 to 1 (0=poor, 1=excellent).
 For hallucination_risk, use one of: "low", "medium", or "high".
