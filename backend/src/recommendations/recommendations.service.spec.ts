@@ -200,13 +200,30 @@ describe('RecommendationsService', () => {
       address: 'Addr 1',
     });
 
-    const result = await service.selectRecommendation('test-event-uuid', 'rec-1');
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'user-123');
 
     expect(result.success).toBe(true);
     expect(eventRepositoryMock.save).toHaveBeenCalledWith(expect.objectContaining({
       status: 'finalized',
       finalizedAt: expect.any(Date),
     }));
+  });
+
+  it('blocks non-creators from selecting a recommendation', async () => {
+    const event = makeEvent({ status: 'collecting_responses', createdById: 'creator-1' });
+    eventRepositoryMock.findOne.mockResolvedValue(event);
+    recommendationRepositoryMock.findOne.mockResolvedValue({
+      id: 'rec-1',
+      title: 'Event 1',
+      description: 'Desc 1',
+      address: 'Addr 1',
+    });
+
+    const result = await service.selectRecommendation('test-event-uuid', 'rec-1', 'other-user');
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Only the event creator');
+    expect(eventRepositoryMock.save).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------

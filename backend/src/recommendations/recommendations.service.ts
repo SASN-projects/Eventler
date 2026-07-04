@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -352,7 +352,7 @@ export class RecommendationsService {
     };
   }
 
-  async selectRecommendation(eventId: string, recommendationId: string): Promise<GenerateRecommendationResponse> {
+  async selectRecommendation(eventId: string, recommendationId: string, userId?: string): Promise<GenerateRecommendationResponse> {
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
@@ -362,6 +362,13 @@ export class RecommendationsService {
       return {
         success: false,
         message: `Event with id ${eventId} not found`,
+      };
+    }
+
+    if (userId && event.createdById && event.createdById !== userId) {
+      return {
+        success: false,
+        message: 'Only the event creator can choose a recommendation for this event.',
       };
     }
 

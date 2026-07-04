@@ -9,7 +9,8 @@ import {
   ParticipantAvatar,
   OverflowAvatar,
 } from "./slidingPages/profile.styles";
-import type { FunctionComponent } from "react";
+import { AuthContext } from "../contexts/AuthContext";
+import { useContext, type FunctionComponent } from "react";
 
 interface EventCardProps {
   event: any;
@@ -20,7 +21,14 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   event,
   onContinue,
 }) => {
+  const auth = useContext(AuthContext);
   const hasRecommendation = !!event.recommendation;
+  const normalizedStatus = (event.status || "").toLowerCase();
+  const currentUserId = auth?.user?.id;
+  const isEventCreator = Boolean(
+    currentUserId &&
+      (event.createdById === currentUserId || event.creator?.id === currentUserId),
+  );
   const title = hasRecommendation
     ? event.recommendation.title
     : event.title || "Custom Event";
@@ -34,9 +42,9 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const timeStr = formatTimeRange(event.targetDateFrom, event.targetDateTo);
   const participantCount = event.participantCount || 1;
   const remainingParticipants = participantCount > 3 ? participantCount - 3 : 0;
-  const canContinue = ["draft", "collecting_responses", "recommended"].includes(
-    (event.status || "").toLowerCase(),
-  );
+  const canContinue =
+    ["draft", "collecting_responses"].includes(normalizedStatus) ||
+    (normalizedStatus === "recommended" && isEventCreator);
 
   return (
     <HistoryCard>
@@ -151,12 +159,14 @@ const EventCard: FunctionComponent<EventCardProps> = ({
             <Chip
               label={
                 canContinue
-                  ? (event.status || "").toLowerCase() === "recommended"
+                  ? normalizedStatus === "recommended"
                     ? "Ready to Review"
                     : "In Progress"
                   : hasRecommendation
                     ? "Recommendation Selected"
-                    : "Created Event"
+                    : normalizedStatus === "recommended"
+                      ? "Shared Event"
+                      : "Created Event"
               }
               size="small"
               sx={{

@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Request, UseGuards } from '@nestjs/common';
 import { RecommendationsService } from './recommendations.service';
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
 // import { CreateRecommendationDto } from './dto/create-recommendation.dto';
 
 @Controller('recommendations')
-// @UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard)
 export class RecommendationsController {
   constructor(private readonly recommendationsService: RecommendationsService) {}
 
@@ -24,8 +25,12 @@ export class RecommendationsController {
   }
 
   @Post('events/:eventId/select/:recommendationId')
-  async selectRecommendation(@Param('eventId') eventId: string, @Param('recommendationId') recommendationId: string) {
-    return await this.recommendationsService.selectRecommendation(eventId, recommendationId);
+  async selectRecommendation(
+    @Request() req: AuthRequest,
+    @Param('eventId') eventId: string,
+    @Param('recommendationId') recommendationId: string,
+  ) {
+    return await this.recommendationsService.selectRecommendation(eventId, recommendationId, req.user.sub);
   }
 
   // @Post('for-event/:eventId')

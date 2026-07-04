@@ -1,8 +1,10 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import { Box, CircularProgress, Fade, Typography } from '@mui/material';
-import { type FunctionComponent, useState } from 'react';
+import { type FunctionComponent, useContext, useEffect, useState } from 'react';
+import api from '../../config/api';
 import { PrimeButton } from '../../components/buttons';
+import { AuthContext } from '../../contexts/AuthContext';
 import { GOOD_MATCH_SUBTITLE, SLIDING_COMPLETED_TITLE, START_NEW_EVENT_BTN } from './consts';
 import { LocationContainer, RecommendationCard, RecommendationContainer, RecommendationDescription, RecommendationName } from './styles';
 import type { Recommendation } from './types';
@@ -15,12 +17,41 @@ interface RecommendationsProps {
 }
 
 export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendations, onRestart, eventId }) => {
+    const auth = useContext(AuthContext);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [canSelectRecommendation, setCanSelectRecommendation] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadEventAccess = async () => {
+            try {
+                const { data } = await api.get(`/events/${eventId}`);
+                if (!isMounted) return;
+
+                const creatorId = data?.createdById ?? data?.creator?.id;
+                setCanSelectRecommendation(Boolean(creatorId) && auth?.user?.id === creatorId);
+            } catch {
+                if (isMounted) {
+                    setCanSelectRecommendation(false);
+                }
+            }
+        };
+
+        void loadEventAccess();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [auth?.user?.id, eventId]);
 
     const handleSubmitSelection = async (recommendationId: string) => {
+        if (!canSelectRecommendation) {
+            return;
+        }
         setIsSubmitting(true);
         try {
             await postSelectedRecommendation(eventId, recommendationId);
@@ -72,7 +103,11 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
                 $isSelected={isSelected}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}
-                onClick={() => setSelectedIndex(index)}
+                onClick={() => {
+                    if (canSelectRecommendation) {
+                        setSelectedIndex(index);
+                    }
+                }}
             >
                 <RecommendationName $isSelected={isSelected}>
                     {recommendation.title}
@@ -121,15 +156,24 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
                             transition: 'all 0.4s ease-in-out',
                             width: '100%',
                             display: 'flex',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 1
                         }}
                     >
-                        <PrimeButton
-                            onClick={() => handleSubmitSelection(recommendation.id)}
-                            sx={{ marginTop: '8px', padding: '8px 16px', fontSize: '14px' }}
-                        >
-                            that's my event
-                        </PrimeButton>
+                        {canSelectRecommendation ? (
+                            <PrimeButton
+                                onClick={() => handleSubmitSelection(recommendation.id)}
+                                sx={{ marginTop: '8px', padding: '8px 16px', fontSize: '14px' }}
+                            >
+                                that's my event
+                            </PrimeButton>
+                        ) : (
+                            <Typography sx={{ fontSize: '13px', color: '#718096', textAlign: 'center' }}>
+                                Only the event creator can choose the final recommendation.
+                            </Typography>
+                        )}
                     </Box>
                 </Box>
             </RecommendationCard>
