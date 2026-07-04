@@ -26,6 +26,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import api from "../config/api";
 import { PrimeButton } from "../components/buttons";
 import { AuthContext } from "../contexts/AuthContext";
+import EventCard from "./EventCard";
 import {
   HistoryCard,
   OverflowAvatar,
@@ -165,7 +166,8 @@ const GroupCard: React.FC<{
   group: Group;
   users: Member[];
   onOpen: (id: string) => void;
-}> = ({ group, users, onOpen }) => {
+  onViewEvents: (group: Group) => void;
+}> = ({ group, users, onOpen, onViewEvents }) => {
   const members = normalizeMembers(group.members, users);
 
   return (
@@ -184,7 +186,7 @@ const GroupCard: React.FC<{
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 72px",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
           alignItems: "center",
           columnGap: 2,
           width: "100%",
@@ -213,13 +215,34 @@ const GroupCard: React.FC<{
             {members.length} {members.length === 1 ? "member" : "members"}
           </Typography>
         </Box>
-        <AvatarStack members={members} />
+        <Stack alignItems="flex-end" spacing={1}>
+          <AvatarStack members={members} />
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={(event) => {
+              event.stopPropagation();
+              onViewEvents(group);
+            }}
+            sx={{
+              borderRadius: "999px",
+              textTransform: "none",
+              fontWeight: 700,
+              fontSize: "11px",
+              minWidth: 92,
+            }}
+          >
+            View events
+          </Button>
+        </Stack>
       </Box>
     </HistoryCard>
   );
 };
 
-const GroupsPanel: React.FC = () => {
+const GroupsPanel: React.FC<{
+  onContinueEvent?: (event: { id: string; status?: string }) => void;
+}> = ({ onContinueEvent }) => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<Member[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -236,6 +259,10 @@ const GroupsPanel: React.FC = () => {
   const [detailGroup, setDetailGroup] = useState<Group | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [groupEventsOpen, setGroupEventsOpen] = useState(false);
+  const [groupEvents, setGroupEvents] = useState<any[]>([]);
+  const [groupEventsLoading, setGroupEventsLoading] = useState(false);
+  const [currentGroupName, setCurrentGroupName] = useState("");
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editMembers, setEditMembers] = useState<Member[]>([]);
@@ -351,6 +378,31 @@ const GroupsPanel: React.FC = () => {
     } finally {
       setDetailLoading(false);
     }
+  };
+
+  const openGroupEvents = async (group: Group) => {
+    setGroupEventsOpen(true);
+    setGroupEventsLoading(true);
+    setCurrentGroupName(group.name);
+    setGroupEvents([]);
+    setError("");
+
+    try {
+      const { data } = await api.get(`/groups/${group.id}/events`);
+      setGroupEvents(data ?? []);
+    } catch (err) {
+      console.error("Failed to fetch group events", err);
+      setError("Could not load events for this group.");
+    } finally {
+      setGroupEventsLoading(false);
+    }
+  };
+
+  const closeGroupEvents = () => {
+    setGroupEventsOpen(false);
+    setGroupEvents([]);
+    setCurrentGroupName("");
+    setGroupEventsLoading(false);
   };
 
   const createGroup = async () => {
@@ -568,6 +620,7 @@ const GroupsPanel: React.FC = () => {
                 group={group}
                 users={users}
                 onOpen={openGroup}
+                onViewEvents={openGroupEvents}
               />
             ))}
           </Box>
@@ -808,6 +861,42 @@ const GroupsPanel: React.FC = () => {
           ) : (
             <Button onClick={() => setDetailOpen(false)}>Close</Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={groupEventsOpen}
+        onClose={closeGroupEvents}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>{currentGroupName || "Group"} events</DialogTitle>
+        <DialogContent dividers>
+          {groupEventsLoading ? (
+            <Typography sx={{ py: 4, textAlign: "center" }}>
+              Loading events...
+            </Typography>
+          ) : groupEvents.length === 0 ? (
+            <Paper
+              sx={{
+                p: 4,
+                textAlign: "center",
+                borderRadius: "24px",
+                border: "1px dashed rgba(0,0,0,0.12)",
+              }}
+            >
+              No events found for this group.
+            </Paper>
+          ) : (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              {groupEvents.map((event) => (
+                <EventCard key={event.id} event={event} onContinue={onContinueEvent} />
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeGroupEvents}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

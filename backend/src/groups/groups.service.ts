@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import { Event } from '../events/entities/event.entity';
 import { Group } from './entities/group.entity';
 import { GroupMember } from './entities/group-member.entity';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -14,6 +15,8 @@ export class GroupsService {
     private groupRepository: Repository<Group>,
     @InjectRepository(GroupMember)
     private groupMemberRepository: Repository<GroupMember>,
+    @InjectRepository(Event)
+    private eventRepository: Repository<Event>,
   ) {}
 
   private toGroupResponse(group: Group) {
@@ -212,6 +215,31 @@ export class GroupsService {
     }
 
     return this.toGroupResponse(group);
+  }
+
+  async findGroupEvents(id: string, userId: string) {
+    const group = await this.loadGroupWithMembers(id);
+
+    if (!group) {
+      throw new NotFoundException('Group not found');
+    }
+
+    const isMember = group.members.some((member) => member.userId === userId);
+    const isCreator = group.createdById === userId;
+
+    if (!isMember && !isCreator) {
+      throw new ForbiddenException('You are not a member of this group');
+    }
+
+    if (isCreator && !isMember) {
+      await this.ensureCreatorMembership([group]);
+    }
+
+    return await this.eventRepository.find({
+      where: { groupId: id },
+      relations: ['recommendation'],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async update(id: string, userId: string, updateGroupDto: UpdateGroupDto) {

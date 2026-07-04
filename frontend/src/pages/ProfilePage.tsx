@@ -215,7 +215,9 @@ export default function ProfilePage({
               No favorite venues.
             </Paper>
           )}
-          {activeTab === "groups" && <GroupsPanel />}
+          {activeTab === "groups" && (
+            <GroupsPanel onContinueEvent={onContinueEvent} />
+          )}
         </Box>
       </Container>
       <EditProfileDialog
