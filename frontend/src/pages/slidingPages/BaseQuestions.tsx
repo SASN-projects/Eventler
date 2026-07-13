@@ -1,6 +1,4 @@
 import { AccessTime, Group, PlaceOutlined } from "@mui/icons-material";
-import type { ChangeEvent, FunctionComponent } from "react";
-import { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -14,15 +12,17 @@ import {
   ListItemText,
   Typography,
 } from "@mui/material";
-import api from "../../config/api";
+import type { ChangeEvent, FunctionComponent } from "react";
+import { useEffect, useState } from "react";
 import { PrimeButton } from "../../components/buttons";
 import { FieldInput } from "../../components/inputs";
+import api from "../../config/api";
 import { postNewEvent } from "./api";
 import {
   AMOUNT_ERROR_MSG,
-  DEFAULT_PARAMS,
   DECISION_MODE_DESCRIPTION,
   DECISION_MODE_TITLE,
+  DEFAULT_PARAMS,
   GROUP_DECISION_LABEL,
   NEW_EVENT_TITLE,
   PLACE_ERROR_MSG,
@@ -47,10 +47,8 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
 }) => {
   const [baseParams, setBaseParams] =
     useState<SelectionBaseParams>(DEFAULT_PARAMS);
-
-  const now = new Date();
-  now.setSeconds(0, 0);
-
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [createEventError, setCreateEventError] = useState("");
   const [decisionModeDialogOpen, setDecisionModeDialogOpen] = useState(false);
   const [groupSelectionOpen, setGroupSelectionOpen] = useState(false);
   const [groups, setGroups] = useState<
@@ -59,16 +57,13 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
+  const now = new Date();
+  now.setSeconds(0, 0);
+
   const isValidTime = baseParams.time >= now;
   const isValidPlace = baseParams.place.trim() !== "";
   const isValidAmount = baseParams.participantsAmount > 0;
   const isAllValid = isValidTime && isValidAmount && isValidPlace;
-
-  const handleStartSliding = () => {
-    if (isAllValid) {
-      setDecisionModeDialogOpen(true);
-    }
-  };
 
   const loadGroups = async () => {
     setGroupsLoading(true);
@@ -88,6 +83,35 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
     loadGroups();
   }, []);
 
+  const createEvent = async (eventType: string, groupId?: string) => {
+    setIsCreatingEvent(true);
+    setCreateEventError("");
+
+    try {
+      const id = await postNewEvent(
+        baseParams.time,
+        baseParams.place,
+        baseParams.participantsAmount,
+        eventType,
+        groupId,
+      );
+      onComplete(id);
+    } catch (error) {
+      setCreateEventError(
+        error instanceof Error ? error.message : "Could not create the event.",
+      );
+    } finally {
+      setIsCreatingEvent(false);
+    }
+  };
+
+  const handleStartSliding = () => {
+    if (isAllValid) {
+      setCreateEventError("");
+      setDecisionModeDialogOpen(true);
+    }
+  };
+
   const handleDecisionModeSelect = async (mode: "solo" | "group") => {
     setDecisionModeDialogOpen(false);
 
@@ -97,27 +121,14 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
       return;
     }
 
-    const id = await postNewEvent(
-      baseParams.time,
-      baseParams.place,
-      baseParams.participantsAmount,
-      "individual",
-    );
-    onComplete(id);
+    await createEvent("individual");
   };
 
   const handleGroupContinue = async () => {
     if (!selectedGroupId) return;
 
     setGroupSelectionOpen(false);
-    const id = await postNewEvent(
-      baseParams.time,
-      baseParams.place,
-      baseParams.participantsAmount,
-      "group",
-      selectedGroupId,
-    );
-    onComplete(id);
+    await createEvent("group", selectedGroupId);
   };
 
   const setParam = <K extends keyof SelectionBaseParams>(
@@ -174,12 +185,18 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
         />
       </InputsContainer>
 
+      {createEventError && (
+        <Typography color="error" textAlign="center">
+          {createEventError}
+        </Typography>
+      )}
+
       <PrimeButton
         sx={{ m: "30px" }}
         onClick={handleStartSliding}
-        disabled={!isAllValid}
+        disabled={!isAllValid || isCreatingEvent}
       >
-        {START_SLIDING_BTN}
+        {isCreatingEvent ? "Creating..." : START_SLIDING_BTN}
       </PrimeButton>
 
       <Dialog
@@ -197,6 +214,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
             fullWidth
             variant="outlined"
             sx={{ mb: 1, textTransform: "none" }}
+            disabled={isCreatingEvent}
             onClick={() => handleDecisionModeSelect("solo")}
           >
             {SOLO_DECISION_LABEL}
@@ -205,6 +223,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
             fullWidth
             variant="contained"
             sx={{ textTransform: "none" }}
+            disabled={isCreatingEvent}
             onClick={() => handleDecisionModeSelect("group")}
           >
             {GROUP_DECISION_LABEL}
@@ -253,10 +272,10 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
             fullWidth
             variant="contained"
             sx={{ mt: 2, textTransform: "none" }}
-            disabled={!selectedGroupId}
+            disabled={!selectedGroupId || isCreatingEvent}
             onClick={handleGroupContinue}
           >
-            Continue with selected group
+            {isCreatingEvent ? "Creating..." : "Continue with selected group"}
           </Button>
         </DialogContent>
       </Dialog>

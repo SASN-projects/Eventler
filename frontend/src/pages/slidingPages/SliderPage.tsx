@@ -9,12 +9,14 @@ interface SlidesProps {
   questions: Question[];
   handleAnswers: (answers: Answers) => void;
   initialAnswers?: Answers;
+  disabled?: boolean;
 }
 
 export const Slider: FunctionComponent<SlidesProps> = ({
   questions,
   handleAnswers,
   initialAnswers,
+  disabled = false,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Answers>(
@@ -34,9 +36,12 @@ export const Slider: FunctionComponent<SlidesProps> = ({
   }, [questions, initialAnswers]);
 
   const handleNext = (answer: string) => {
+    const question = questions[currentStepIndex];
+    if (!question) return;
+
     const updatedAnswers = {
       ...answers,
-      [questions[currentStepIndex].label]: answer,
+      [question.label]: answer,
     };
 
     if (answer !== "") {
@@ -51,6 +56,10 @@ export const Slider: FunctionComponent<SlidesProps> = ({
   };
 
   const currentQuestion = questions[currentStepIndex];
+  if (!currentQuestion) {
+    return null;
+  }
+
   const backgroundImage = currentQuestion.imageUrl
     ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.35)), url(${currentQuestion.imageUrl})`
     : "linear-gradient(to right, #aed9ff, #d2b7f5)";
@@ -71,6 +80,7 @@ export const Slider: FunctionComponent<SlidesProps> = ({
         title={currentQuestion.label}
         options={currentQuestion.options.map((option) => option.value)}
         onNext={handleNext}
+        disabled={disabled}
       />
     </FullSizeContainer>
   );
