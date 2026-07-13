@@ -1,10 +1,11 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import StarIcon from '@mui/icons-material/Star';
 import { Box, CircularProgress, Fade, Typography } from '@mui/material';
 import { type FunctionComponent, useState } from 'react';
 import { PrimeButton } from '../../components/buttons';
-import { GOOD_MATCH_SUBTITLE, SLIDING_COMPLETED_TITLE, START_NEW_EVENT_BTN } from './consts';
-import { LocationContainer, RecommendationCard, RecommendationContainer, RecommendationDescription, RecommendationName } from './styles';
+import { GOOD_MATCH_SUBTITLE, SLIDING_COMPLETED_TITLE } from './consts';
+import { LocationContainer, RecommendationCard, RecommendationContainer, RecommendationDescription, RecommendationName, RecommendationsGrid } from './styles';
 import type { Recommendation } from './types';
 import { postSelectedRecommendation } from './api';
 
@@ -15,7 +16,6 @@ interface RecommendationsProps {
 }
 
 export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ recommendations, onRestart, eventId }) => {
-    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
@@ -64,74 +64,84 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
 
     const renderRecommendation = (recommendation: Recommendation, index: number) => {
         const isSelected = selectedIndex === index;
-        const isFocused = hoveredIndex === index;
 
         return (
             <RecommendationCard
                 key={index}
                 $isSelected={isSelected}
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex(null)}
                 onClick={() => setSelectedIndex(index)}
             >
+                {recommendation.photoUrl && (
+                    <Box
+                        sx={{
+                            width: '100%',
+                            aspectRatio: '16 / 10',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            backgroundColor: '#f5f7fb'
+                        }}
+                    >
+                        <Box
+                            component="img"
+                            src={recommendation.photoUrl}
+                            alt={recommendation.title}
+                            sx={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                display: 'block'
+                            }}
+                        />
+                    </Box>
+                )}
+
                 <RecommendationName $isSelected={isSelected}>
                     {recommendation.title}
                 </RecommendationName>
 
-                <Box
-                    sx={{
-                        maxHeight: isFocused ? '500px' : '0px',
-                        opacity: isFocused ? 1 : 0,
-                        overflow: 'hidden',
-                        transition: 'all 0.4s ease-in-out',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '8px',
-                        width: '100%',
-                        marginTop: isFocused ? '8px' : '0px'
-                    }}
-                >
-                    <Box
-                        sx={{
-                            maxHeight: isFocused ? '200px' : '0px',
-                            opacity: isFocused ? 1 : 0,
-                            overflow: 'hidden',
-                            transition: 'all 0.4s ease-in-out',
-                            width: '100%'
-                        }}
-                    >
-                        <RecommendationDescription sx={{ fontSize: '15px' }}>
-                            {recommendation.description}
-                        </RecommendationDescription>
-                    </Box>
+                <RecommendationDescription>
+                    {recommendation.description}
+                </RecommendationDescription>
 
-                    <LocationContainer>
-                        <LocationOnIcon fontSize="small" />
-                        <Typography sx={{ fontSize: '14px' }}>
-                            {recommendation.address}
+                {(recommendation.rating || recommendation.userRatingCount) && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#edb53c' }}>
+                        <StarIcon fontSize="small" />
+                        <Typography sx={{ fontSize: '14px', color: 'text.primary' }}>
+                            {recommendation.rating ? recommendation.rating.toFixed(1) : 'Rated'}
+                            {recommendation.userRatingCount ? ` (${recommendation.userRatingCount} reviews)` : ''}
                         </Typography>
-                    </LocationContainer>
+                    </Box>
+                )}
 
-                    <Box
+                <LocationContainer>
+                    <LocationOnIcon fontSize="small" color="primary" />
+                    <Typography
+                        component={recommendation.googleMapsUri ? 'a' : 'span'}
+                        href={recommendation.googleMapsUri}
+                        target={recommendation.googleMapsUri ? '_blank' : undefined}
+                        rel={recommendation.googleMapsUri ? 'noreferrer' : undefined}
                         sx={{
-                            maxHeight: isSelected ? '100px' : '0px',
-                            opacity: isSelected ? 1 : 0,
-                            overflow: 'hidden',
-                            transition: 'all 0.4s ease-in-out',
-                            width: '100%',
-                            display: 'flex',
-                            justifyContent: 'center'
+                            fontSize: '14px',
+                            color: '#1976d2',
+                            textDecoration: recommendation.googleMapsUri ? 'underline' : 'none'
                         }}
                     >
-                        <PrimeButton
-                            onClick={() => handleSubmitSelection(recommendation.id)}
-                            sx={{ marginTop: '8px', padding: '8px 16px', fontSize: '14px' }}
-                        >
-                            that's my event
-                        </PrimeButton>
-                    </Box>
-                </Box>
+                        {recommendation.address}
+                    </Typography>
+                </LocationContainer>
+
+                <Box sx={{ flex: 1 }} />
+
+                <PrimeButton
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedIndex(index);
+                        handleSubmitSelection(recommendation.id);
+                    }}
+                    sx={{ alignSelf: 'center', marginTop: '8px', padding: '8px 16px', fontSize: '14px' }}
+                >
+                    that's my event
+                </PrimeButton>
             </RecommendationCard>
         );
     };
@@ -141,11 +151,9 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({ r
             <Typography sx={{ fontSize: '18px', margin: 0 }}>{SLIDING_COMPLETED_TITLE}</Typography>
             <Typography sx={{ fontSize: '24px', margin: 0, mb: 1 }}>{GOOD_MATCH_SUBTITLE}</Typography>
 
-            {(recommendations || []).map((rec, index) => renderRecommendation(rec, index))}
-
-            <PrimeButton onClick={onRestart} sx={{ marginTop: '16px', padding: '8px 24px' }}>
-                {START_NEW_EVENT_BTN}
-            </PrimeButton>
+            <RecommendationsGrid>
+                {(recommendations || []).map((rec, index) => renderRecommendation(rec, index))}
+            </RecommendationsGrid>
         </RecommendationContainer>
     );
 };

@@ -6,9 +6,10 @@ interface SlideProps {
     title: string;
     options: string[];
     onNext: (s: string) => void;
+    disabled?: boolean;
 }
 
-const Slide: FunctionComponent<SlideProps> = ({ title, options, onNext }) => {
+const Slide: FunctionComponent<SlideProps> = ({ title, options, onNext, disabled = false }) => {
     const [answer, setAnswer] = useState<string>('');
 
     useEffect(() => {
@@ -18,7 +19,9 @@ const Slide: FunctionComponent<SlideProps> = ({ title, options, onNext }) => {
     const renderOption = (value: string) => (
         <OptionBox
             key={value}
-            onClick={() => setAnswer(value)}
+            onClick={() => {
+                if (!disabled) setAnswer(value);
+            }}
             selected={answer === value}
         >
             <OptionText>{value}</OptionText>
@@ -33,7 +36,7 @@ const Slide: FunctionComponent<SlideProps> = ({ title, options, onNext }) => {
                 {options.map(renderOption)}
             </OptionsContainer>
 
-            <PrimeButton sx={{ m: '30px' }} onClick={() => onNext(answer)} disabled={answer === ''}>
+            <PrimeButton sx={{ m: '30px' }} onClick={() => onNext(answer)} disabled={disabled || answer === ''}>
                 Next
             </PrimeButton>
         </SlideContainer>

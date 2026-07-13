@@ -30,9 +30,17 @@ export type DecisionStep = 'base' | 'sliding' | 'recommendation';
 export interface Recommendation {
     id: string;
     title: string;
-    rating?: string;
+    rating?: number;
+    userRatingCount?: number;
     address: string;
     category?: string;
     priceLevel?: string;
     description: string;
+    photoUrl?: string;
+    photoAttributions?: Array<{
+        displayName?: string;
+        uri?: string;
+        photoUri?: string;
+    }>;
+    googleMapsUri?: string;
 }

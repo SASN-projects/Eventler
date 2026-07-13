@@ -22,33 +22,37 @@ export const InputsContainer = styled(Box)({
 
 // RecommendationsPage.tsx styles
 export const RecommendationContainer = styled(FullSizeContainer)({
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     gap: '8px',
-    padding: '16px 0'
+    padding: '24px',
+    overflowY: 'auto'
 });
 
 export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
-    gap: '8px',
-    margin: '4px 16px',
-    padding: '16px 24px',
+    gap: '12px',
+    padding: '16px',
     display: 'flex',
     flexDirection: 'column',
-    borderRadius: '16px',
-    alignItems: 'center',
+    borderRadius: '8px',
+    alignItems: 'stretch',
     backgroundColor: $isSelected ? '#fff8b5' : '#e3f2fd',
-    border: $isSelected ? '4px solid #edb53c' : '4px solid transparent',
+    border: $isSelected ? '3px solid #edb53c' : '3px solid transparent',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     cursor: 'pointer',
-    transition: 'all 0.4s ease-in-out',
-    width: '90%',
-    maxWidth: '700px'
+    transition: 'border-color 0.2s, background-color 0.2s, transform 0.2s',
+    minWidth: 0,
+    height: '100%',
+    '&:hover': {
+        transform: 'translateY(-2px)'
+    }
 }));
 
 export const RecommendationName = styled(Typography)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
-    fontSize: '24px',
+    fontSize: '20px',
     fontWeight: $isSelected  ? 'bold' : 'normal',
     color: $isSelected ? '#edb53c' : '#1976d2',
+    lineHeight: 1.2,
 }));
 
 export const RecommendationCategory = styled(Typography)(({ theme }) => ({
@@ -58,15 +62,29 @@ export const RecommendationCategory = styled(Typography)(({ theme }) => ({
 }));
 
 export const RecommendationDescription = styled(Typography)({
-    fontSize: '17px',
-    textAlign: 'center'
+    fontSize: '15px',
+    textAlign: 'left',
+    lineHeight: 1.45
 });
 
 export const LocationContainer = styled(Box)({
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '8px'
 });
+
+export const RecommendationsGrid = styled(Box)(({ theme }) => ({
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '16px',
+    width: '100%',
+    maxWidth: '1180px',
+    alignItems: 'stretch',
+    [theme.breakpoints.down('md')]: {
+        gridTemplateColumns: '1fr',
+        maxWidth: '560px'
+    }
+}));
 
 export const DetailsContainer = styled(Box)({
     display: 'flex',

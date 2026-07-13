@@ -11,6 +11,7 @@ import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { GooglePlacesService } from './google-places.service';
 import { ConfigService } from '@nestjs/config';
 import { ILangfuseTrace, ILangfuseSpan, NoopLangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 
@@ -65,6 +66,7 @@ describe('RecommendationsService', () => {
   let slideAnswerServiceMock: any;
   let langfuseServiceMock: any;
   let geminiServiceMock: any;
+  let googlePlacesServiceMock: any;
   let judgeServiceMock: any;
   let promptContextBuilderMock: any;
   let mockTrace: ILangfuseTrace;
@@ -106,6 +108,12 @@ describe('RecommendationsService', () => {
       generateJsonContent: jest.fn(),
     };
 
+    googlePlacesServiceMock = {
+      isConfigured: jest.fn().mockReturnValue(false),
+      searchText: jest.fn(),
+      getPhotoUri: jest.fn(),
+    };
+
     // Judge is DISABLED by default in all existing tests to keep them unaffected.
     // Individual judge tests override shouldSample / evaluate as needed.
     judgeServiceMock = {
@@ -143,6 +151,7 @@ describe('RecommendationsService', () => {
         { provide: SlidesService, useValue: slideAnswerServiceMock },
         { provide: LangfuseService, useValue: langfuseServiceMock },
         { provide: GeminiService, useValue: geminiServiceMock },
+        { provide: GooglePlacesService, useValue: googlePlacesServiceMock },
         { provide: RecommendationJudgeService, useValue: judgeServiceMock },
         { provide: RecommendationPromptContextBuilder, useValue: promptContextBuilderMock },
         { provide: ConfigService, useValue: configServiceMock },
@@ -175,6 +184,59 @@ describe('RecommendationsService', () => {
     // DB save was called
      
     expect(recommendationRepositoryMock.save).toHaveBeenCalled();
+  });
+
+  it('returns Google Places recommendations even when photo attachment fails', async () => {
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+    googlePlacesServiceMock.isConfigured.mockReturnValue(true);
+    geminiServiceMock.generateJsonContent.mockResolvedValue({
+      searches: [{ textQuery: 'relaxed restaurants in New York', includedType: 'restaurant' }],
+    });
+    googlePlacesServiceMock.searchText.mockResolvedValue([
+      {
+        id: 'place-1',
+        displayName: 'Place 1',
+        formattedAddress: '1 Main St',
+        description: 'A relaxed neighborhood spot with a leafy patio and a casual dinner menu.',
+        rating: 4.7,
+        userRatingCount: 120,
+        businessStatus: 'OPERATIONAL',
+        primaryType: 'restaurant',
+        searchQuery: 'relaxed restaurants in New York',
+        photoName: 'places/place-1/photos/photo-1',
+      },
+      {
+        id: 'place-2',
+        displayName: 'Place 2',
+        formattedAddress: '2 Main St',
+        rating: 4.6,
+        userRatingCount: 90,
+        businessStatus: 'OPERATIONAL',
+        primaryType: 'restaurant',
+        searchQuery: 'relaxed restaurants in New York',
+        photoName: 'places/place-2/photos/photo-2',
+      },
+      {
+        id: 'place-3',
+        displayName: 'Place 3',
+        formattedAddress: '3 Main St',
+        rating: 4.5,
+        userRatingCount: 80,
+        businessStatus: 'OPERATIONAL',
+        primaryType: 'restaurant',
+        searchQuery: 'relaxed restaurants in New York',
+        photoName: 'places/place-3/photos/photo-3',
+      },
+    ]);
+    googlePlacesServiceMock.getPhotoUri.mockRejectedValue(new Error('photo timeout'));
+
+    const result = await service.generateRecommendation('test-event-uuid');
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(3);
+    expect(result.data?.[0].title).toBe('Place 1');
+    expect(result.data?.[0].description).toBe('A relaxed neighborhood spot with a leafy patio and a casual dinner menu.');
+    expect(geminiServiceMock.generateJsonContent).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------

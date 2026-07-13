@@ -1,4 +1,5 @@
 import { AccessTime, Group, PlaceOutlined } from '@mui/icons-material';
+import { Typography } from '@mui/material';
 import type { ChangeEvent, FunctionComponent } from 'react';
 import { useState } from 'react';
 import { PrimeButton } from '../../components/buttons';
@@ -22,6 +23,8 @@ interface BaseQuestionsProps {
 
 export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseComplete: onComplete }) => {
     const [baseParams, setBaseParams] = useState<SelectionBaseParams>(DEFAULT_PARAMS);
+    const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+    const [createEventError, setCreateEventError] = useState("");
 
     const now = new Date();
     now.setSeconds(0, 0);
@@ -33,8 +36,16 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
 
     const handleStartSliding = async () => {
         if (isAllValid) {
-            const id = await postNewEvent(baseParams.time, baseParams.place, baseParams.participantsAmount);
-            onComplete(id);
+            setIsCreatingEvent(true);
+            setCreateEventError("");
+            try {
+                const id = await postNewEvent(baseParams.time, baseParams.place, baseParams.participantsAmount);
+                onComplete(id);
+            } catch (error) {
+                setCreateEventError(error instanceof Error ? error.message : "Could not create the event.");
+            } finally {
+                setIsCreatingEvent(false);
+            }
         }
     };
 
@@ -87,8 +98,14 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({ onBaseCom
                 />
             </InputsContainer>
 
-            <PrimeButton sx={{ m: '30px' }} onClick={handleStartSliding} disabled={!isAllValid}>
-                {START_SLIDING_BTN}
+            {createEventError && (
+                <Typography color="error" textAlign="center">
+                    {createEventError}
+                </Typography>
+            )}
+
+            <PrimeButton sx={{ m: '30px' }} onClick={handleStartSliding} disabled={!isAllValid || isCreatingEvent}>
+                {isCreatingEvent ? "Creating..." : START_SLIDING_BTN}
             </PrimeButton>
         </BaseQuestionsContainer>
     );

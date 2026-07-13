@@ -87,7 +87,10 @@ export class SlidesService {
       }),
     );
 
-    await this.eventResponseRepository.save(answers);
+    await this.eventResponseRepository.upsert(answers, {
+      conflictPaths: ['eventId', 'userId', 'question'],
+      skipUpdateIfNoValuesChanged: true,
+    });
 
     return {
       message: 'Slide answers submitted successfully',
