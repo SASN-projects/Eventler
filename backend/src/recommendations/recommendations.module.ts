@@ -32,5 +32,3 @@ import { GeminiModule } from '../gemini/gemini.module';
   exports: [RecommendationsService],
 })
 export class RecommendationsModule {}
-
-

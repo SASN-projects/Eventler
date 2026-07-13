@@ -43,16 +43,14 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [slidersQuestions, setSlidersQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [isGeneratingRecommendation, setIsGeneratingRecommendation] =
-    useState(false);
+  const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [existingAnswers, setExistingAnswers] = useState<Answers>({});
   const [hasLoadedResume, setHasLoadedResume] = useState(false);
   const [resumeRequestKey, setResumeRequestKey] = useState<string | null>(null);
   const [eventCreatedById, setEventCreatedById] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState("");
-  const [lastSubmittedAnswers, setLastSubmittedAnswers] =
-    useState<Answers | null>(null);
+  const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<Answers | null>(null);
 
   const fetchQuestions = async () => {
     setIsLoadingQuestions(true);
@@ -91,19 +89,15 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     await loadEventCreator(id);
   };
 
-  const generateRecommendations = async (id: string) => {
+  const loadRecommendations = async (id: string) => {
     const response = await getRecomendationsById(id);
     if (!response.success) {
-      throw new Error(
-        response.message || "Could not generate recommendations. Please try again.",
-      );
+      throw new Error(response.message || "Could not generate recommendations. Please try again.");
     }
 
     const nextRecommendations = Array.isArray(response.data) ? response.data : [];
     if (nextRecommendations.length !== 3) {
-      throw new Error(
-        `Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`,
-      );
+      throw new Error(`Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`);
     }
 
     setRecommendations(nextRecommendations);
@@ -113,13 +107,9 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const handleAnswers = async (answers: Answers) => {
     if (!eventId) return;
 
-    const hasAnsweredAllQuestions = slidersQuestions.every(
-      (question) => answers[question.label],
-    );
+    const hasAnsweredAllQuestions = slidersQuestions.every((question) => answers[question.label]);
     if (!hasAnsweredAllQuestions) {
-      setGenerationError(
-        "Please answer all questions before generating recommendations.",
-      );
+      setGenerationError("Please answer all questions before generating recommendations.");
       return;
     }
 
@@ -141,7 +131,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         return;
       }
 
-      await generateRecommendations(eventId);
+      await loadRecommendations(eventId);
     } catch (error) {
       setRecommendations([]);
       setGenerationError(getErrorMessage(error));
@@ -156,6 +146,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setRecommendations([]);
     setEventId("");
     setExistingAnswers({});
+    setHasLoadedResume(false);
+    setResumeRequestKey(null);
     setIsGeneratingRecommendation(false);
     setIsResuming(false);
     setEventCreatedById(null);
@@ -169,20 +161,18 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         setExistingAnswers({});
         setEventId("");
         setDecisionStep("base");
-        setRecommendations([]);
-        setIsGeneratingRecommendation(false);
-        setGenerationError("");
-        setLastSubmittedAnswers(null);
         setHasLoadedResume(false);
         setResumeRequestKey(null);
         setIsResuming(false);
+        setEventCreatedById(null);
+        setRecommendations([]);
+        setGenerationError("");
+        setLastSubmittedAnswers(null);
         return;
       }
 
       const resumeKey = `${resumeEvent.eventId}:${resumeEvent.mode}`;
-      if (hasLoadedResume && resumeRequestKey === resumeKey) {
-        return;
-      }
+      if (hasLoadedResume && resumeRequestKey === resumeKey) return;
 
       if (hasLoadedResume && resumeRequestKey !== resumeKey) {
         setHasLoadedResume(false);
@@ -195,14 +185,12 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setGenerationError("");
       setLastSubmittedAnswers(null);
       setEventId(resumeEvent.eventId);
-      setDecisionStep(
-        resumeEvent.mode === "recommendations" ? "recommendation" : "sliding",
-      );
+      setDecisionStep(resumeEvent.mode === "recommendations" ? "recommendation" : "sliding");
 
       try {
         if (resumeEvent.mode === "recommendations") {
           await loadEventCreator(resumeEvent.eventId);
-          await generateRecommendations(resumeEvent.eventId);
+          await loadRecommendations(resumeEvent.eventId);
           return;
         }
 
@@ -212,8 +200,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
           getEventDetails(resumeEvent.eventId),
         ]);
 
-        const creatorId =
-          eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+        const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
         const currentUserId = auth?.user?.id ?? null;
         const hasCurrentUserAnswered = Boolean(
           currentUserId &&
@@ -225,7 +212,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
         if (hasCurrentUserAnswered) {
           if (creatorId && creatorId === currentUserId) {
-            await generateRecommendations(resumeEvent.eventId);
+            await loadRecommendations(resumeEvent.eventId);
           } else {
             setDecisionStep("thankYou");
           }
@@ -265,38 +252,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     </LoadingContainer>
   );
 
-  const generationErrorOverlay = generationError && !isGeneratingRecommendation && (
-    <LoadingContainer
-      sx={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(255, 255, 255, 0.88)",
-        zIndex: 10,
-        padding: 3,
-      }}
-    >
-      <LoadingTextContainer>
-        <LoadingTitle>Recommendation failed</LoadingTitle>
-        <LoadingSubtitle sx={{ color: "error.main", maxWidth: 520 }}>
-          {generationError}
-        </LoadingSubtitle>
-      </LoadingTextContainer>
-      <PrimeButton
-        onClick={() => {
-          if (lastSubmittedAnswers) {
-            handleAnswers(lastSubmittedAnswers);
-          }
-        }}
-        disabled={!lastSubmittedAnswers}
-      >
-        Try again
-      </PrimeButton>
-      <PrimeButton variant="text" onClick={() => setGenerationError("")}>
-        Change answers
-      </PrimeButton>
-    </LoadingContainer>
-  );
-
   const slidingStep =
     isLoadingQuestions || isResuming || slidersQuestions.length === 0 ? (
       loadingScreen
@@ -324,7 +279,37 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
             </LoadingTextContainer>
           </LoadingContainer>
         )}
-        {generationErrorOverlay}
+        {generationError && !isGeneratingRecommendation && (
+          <LoadingContainer
+            sx={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(255, 255, 255, 0.88)",
+              zIndex: 10,
+              padding: 3,
+            }}
+          >
+            <LoadingTextContainer>
+              <LoadingTitle>Recommendation failed</LoadingTitle>
+              <LoadingSubtitle sx={{ color: "error.main", maxWidth: 520 }}>
+                {generationError}
+              </LoadingSubtitle>
+            </LoadingTextContainer>
+            <PrimeButton
+              onClick={() => {
+                if (lastSubmittedAnswers) {
+                  handleAnswers(lastSubmittedAnswers);
+                }
+              }}
+              disabled={!lastSubmittedAnswers}
+            >
+              Try again
+            </PrimeButton>
+            <PrimeButton variant="text" onClick={() => setGenerationError("")}>
+              Change answers
+            </PrimeButton>
+          </LoadingContainer>
+        )}
       </>
     );
 
