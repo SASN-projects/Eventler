@@ -6,6 +6,7 @@ import { RecommendationQualityEvaluator } from './recommendation-quality.evaluat
 import { RecommendationJudgeService } from './recommendation-judge.service';
 import { RecommendationPromptContextBuilder } from './recommendation-prompt-context.builder';
 import { RecommendationHistoryService } from './recommendation-history.service';
+import { GooglePlacesService } from './google-places.service';
 import { Recommendation } from './entities/recommendation.entity';
 import { Event } from '../events/entities/event.entity';
 import { Venue } from 'src/venues/entities/venue.entity';
@@ -26,6 +27,7 @@ import { GeminiModule } from '../gemini/gemini.module';
     RecommendationJudgeService,
     RecommendationPromptContextBuilder,
     RecommendationHistoryService,
+    GooglePlacesService,
   ],
   exports: [RecommendationsService],
 })

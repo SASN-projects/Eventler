@@ -1,7 +1,10 @@
 import { CircularProgress } from "@mui/material";
+import axios from "axios";
 import type { FunctionComponent, ReactElement } from "react";
-import { useEffect, useState, useContext } from "react";
+import { useContext, useEffect, useState } from "react";
+import { PrimeButton } from "../../components/buttons";
 import { FullSizeContainer } from "../../components/layouts";
+import { AuthContext } from "../../contexts/AuthContext";
 import BaseQuestions from "./BaseQuestions";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
@@ -9,9 +12,9 @@ import ThankYouPage from "./ThankYouPage";
 import {
   fetchSlidesQuestions,
   getEventAnswers,
+  getEventDetails,
   getRecomendationsById,
   submitAnswers,
-  getEventDetails,
 } from "./api";
 import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
 import {
@@ -26,7 +29,6 @@ import {
   type Question,
   type Recommendation,
 } from "./types";
-import { AuthContext } from "../../contexts/AuthContext";
 
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
@@ -39,47 +41,99 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [eventId, setEventId] = useState("");
   const [decisionStep, setDecisionStep] = useState<DecisionStep>("base");
   const [slidersQuestions, setSlidersQuestions] = useState<Question[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isGeneratingRecommendation, setIsGeneratingRecommendation] =
-    useState<boolean>(false);
-  const [isResuming, setIsResuming] = useState<boolean>(false);
+    useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [existingAnswers, setExistingAnswers] = useState<Answers>({});
   const [hasLoadedResume, setHasLoadedResume] = useState(false);
   const [resumeRequestKey, setResumeRequestKey] = useState<string | null>(null);
   const [eventCreatedById, setEventCreatedById] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState("");
+  const [lastSubmittedAnswers, setLastSubmittedAnswers] =
+    useState<Answers | null>(null);
 
   const fetchQuestions = async () => {
-    const questions = await fetchSlidesQuestions();
-    setSlidersQuestions(questions);
+    setIsLoadingQuestions(true);
+    try {
+      const questions = await fetchSlidesQuestions();
+      setSlidersQuestions(questions);
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  const getErrorMessage = (error: unknown) => {
+    if (axios.isAxiosError<{ message?: string }>(error)) {
+      return error.response?.data?.message || error.message;
+    }
+
+    return error instanceof Error
+      ? error.message
+      : "Could not generate recommendations. Please try again.";
+  };
+
+  const loadEventCreator = async (id: string) => {
+    const eventDetails = await getEventDetails(id);
+    const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+    setEventCreatedById(creatorId);
+    return creatorId;
   };
 
   const onBaseComplete = async (id: string) => {
     setExistingAnswers({});
+    setRecommendations([]);
+    setGenerationError("");
+    setLastSubmittedAnswers(null);
     setDecisionStep("sliding");
     setEventId(id);
-    
-    // Fetch event details to check if current user is creator
-    const eventDetails = await getEventDetails(id);
-    if (eventDetails) {
-      setEventCreatedById(eventDetails.createdById);
+    await loadEventCreator(id);
+  };
+
+  const generateRecommendations = async (id: string) => {
+    const response = await getRecomendationsById(id);
+    if (!response.success) {
+      throw new Error(
+        response.message || "Could not generate recommendations. Please try again.",
+      );
     }
+
+    const nextRecommendations = Array.isArray(response.data) ? response.data : [];
+    if (nextRecommendations.length !== 3) {
+      throw new Error(
+        `Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`,
+      );
+    }
+
+    setRecommendations(nextRecommendations);
+    setDecisionStep("recommendation");
   };
 
   const handleAnswers = async (answers: Answers) => {
-    if (!eventId) {
+    if (!eventId) return;
+
+    const hasAnsweredAllQuestions = slidersQuestions.every(
+      (question) => answers[question.label],
+    );
+    if (!hasAnsweredAllQuestions) {
+      setGenerationError(
+        "Please answer all questions before generating recommendations.",
+      );
       return;
     }
 
+    setLastSubmittedAnswers(answers);
     setIsGeneratingRecommendation(true);
+    setGenerationError("");
 
     try {
       await submitAnswers(eventId, answers);
 
-      // Check if current user is the event creator
-      const isCreator = auth?.user?.id === eventCreatedById;
+      const creatorId = eventCreatedById ?? (await loadEventCreator(eventId));
+      const isCreator = auth?.user?.id === creatorId;
 
       if (!isCreator) {
-        // Non-creator: show thank-you screen before returning to decision start
         setDecisionStep("thankYou");
         setTimeout(() => {
           onRestart();
@@ -87,11 +141,10 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         return;
       }
 
-      // Creator: proceed with recommendation generation
-      setDecisionStep("recommendation");
-      const { data } = await getRecomendationsById(eventId);
-      setRecommendations(data);
-    } catch {
+      await generateRecommendations(eventId);
+    } catch (error) {
+      setRecommendations([]);
+      setGenerationError(getErrorMessage(error));
       setDecisionStep("sliding");
     } finally {
       setIsGeneratingRecommendation(false);
@@ -106,6 +159,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setIsGeneratingRecommendation(false);
     setIsResuming(false);
     setEventCreatedById(null);
+    setGenerationError("");
+    setLastSubmittedAnswers(null);
   };
 
   useEffect(() => {
@@ -114,6 +169,10 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         setExistingAnswers({});
         setEventId("");
         setDecisionStep("base");
+        setRecommendations([]);
+        setIsGeneratingRecommendation(false);
+        setGenerationError("");
+        setLastSubmittedAnswers(null);
         setHasLoadedResume(false);
         setResumeRequestKey(null);
         setIsResuming(false);
@@ -133,62 +192,63 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setHasLoadedResume(true);
       setResumeRequestKey(resumeKey);
       setIsResuming(true);
+      setGenerationError("");
+      setLastSubmittedAnswers(null);
       setEventId(resumeEvent.eventId);
       setDecisionStep(
         resumeEvent.mode === "recommendations" ? "recommendation" : "sliding",
       );
 
-      if (resumeEvent.mode === "recommendations") {
-        const eventDetails = await getEventDetails(resumeEvent.eventId);
-        if (eventDetails) {
-          setEventCreatedById(eventDetails.createdById);
-        }
-        const response = await getRecomendationsById(resumeEvent.eventId);
-        setRecommendations(response?.data || []);
-        setIsResuming(false);
-        return;
-      }
-
-      const [questions, answers, eventDetails] = await Promise.all([
-        fetchSlidesQuestions(),
-        getEventAnswers(resumeEvent.eventId),
-        getEventDetails(resumeEvent.eventId),
-      ]);
-
-      const creatorId = eventDetails?.createdById ?? null;
-      const currentUserId = auth?.user?.id ?? null;
-      const hasCurrentUserAnswered = Boolean(
-        currentUserId &&
-          (answers || []).some((item: any) => item.userId === currentUserId),
-      );
-
-      setEventCreatedById(creatorId);
-
-      if (hasCurrentUserAnswered) {
-        if (creatorId && creatorId === currentUserId) {
-          setDecisionStep("recommendation");
-          const response = await getRecomendationsById(resumeEvent.eventId);
-          setRecommendations(response?.data || []);
-        } else {
-          setDecisionStep("thankYou");
+      try {
+        if (resumeEvent.mode === "recommendations") {
+          await loadEventCreator(resumeEvent.eventId);
+          await generateRecommendations(resumeEvent.eventId);
+          return;
         }
 
-        setIsResuming(false);
-        return;
-      }
+        const [questions, answers, eventDetails] = await Promise.all([
+          fetchSlidesQuestions(),
+          getEventAnswers(resumeEvent.eventId),
+          getEventDetails(resumeEvent.eventId),
+        ]);
 
-      setSlidersQuestions(questions);
-      const mappedAnswers = (answers || [])
-        .filter((item: any) => item.userId === currentUserId)
-        .reduce(
-        (acc: Answers, item: any) => ({
-          ...acc,
-          [item.question]: item.answerValue || "",
-        }),
-        {} as Answers,
-      );
-      setExistingAnswers(mappedAnswers);
-      setIsResuming(false);
+        const creatorId =
+          eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+        const currentUserId = auth?.user?.id ?? null;
+        const hasCurrentUserAnswered = Boolean(
+          currentUserId &&
+            (answers || []).some((item: any) => item.userId === currentUserId),
+        );
+
+        setEventCreatedById(creatorId);
+        setSlidersQuestions(questions);
+
+        if (hasCurrentUserAnswered) {
+          if (creatorId && creatorId === currentUserId) {
+            await generateRecommendations(resumeEvent.eventId);
+          } else {
+            setDecisionStep("thankYou");
+          }
+          return;
+        }
+
+        const mappedAnswers = (answers || [])
+          .filter((item: any) => item.userId === currentUserId)
+          .reduce(
+            (acc: Answers, item: any) => ({
+              ...acc,
+              [item.question]: item.answerValue || "",
+            }),
+            {} as Answers,
+          );
+        setExistingAnswers(mappedAnswers);
+        setDecisionStep("sliding");
+      } catch (error) {
+        setGenerationError(getErrorMessage(error));
+        setDecisionStep("sliding");
+      } finally {
+        setIsResuming(false);
+      }
     };
 
     fetchQuestions();
@@ -205,18 +265,72 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     </LoadingContainer>
   );
 
-  const steps: Record<DecisionStep, ReactElement> = {
-    base: <BaseQuestions onBaseComplete={onBaseComplete} />,
-    sliding:
-      isGeneratingRecommendation || isResuming ? (
-        loadingScreen
-      ) : (
+  const generationErrorOverlay = generationError && !isGeneratingRecommendation && (
+    <LoadingContainer
+      sx={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "rgba(255, 255, 255, 0.88)",
+        zIndex: 10,
+        padding: 3,
+      }}
+    >
+      <LoadingTextContainer>
+        <LoadingTitle>Recommendation failed</LoadingTitle>
+        <LoadingSubtitle sx={{ color: "error.main", maxWidth: 520 }}>
+          {generationError}
+        </LoadingSubtitle>
+      </LoadingTextContainer>
+      <PrimeButton
+        onClick={() => {
+          if (lastSubmittedAnswers) {
+            handleAnswers(lastSubmittedAnswers);
+          }
+        }}
+        disabled={!lastSubmittedAnswers}
+      >
+        Try again
+      </PrimeButton>
+      <PrimeButton variant="text" onClick={() => setGenerationError("")}>
+        Change answers
+      </PrimeButton>
+    </LoadingContainer>
+  );
+
+  const slidingStep =
+    isLoadingQuestions || isResuming || slidersQuestions.length === 0 ? (
+      loadingScreen
+    ) : (
+      <>
         <Slider
           questions={slidersQuestions}
           handleAnswers={handleAnswers}
           initialAnswers={existingAnswers}
+          disabled={isGeneratingRecommendation}
         />
-      ),
+        {isGeneratingRecommendation && (
+          <LoadingContainer
+            sx={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(255, 255, 255, 0.72)",
+              zIndex: 10,
+            }}
+          >
+            <CircularProgress />
+            <LoadingTextContainer>
+              <LoadingTitle>{LOADING_TITLE}</LoadingTitle>
+              <LoadingSubtitle>{LOADING_SUBTITLE}</LoadingSubtitle>
+            </LoadingTextContainer>
+          </LoadingContainer>
+        )}
+        {generationErrorOverlay}
+      </>
+    );
+
+  const steps: Record<DecisionStep, ReactElement> = {
+    base: <BaseQuestions onBaseComplete={onBaseComplete} />,
+    sliding: slidingStep,
     recommendation:
       isResuming || isGeneratingRecommendation ? (
         loadingScreen

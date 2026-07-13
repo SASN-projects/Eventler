@@ -1,96 +1,101 @@
 import api from "../../config/api";
 import { msInTwoHours } from "./consts";
-import type { Answers, Question } from "./types";
+import type { Answers, Question, Recommendation } from "./types";
+
+export interface GenerateRecommendationsResponse {
+  success: boolean;
+  data?: Recommendation[];
+  message?: string;
+}
 
 export const fetchSlidesQuestions = async (): Promise<Question[]> => {
-    try {
-        const { data } = await api.get('/slides');
-        return data.map((question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
-            ...question,
-            imageUrl: question.image_url ?? question.imageUrl,
-        }));
-    } catch {
-        console.log('fetching slides failed');
-        return [];
-    }
+  try {
+    const { data } = await api.get("/slides");
+    return data.map(
+      (question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
+        ...question,
+        imageUrl: question.image_url ?? question.imageUrl,
+      }),
+    );
+  } catch {
+    console.log("fetching slides failed");
+    return [];
+  }
 };
 
 export const postNewEvent = async (
-    time: Date,
-    place: string,
-    participantAmount: number,
-    eventType: string = 'individual',
-    groupId?: string,
+  time: Date,
+  place: string,
+  participantAmount: number,
+  eventType: string = "individual",
+  groupId?: string,
 ) => {
-    const eventDetails: Record<string, unknown> = {
-        title: '',
-        description: '',
-        status: 'collecting_responses',
-        eventType,
-        targetDate: time,
-        targetDateFrom: time,
-        targetDateTo: new Date(time.getTime() + msInTwoHours),
-        deadlineAt: new Date(time.getTime() + msInTwoHours),
-        participantCount: participantAmount,
-        locationCity: place,
-        locationCountry: '',
-    };
+  const eventDetails: Record<string, unknown> = {
+    title: "",
+    description: "",
+    status: "collecting_responses",
+    eventType,
+    targetDate: time,
+    targetDateFrom: time,
+    targetDateTo: new Date(time.getTime() + msInTwoHours),
+    deadlineAt: new Date(time.getTime() + msInTwoHours),
+    participantCount: participantAmount,
+    locationCity: place,
+    locationCountry: "",
+  };
 
-    if (groupId) {
-        eventDetails.groupId = groupId;
-    }
+  if (groupId) {
+    eventDetails.groupId = groupId;
+  }
 
-    try {
-        const { data } = await api.post('/events', eventDetails);
-        return data.id;
-    } catch {
-        console.log('failing to post event');
-        return 'id';
-    }
+  const { data } = await api.post("/events", eventDetails);
+
+  if (!data?.id) {
+    throw new Error("Event was created without an id.");
+  }
+
+  return data.id;
 };
 
 export const submitAnswers = async (eventId: string, answers: Answers) => {
-    const data = {
-        answers: Object.entries(answers).map(([question, answerValue]) => ({ question, answerValue }))
-    };
+  const data = {
+    answers: Object.entries(answers).map(([question, answerValue]) => ({
+      question,
+      answerValue,
+    })),
+  };
 
-    try {
-        await api.post(`/slides/submit-answers/${eventId}`, data);
-    } catch {
-        console.log('failing to post answers');
-        throw new Error('Failed to submit slide answers');
-    }
+  await api.post(`/slides/submit-answers/${eventId}`, data);
 };
 
 export const getEventAnswers = async (eventId: string) => {
-    try {
-        const { data } = await api.get(`/slides/event-answers/${eventId}`);
-        return data || [];
-    } catch {
-        console.log('failing to fetch event answers');
-        return [];
-    }
+  try {
+    const { data } = await api.get(`/slides/event-answers/${eventId}`);
+    return data || [];
+  } catch {
+    console.log("failing to fetch event answers");
+    return [];
+  }
 };
 
-export const getRecomendationsById = async (eventId: string) => {
-    try {
-        const { data } = await api.post(`/recommendations/events/${eventId}/generate`);
-        return data;
-    } catch {
-        console.log('failing to fetch recommendation');
-        return null;
-    }
+export const getRecomendationsById = async (
+  eventId: string,
+): Promise<GenerateRecommendationsResponse> => {
+  const { data } = await api.post(`/recommendations/events/${eventId}/generate`);
+  return data;
 };
 
-export const postSelectedRecommendation = async (eventId: string, recommendationId: string) =>
-    await api.post(`/recommendations/events/${eventId}/select/${recommendationId}`);
+export const postSelectedRecommendation = async (
+  eventId: string,
+  recommendationId: string,
+) => await api.post(`/recommendations/events/${eventId}/select/${recommendationId}`);
 
 export const getEventDetails = async (eventId: string) => {
-    try {
-        const { data } = await api.get(`/events/${eventId}`);
-        return data;
-    } catch {
-        console.log('failing to fetch event details');
-        return null;
-    }
+  try {
+    const { data } = await api.get(`/events/${eventId}`);
+    return data;
+  } catch {
+    console.log("failing to fetch event details");
+    return null;
+  }
 };

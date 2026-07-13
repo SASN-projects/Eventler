@@ -15,6 +15,12 @@ import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
 import {
+  GooglePlacesService,
+  GooglePlaceCandidate,
+  GooglePlacePhotoAttribution,
+  GooglePlacesOpeningHours,
+} from './google-places.service';
+import {
   RecommendationPromptContextBuilder,
   RecommendationEventInput,
 } from './recommendation-prompt-context.builder';
@@ -29,6 +35,11 @@ export interface RecommendationResult {
   title: string;
   description: string;
   address: string;
+  photoUrl?: string;
+  photoAttributions?: GooglePlacePhotoAttribution[];
+  googleMapsUri?: string;
+  rating?: number;
+  userRatingCount?: number;
 }
 
 export interface GenerateRecommendationResponse {
@@ -44,6 +55,37 @@ export interface GenerateRecommendationResponse {
 interface PromptMeta {
   promptVersion: number | string;
   promptSource: 'langfuse' | 'fallback';
+}
+
+interface PlacesSearchPlanItem {
+  textQuery: string;
+  includedType?: string;
+  minRating?: number;
+  priceLevels?: string[];
+  weight?: number;
+}
+
+interface PlacesSearchPlan {
+  searches: PlacesSearchPlanItem[];
+}
+
+interface RankedPlaceRecommendation extends RecommendationResult {
+  score: number;
+  placeId: string;
+  photoName?: string;
+  openingMatch?: OpeningMatch;
+}
+
+interface PlannedVisitTime {
+  date: Date;
+  day: number;
+  minutes: number;
+  label: string;
+}
+
+interface OpeningMatch {
+  status: 'open' | 'closed' | 'unknown';
+  source?: 'current' | 'regular';
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +165,7 @@ export class RecommendationsService {
     private readonly judgeService: RecommendationJudgeService,
     private readonly promptContextBuilder: RecommendationPromptContextBuilder,
     private readonly historyService: RecommendationHistoryService,
+    private readonly googlePlacesService: GooglePlacesService,
     private readonly configService: ConfigService,
   ) { }
 
@@ -287,6 +330,80 @@ export class RecommendationsService {
       );
 
     const promptMeta: PromptMeta = { promptVersion, promptSource };
+
+    if (this.googlePlacesService.isConfigured()) {
+      try {
+        const searchPlan = await this.generatePlacesSearchPlan(eventInput, eventAnswers, trace);
+        const rankedRecommendations = await this.searchAndRankPlaces(searchPlan, eventInput, eventAnswers, trace);
+
+        if (rankedRecommendations.length >= 3) {
+          const topRecommendations = await this.attachPlacePhotos(rankedRecommendations.slice(0, 3));
+          const persistSpan = trace.span({
+            name: 'persist-google-places-recommendations',
+            input: {
+              count: topRecommendations.length,
+              placeIds: topRecommendations.map((recommendation) => recommendation.placeId),
+            },
+          });
+
+          try {
+            const recommendationsToSave = topRecommendations.map((recommendation) =>
+              this.recommendationRepository.create({
+                title: recommendation.title,
+                description: recommendation.description,
+                address: recommendation.address,
+              }),
+            );
+            const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+
+            persistSpan.end({
+              output: {
+                savedCount: savedRecommendations.length,
+                ids: savedRecommendations.map((recommendation) => recommendation.id),
+              },
+            });
+
+            trace.update({
+              output: {
+                success: true,
+                source: 'google_places',
+                recommendationsCount: savedRecommendations.length,
+                recommendationIds: savedRecommendations.map((recommendation) => recommendation.id),
+              },
+            });
+
+            return {
+              success: true,
+              data: savedRecommendations.map((savedRecommendation, index) => ({
+                id: savedRecommendation.id,
+                title: savedRecommendation.title,
+                description: savedRecommendation.description,
+                address: savedRecommendation.address,
+                photoUrl: topRecommendations[index]?.photoUrl,
+                photoAttributions: topRecommendations[index]?.photoAttributions,
+                googleMapsUri: topRecommendations[index]?.googleMapsUri,
+                rating: topRecommendations[index]?.rating,
+                userRatingCount: topRecommendations[index]?.userRatingCount,
+              })),
+            };
+          } catch (dbError: any) {
+            persistSpan.end({
+              level: 'ERROR',
+              statusMessage: dbError.message,
+            });
+            throw dbError;
+          }
+        }
+
+        this.logger.warn(
+          `Google Places produced ${rankedRecommendations.length} ranked result(s); falling back to Gemini-only recommendations.`,
+        );
+      } catch (placesError: any) {
+        this.logger.warn(`Google Places recommendation flow failed; falling back to Gemini-only flow: ${placesError.message}`);
+      }
+    } else {
+      this.logger.warn('Google Places API key is not configured; using Gemini-only recommendations.');
+    }
 
     const maxRetries = 3;
     let lastError: Error | null = null;
@@ -610,6 +727,424 @@ export class RecommendationsService {
     } catch (error: any) {
       throw new Error(`Failed to generate recommendation: ${error.message}`);
     }
+  }
+
+  private async generatePlacesSearchPlan(
+    eventInput: RecommendationEventInput,
+    eventAnswers: any[] = [],
+    parentTrace?: ILangfuseTrace,
+  ): Promise<PlacesSearchPlan> {
+    const preferences = eventAnswers
+      .map((answer) => `- ${answer.question}: ${answer.answerValue}`)
+      .join('\n') || 'No explicit user preferences were provided.';
+
+    const prompt = [
+      'You convert event preferences into Google Places Text Search requests.',
+      'Return ONLY JSON. Do not recommend final venues.',
+      '',
+      'Event:',
+      `- Type: ${eventInput.eventType}`,
+      `- Location: ${eventInput.locationCity}, ${eventInput.locationCountry}`,
+      `- Participants: ${eventInput.participantCount}`,
+      `- Target date: ${eventInput.targetDate}`,
+      '',
+      'User preferences:',
+      preferences,
+      '',
+      'Create 3 to 5 concise Google Places search intents.',
+      'Each textQuery must include the city/country and a concrete venue/activity category.',
+      'Use includedType only when it is a valid Google Places primary type such as restaurant, bar, cafe, park, museum, night_club, movie_theater, bowling_alley, tourist_attraction, shopping_mall.',
+      'Use minRating when quality matters. Use priceLevels only for food/drink/shopping/services.',
+      'Do not use openNow. The backend checks opening hours against the planned event date/time.',
+    ].join('\n');
+
+    const responseSchema: ObjectSchema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        searches: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              textQuery: { type: SchemaType.STRING },
+              includedType: { type: SchemaType.STRING },
+              minRating: { type: SchemaType.NUMBER },
+              priceLevels: {
+                type: SchemaType.ARRAY,
+                items: { type: SchemaType.STRING },
+              },
+              weight: { type: SchemaType.NUMBER },
+            },
+            required: ['textQuery'],
+          },
+        },
+      },
+      required: ['searches'],
+    };
+
+    const result = await this.geminiService.generateJsonContent<PlacesSearchPlan>({
+      prompt,
+      responseSchema,
+      parentTrace,
+      promptName: 'google-places-search-plan',
+      metadata: {
+        eventType: eventInput.eventType,
+        locationCity: eventInput.locationCity,
+        locationCountry: eventInput.locationCountry,
+      },
+    });
+
+    const searches = (result.searches ?? [])
+      .filter((search) => search.textQuery?.trim())
+      .slice(0, 5)
+      .map((search) => ({
+        ...search,
+        textQuery: this.ensureQueryHasLocation(search.textQuery, eventInput),
+        minRating: this.normalizeMinRating(search.minRating),
+        priceLevels: this.normalizePriceLevels(search.priceLevels),
+        weight: Math.min(Math.max(search.weight ?? 1, 0.25), 2),
+      }));
+
+    if (searches.length === 0) {
+      return {
+        searches: this.buildFallbackSearches(eventInput, eventAnswers),
+      };
+    }
+
+    return { searches };
+  }
+
+  private async searchAndRankPlaces(
+    searchPlan: PlacesSearchPlan,
+    eventInput: RecommendationEventInput,
+    eventAnswers: any[],
+    parentTrace?: ILangfuseTrace,
+  ): Promise<RankedPlaceRecommendation[]> {
+    const span = parentTrace?.span({
+      name: 'google-places-search-and-rank',
+      input: { searches: searchPlan.searches },
+    });
+
+    const plannedVisit = this.resolvePlannedVisitTime(eventInput, eventAnswers);
+    const allCandidates: Array<GooglePlaceCandidate & { planWeight: number }> = [];
+    for (const search of searchPlan.searches) {
+      try {
+        const places = await this.googlePlacesService.searchText({
+          textQuery: search.textQuery,
+          includedType: search.includedType,
+          minRating: search.minRating,
+          priceLevels: search.priceLevels,
+          pageSize: 10,
+          regionCode: this.inferRegionCode(eventInput.locationCountry),
+        });
+
+        allCandidates.push(
+          ...places.map((place) => ({
+            ...place,
+            planWeight: search.weight ?? 1,
+          })),
+        );
+      } catch (error: any) {
+        this.logger.warn(`Places query failed for "${search.textQuery}": ${error.message}`);
+      }
+    }
+
+    const deduped = this.dedupePlaces(allCandidates);
+    const ranked = deduped
+      .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
+      .map((place) => this.toRankedRecommendation(place, eventInput, eventAnswers, plannedVisit))
+      .sort((a, b) => b.score - a.score);
+
+    span?.end({
+      output: {
+        candidates: allCandidates.length,
+        deduped: deduped.length,
+        ranked: ranked.length,
+        topPlaceIds: ranked.slice(0, 3).map((place) => place.placeId),
+        plannedVisit: plannedVisit.label,
+      },
+    });
+
+    return ranked;
+  }
+
+  private toRankedRecommendation(
+    place: GooglePlaceCandidate & { planWeight: number },
+    eventInput: RecommendationEventInput,
+    eventAnswers: any[],
+    plannedVisit: PlannedVisitTime,
+  ): RankedPlaceRecommendation {
+    const openingMatch = this.getOpeningMatch(place, plannedVisit);
+    const score = this.scorePlace(place, eventAnswers, openingMatch);
+
+    return {
+      id: place.id,
+      placeId: place.id,
+      title: place.displayName,
+      address: place.formattedAddress,
+      rating: place.rating,
+      userRatingCount: place.userRatingCount,
+      googleMapsUri: place.googleMapsUri,
+      photoName: place.photoName,
+      photoAttributions: place.photoAttributions,
+      openingMatch,
+      score,
+      description: this.buildGooglePlaceDescription(place, eventInput),
+    };
+  }
+
+  private buildGooglePlaceDescription(
+    place: GooglePlaceCandidate,
+    eventInput: RecommendationEventInput,
+  ) {
+    if (place.description) {
+      return place.description;
+    }
+
+    const typeText = this.formatPlaceType(place.primaryType ?? place.types?.[0]);
+    const priceText = this.formatPriceLevel(place.priceLevel);
+    const venueText = typeText ? `${typeText} option in ${eventInput.locationCity}` : `Option in ${eventInput.locationCity}`;
+
+    return [
+      venueText,
+      priceText,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  private async attachPlacePhotos(
+    recommendations: RankedPlaceRecommendation[],
+  ): Promise<RankedPlaceRecommendation[]> {
+    return Promise.all(
+      recommendations.map(async (recommendation) => {
+        if (!recommendation.photoName) return recommendation;
+
+        let photoUrl: string | undefined;
+        try {
+          photoUrl = await this.googlePlacesService.getPhotoUri(recommendation.photoName);
+        } catch (error: any) {
+          this.logger.warn(`Google Places photo attachment failed for ${recommendation.placeId}: ${error.message}`);
+        }
+
+        return {
+          ...recommendation,
+          photoUrl,
+        };
+      }),
+    );
+  }
+
+  private resolvePlannedVisitTime(
+    eventInput: RecommendationEventInput,
+    eventAnswers: any[],
+  ): PlannedVisitTime {
+    const parsedDate = new Date(String(eventInput.targetDate));
+    const date = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    const hasExplicitTime =
+      date.getHours() !== 0 ||
+      date.getMinutes() !== 0 ||
+      /\d{1,2}:\d{2}/.test(String(eventInput.targetDate));
+
+    const inferredMinutes = this.inferPreferredMinutes(eventAnswers);
+    if (!hasExplicitTime && inferredMinutes !== undefined) {
+      date.setHours(Math.floor(inferredMinutes / 60), inferredMinutes % 60, 0, 0);
+    } else if (!hasExplicitTime) {
+      date.setHours(19, 0, 0, 0);
+    }
+
+    const minutes = date.getHours() * 60 + date.getMinutes();
+    return {
+      date,
+      day: date.getDay(),
+      minutes,
+      label: `${date.toLocaleDateString('en-CA')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+    };
+  }
+
+  private inferPreferredMinutes(eventAnswers: any[]) {
+    const text = eventAnswers
+      .map((answer) => `${answer.question ?? ''} ${answer.answerValue ?? ''}`)
+      .join(' ')
+      .toLowerCase();
+
+    const timeMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (timeMatch) {
+      return Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+    }
+
+    if (/\b(brunch|breakfast|morning)\b/.test(text)) return 10 * 60;
+    if (/\b(lunch|noon)\b/.test(text)) return 13 * 60;
+    if (/\b(afternoon)\b/.test(text)) return 16 * 60;
+    if (/\b(dinner|evening|night|bar|drinks|party)\b/.test(text)) return 20 * 60;
+    return undefined;
+  }
+
+  private getOpeningMatch(place: GooglePlaceCandidate, plannedVisit: PlannedVisitTime): OpeningMatch {
+    const currentMatch = this.matchOpeningHours(place.currentOpeningHours, plannedVisit);
+    if (currentMatch.status !== 'unknown') return { ...currentMatch, source: 'current' };
+
+    const regularMatch = this.matchOpeningHours(place.regularOpeningHours, plannedVisit);
+    if (regularMatch.status !== 'unknown') return { ...regularMatch, source: 'regular' };
+
+    return { status: 'unknown' };
+  }
+
+  private matchOpeningHours(
+    openingHours: GooglePlacesOpeningHours | undefined,
+    plannedVisit: PlannedVisitTime,
+  ): OpeningMatch {
+    const periods = openingHours?.periods ?? [];
+    if (!periods.length) return { status: 'unknown' };
+
+    const visitMinuteOfWeek = plannedVisit.day * 24 * 60 + plannedVisit.minutes;
+    const isOpen = periods.some((period) => {
+      if (period.open?.day === undefined || period.open.hour === undefined) return false;
+
+      const open = period.open.day * 24 * 60 + period.open.hour * 60 + (period.open.minute ?? 0);
+      const close =
+        period.close?.day === undefined || period.close.hour === undefined
+          ? open + 7 * 24 * 60
+          : period.close.day * 24 * 60 + period.close.hour * 60 + (period.close.minute ?? 0);
+      const normalizedClose = close <= open ? close + 7 * 24 * 60 : close;
+
+      return (
+        this.isMinuteWithinPeriod(visitMinuteOfWeek, open, normalizedClose) ||
+        this.isMinuteWithinPeriod(visitMinuteOfWeek + 7 * 24 * 60, open, normalizedClose)
+      );
+    });
+
+    return { status: isOpen ? 'open' : 'closed' };
+  }
+
+  private isMinuteWithinPeriod(value: number, open: number, close: number) {
+    return value >= open && value < close;
+  }
+
+  private formatPlaceType(type?: string) {
+    if (!type) return undefined;
+    return type
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private formatPriceLevel(priceLevel?: string) {
+    const labels: Record<string, string> = {
+      PRICE_LEVEL_FREE: 'Free',
+      PRICE_LEVEL_INEXPENSIVE: 'Inexpensive',
+      PRICE_LEVEL_MODERATE: 'Moderate price',
+      PRICE_LEVEL_EXPENSIVE: 'Expensive',
+      PRICE_LEVEL_VERY_EXPENSIVE: 'Very expensive',
+    };
+
+    return priceLevel ? labels[priceLevel] : undefined;
+  }
+
+  private scorePlace(
+    place: GooglePlaceCandidate & { planWeight: number },
+    eventAnswers: any[],
+    openingMatch: OpeningMatch = { status: 'unknown' },
+  ) {
+    const ratingScore = (place.rating ?? 0) * 20;
+    const popularityScore = Math.log10((place.userRatingCount ?? 0) + 1) * 12;
+    const queryWeightScore = place.planWeight * 10;
+    const preferenceScore = this.scorePreferenceMatches(place, eventAnswers);
+    const openingScore = openingMatch.status === 'open' ? 15 : openingMatch.status === 'closed' ? -35 : 0;
+
+    return ratingScore + popularityScore + queryWeightScore + preferenceScore + openingScore;
+  }
+
+  private scorePreferenceMatches(place: GooglePlaceCandidate, eventAnswers: any[]) {
+    const haystack = [
+      place.displayName,
+      place.formattedAddress,
+      place.primaryType,
+      ...(place.types ?? []),
+      place.searchQuery,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return eventAnswers.reduce((score, answer) => {
+      const value = String(answer.answerValue ?? '').toLowerCase();
+      if (!value || value.length < 3) return score;
+      return haystack.includes(value) ? score + 8 : score;
+    }, 0);
+  }
+
+  private dedupePlaces<T extends GooglePlaceCandidate>(places: T[]) {
+    const byKey = new Map<string, T>();
+
+    for (const place of places) {
+      const key = place.id || `${place.displayName.toLowerCase()}-${place.formattedAddress.toLowerCase()}`;
+      const existing = byKey.get(key);
+      if (!existing || this.scorePlace(place as any, []) > this.scorePlace(existing as any, [])) {
+        byKey.set(key, place);
+      }
+    }
+
+    return Array.from(byKey.values());
+  }
+
+  private buildFallbackSearches(eventInput: RecommendationEventInput, eventAnswers: any[]): PlacesSearchPlanItem[] {
+    const preferenceText = eventAnswers.map((answer) => answer.answerValue).filter(Boolean).join(' ');
+    const location = `${eventInput.locationCity}, ${eventInput.locationCountry}`;
+
+    return [
+      {
+        textQuery: `${preferenceText || eventInput.eventType} restaurant in ${location}`,
+        includedType: 'restaurant',
+        minRating: 4,
+        weight: 1,
+      },
+      {
+        textQuery: `${preferenceText || eventInput.eventType} bar cafe in ${location}`,
+        minRating: 4,
+        weight: 0.9,
+      },
+      {
+        textQuery: `${preferenceText || eventInput.eventType} activity in ${location}`,
+        minRating: 4,
+        weight: 0.8,
+      },
+    ];
+  }
+
+  private ensureQueryHasLocation(query: string, eventInput: RecommendationEventInput) {
+    const normalizedQuery = query.trim();
+    const location = `${eventInput.locationCity}, ${eventInput.locationCountry}`;
+    const lower = normalizedQuery.toLowerCase();
+
+    if (lower.includes(eventInput.locationCity.toLowerCase()) || lower.includes(eventInput.locationCountry.toLowerCase())) {
+      return normalizedQuery;
+    }
+
+    return `${normalizedQuery} in ${location}`;
+  }
+
+  private normalizeMinRating(value?: number) {
+    if (value === undefined || Number.isNaN(value)) return undefined;
+    return Math.min(Math.max(Math.ceil(value * 2) / 2, 0), 5);
+  }
+
+  private normalizePriceLevels(priceLevels?: string[]) {
+    const allowed = new Set([
+      'PRICE_LEVEL_INEXPENSIVE',
+      'PRICE_LEVEL_MODERATE',
+      'PRICE_LEVEL_EXPENSIVE',
+      'PRICE_LEVEL_VERY_EXPENSIVE',
+    ]);
+
+    return (priceLevels ?? []).filter((level) => allowed.has(level));
+  }
+
+  private inferRegionCode(country: string) {
+    const normalized = country.toLowerCase();
+    if (normalized.includes('israel')) return 'IL';
+    if (normalized.includes('united states') || normalized === 'usa') return 'US';
+    if (normalized.includes('united kingdom')) return 'GB';
+    return undefined;
   }
 
   private parseGeminiResponse(
