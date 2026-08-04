@@ -11,6 +11,90 @@ A NestJS-based backend server for the Eventler event recommendation platform.
 - **Slide Answers**: Collect user preferences through interactive slides
 - **Recommendations**: AI-powered event recommendations using Google Gemini with Langfuse observability
 
+---
+
+## Question Bank
+
+The question bank drives the personalization engine. Users (individual or group members) answer a subset of questions; answers flow directly into the Gemini recommendation prompt.
+
+### Where questions are defined
+
+Questions and their selectable options are defined exclusively in **`db/eventler_final_dml.sql`**.
+- Table `slider_questions`: one row per question.
+- Table `question_options`: one or more rows per question (child rows via FK).
+- **No** question data is hardcoded in TypeScript source or JSON files.
+
+### Current question set (10 questions)
+
+| Code | Question | Options | Signal type |
+|---|---|---|---|
+| `activity` | What kind of activity do you have in mind? | Food and dining · Drinks and nightlife · Outdoor adventure · Culture or arts · Entertainment · Wellness and relaxation | Soft preference |
+| `budget` | What is your budget per person? | Low · Moderate · Generous · Splurge | **Hard constraint** |
+| `energy-level` | How active or energetic should the event be? | High energy · Moderate · Low · Flexible | Soft preference |
+| `food-drinks` | How important is food or drinks at this event? | Main focus · Nice to have · Not important · Completely open | Soft preference |
+| `group-dynamic` | What best describes your group for this event? | Close friends · Mixed group · Colleagues · Couple · Family with children | Soft preference |
+| `must-have` | Is there anything that is a must-have for this event? | Parking · Kid-friendly · Pet-friendly · Wheelchair accessible · Private space · None | **Hard constraint** |
+| `occasion` | What is the occasion for this event? | Birthday · Date night · Friends hangout · Work event · Family gathering · Just for fun | **Hard constraint** |
+| `setting` | Where would you prefer to go? | Indoors · Outdoors · Mix of both · No preference | Soft preference |
+| `time-of-day` | When during the day do you plan to go? | Morning/brunch · Afternoon · Evening · Late night | **Hard constraint** |
+| `vibe` | What vibe are you going for? | Lively · Relaxed · Upscale · Fun/playful · Cozy/intimate | Soft preference |
+
+**Hard constraints** must be respected in every recommendation.
+**Soft preferences** guide recommendations but can be overridden for quality or diversity.
+
+### How answers enter the recommendation prompt
+
+1. The frontend calls `GET /slides` — the service returns up to **7** questions (sorted by `code` ASC).
+2. The user submits answers via `POST /slides/submit-answers/:eventId`.
+3. Answers are stored in `event_responses` using the question's **label text** as the `question` column value.
+4. At recommendation time, `getEventAnswers(eventId)` returns all answers for the event.
+5. `RecommendationPromptContextBuilder.buildCurrentPreferencesSummary()` renders them as:
+   - **Individual**: `"- <label>: <answer value>"` per answer
+   - **Group**: majority-vote per label → `"- <label>: <winning answer> (N/M responses)"`
+6. The rendered summary is placed in the `{{userPreferencesSummary}}` section of the Langfuse prompt template.
+
+### Display cap
+
+`SlidesService.getSlides()` returns up to **7** questions per session (raised from 6 in v1.1 to support the expanded 10-question set). User-preferred question codes (from `user_preferences.interests`) are prioritized; the remainder is selected randomly from other questions.
+
+### How to update questions safely
+
+#### Adding a new question
+1. Assign a new stable UUID (use `gen_random_uuid()` once and hard-code it).
+2. Add an `INSERT INTO slider_questions ... ON CONFLICT (code) DO NOTHING` row.
+3. Add `INSERT INTO question_options ... ON CONFLICT (id) DO NOTHING` rows for the options.
+4. Update `EXPECTED_QUESTIONS` in `src/slides/slider-question-seed.spec.ts`.
+5. Run `npm run test` to validate.
+
+#### Retiring a question
+1. Add the question code to `RETIRED_CODES` in `slider-question-seed.spec.ts`.
+2. Remove the question from `EXPECTED_QUESTIONS` in `slider-question-seed.spec.ts`.
+3. In the DML, add:
+   ```sql
+   DELETE FROM question_options WHERE question_id IN (SELECT id FROM slider_questions WHERE code = 'your-code');
+   DELETE FROM slider_questions WHERE code = 'your-code';
+   ```
+4. Run `npm run test` — the seed spec will verify the retired code is absent.
+
+#### Updating an existing question's label or options
+- **Label**: use `ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label`.
+- **Options**: `DELETE` old options first (they don't have a unique constraint on `value`), then re-insert with new UUIDs.
+- **Important**: changing a question's label changes what is stored in future `event_responses.question` rows. Historical rows are unaffected.
+
+### DML validation checklist
+
+Run these checks after any question bank change:
+
+- [ ] All new `code` values are ≤100 characters and unique
+- [ ] All `label` values are ≤255 characters
+- [ ] All `question_options.value` values are ≤100 characters
+- [ ] All `answer_mode` values are either `'options'` or `'value'`
+- [ ] New option UUIDs are unique across the entire `question_options` table
+- [ ] `DELETE` statements precede `INSERT` statements for replaced options
+- [ ] `npm run test` passes (especially `slider-question-seed.spec.ts`)
+
+---
+
 ## Tech Stack
 
 - **Framework**: NestJS

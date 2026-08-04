@@ -56,8 +56,8 @@ export class SlidesService {
     // 4. Shuffle other questions randomly
     const shuffledOthers = [...otherQuestions].sort(() => Math.random() - 0.5);
 
-    // 5. Select enough other questions to reach 6 total
-    const needed = Math.max(0, 6 - preferredQuestions.length);
+    // 5. Select enough other questions to reach 7 total
+    const needed = Math.max(0, 7 - preferredQuestions.length);
     const selectedOthers = shuffledOthers.slice(0, needed);
 
     // 6. Combine and sort alphabetically by code

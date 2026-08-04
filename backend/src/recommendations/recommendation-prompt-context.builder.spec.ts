@@ -375,4 +375,105 @@ describe('RecommendationPromptContextBuilder', () => {
       }
     });
   });
+
+  // ── new question label formats ────────────────────────────────────────────
+  describe('new question labels flow through userPreferencesSummary', () => {
+    it('renders the occasion label and answer in the individual preference summary', () => {
+      const answers = [{ question: 'What is the occasion for this event?', answerValue: 'Birthday or milestone' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('What is the occasion for this event?');
+      expect(userPreferencesSummary).toContain('Birthday or milestone');
+    });
+
+    it('renders the vibe label and answer in the individual preference summary', () => {
+      const answers = [{ question: 'What vibe are you going for?', answerValue: 'Relaxed and laid-back' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('What vibe are you going for?');
+      expect(userPreferencesSummary).toContain('Relaxed and laid-back');
+    });
+
+    it('renders the activity label and answer in the individual preference summary', () => {
+      const answers = [{ question: 'What kind of activity do you have in mind?', answerValue: 'Food and dining' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('What kind of activity do you have in mind?');
+      expect(userPreferencesSummary).toContain('Food and dining');
+    });
+
+    it('renders the updated budget label with new option text', () => {
+      const answers = [{ question: 'What is your budget per person?', answerValue: 'Moderate — 50 to 150 NIS' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('What is your budget per person?');
+      expect(userPreferencesSummary).toContain('Moderate — 50 to 150 NIS');
+    });
+
+    it('renders the time-of-day hard constraint in the individual preference summary', () => {
+      const answers = [{ question: 'When during the day do you plan to go?', answerValue: 'Evening (5pm-9pm)' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('When during the day do you plan to go?');
+      expect(userPreferencesSummary).toContain('Evening (5pm-9pm)');
+    });
+
+    it('renders the must-have hard constraint in the individual preference summary', () => {
+      const answers = [{ question: 'Is there anything that is a must-have for this event?', answerValue: 'Wheelchair accessible' }];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('Is there anything that is a must-have for this event?');
+      expect(userPreferencesSummary).toContain('Wheelchair accessible');
+    });
+
+    it('renders all 7 new question labels simultaneously without collision', () => {
+      const answers = [
+        { question: 'What is the occasion for this event?', answerValue: 'Friends hangout' },
+        { question: 'What vibe are you going for?', answerValue: 'Lively and energetic' },
+        { question: 'What kind of activity do you have in mind?', answerValue: 'Outdoor adventure' },
+        { question: 'What is your budget per person?', answerValue: 'Low — up to 50 NIS' },
+        { question: 'Where would you prefer to go?', answerValue: 'Outdoors — park, rooftop, beach' },
+        { question: 'When during the day do you plan to go?', answerValue: 'Afternoon (12pm-5pm)' },
+        { question: 'How important is food or drinks at this event?', answerValue: 'Nice to have but not the main point' },
+      ];
+      const { userPreferencesSummary } = builder.build(baseInput, answers);
+      expect(userPreferencesSummary).toContain('Friends hangout');
+      expect(userPreferencesSummary).toContain('Lively and energetic');
+      expect(userPreferencesSummary).toContain('Outdoor adventure');
+      expect(userPreferencesSummary).toContain('Low — up to 50 NIS');
+      expect(userPreferencesSummary).toContain('Outdoors — park, rooftop, beach');
+      expect(userPreferencesSummary).toContain('Afternoon (12pm-5pm)');
+      expect(userPreferencesSummary).toContain('Nice to have but not the main point');
+    });
+  });
+
+  // ── group flow: new question labels ───────────────────────────────────────
+  describe('group flow majority-vote with new question labels', () => {
+    it('aggregates vibe answers by majority vote using new option texts', () => {
+      const groupVibeAnswers = [
+        { question: 'What vibe are you going for?', answerValue: 'Relaxed and laid-back' },
+        { question: 'What vibe are you going for?', answerValue: 'Relaxed and laid-back' },
+        { question: 'What vibe are you going for?', answerValue: 'Lively and energetic' },
+      ];
+      const { userPreferencesSummary } = builder.build(baseInput, groupVibeAnswers, undefined, { preferenceScope: 'group' });
+      expect(userPreferencesSummary).toContain('What vibe are you going for?');
+      expect(userPreferencesSummary).toContain('Relaxed and laid-back');
+    });
+
+    it('aggregates budget answers by majority vote using updated option texts', () => {
+      const groupBudgetAnswers = [
+        { question: 'What is your budget per person?', answerValue: 'Low — up to 50 NIS' },
+        { question: 'What is your budget per person?', answerValue: 'Low — up to 50 NIS' },
+        { question: 'What is your budget per person?', answerValue: 'Moderate — 50 to 150 NIS' },
+      ];
+      const { userPreferencesSummary } = builder.build(baseInput, groupBudgetAnswers, undefined, { preferenceScope: 'group' });
+      expect(userPreferencesSummary).toContain('What is your budget per person?');
+      expect(userPreferencesSummary).toContain('Low — up to 50 NIS');
+    });
+
+    it('aggregates occasion answers by majority vote', () => {
+      const groupOccasionAnswers = [
+        { question: 'What is the occasion for this event?', answerValue: 'Birthday or milestone' },
+        { question: 'What is the occasion for this event?', answerValue: 'Birthday or milestone' },
+        { question: 'What is the occasion for this event?', answerValue: 'Friends hangout' },
+      ];
+      const { userPreferencesSummary } = builder.build(baseInput, groupOccasionAnswers, undefined, { preferenceScope: 'group' });
+      expect(userPreferencesSummary).toContain('What is the occasion for this event?');
+      expect(userPreferencesSummary).toContain('Birthday or milestone');
+    });
+  });
 });

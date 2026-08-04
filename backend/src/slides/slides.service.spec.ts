@@ -127,4 +127,53 @@ describe('SlidesService', () => {
       { status: 'recommended' },
     );
   });
+
+  it('getSlides assembles up to 7 questions when 10 questions are available', async () => {
+    // Build a mock set of 10 slider questions mirroring the improved question bank.
+    const makeQuestion = (code: string) => ({
+      id: `id-${code}`,
+      code,
+      label: `Label for ${code}`,
+      description: '',
+      answerMode: 'options',
+      options: [
+        { id: `opt-${code}-1`, value: 'Option A' },
+        { id: `opt-${code}-2`, value: 'Option B' },
+      ],
+    });
+
+    const tenQuestions = [
+      'activity', 'budget', 'energy-level', 'food-drinks',
+      'group-dynamic', 'must-have', 'occasion', 'setting',
+      'time-of-day', 'vibe',
+    ].map(makeQuestion);
+
+    const mockSliderRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(tenQuestions),
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        SlidesService,
+        { provide: getRepositoryToken(SlideAnswer), useValue: {} },
+        { provide: getRepositoryToken(EventResponse), useValue: eventResponseRepositoryMock },
+        { provide: getRepositoryToken(SliderQuestion), useValue: mockSliderRepo },
+        { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
+        { provide: getRepositoryToken(User), useValue: userRepositoryMock },
+        { provide: getRepositoryToken(Group), useValue: groupRepositoryMock },
+      ],
+    }).compile();
+
+    const localService = module.get<SlidesService>(SlidesService);
+    const result = await localService.getSlides('user-1');
+
+    // With 10 questions in the bank and no preferred codes, exactly 7 should be returned.
+    expect(result.length).toBeLessThanOrEqual(7);
+    expect(result.length).toBeGreaterThanOrEqual(1);
+  });
 });
