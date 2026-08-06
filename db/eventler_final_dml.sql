@@ -34,46 +34,164 @@ VALUES
 ('44444444-4444-4444-4444-444444444444', 'cccccccc-3333-3333-3333-333333333333')
 ON CONFLICT (user_id, venue_id) DO NOTHING;
 
--- SLIDER QUESTIONS AND OPTIONS
+-- Upsert budget question: keep stable ID, update label and image.
 INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
 VALUES
-('dddddddd-1111-1111-1111-111111111111', 'budget', 'What is your preferred budget?', '', 'options', 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-2222-2222-2222-222222222222', 'event-type', 'What type of event do you prefer?', '', 'options', 'https://images.unsplash.com/photo-1497032205916-ac775f0649ae?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-3333-3333-3333-333333333333', 'transportation', 'Transportation preference?', '', 'options', 'https://images.unsplash.com/photo-1522199710521-72d69614c702?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-4444-4444-4444-444444444444', 'crowd', 'Preferred crowd size?', '', 'options', 'https://images.unsplash.com/photo-1517816743773-6e0fd518b4a6?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-5555-5555-5555-555555555555', 'planning-style', 'Do we want a spontaneous night or something planned in advance?', '', 'options', 'https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-6666-6666-6666-666666666666', 'location-type', 'Do we prefer a local spot or somewhere special or unique?', '', 'options', 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1400&q=80'),
-('dddddddd-7777-7777-7777-777777777777', 'evening-structure', 'Should it be one main activity or a multi-stop evening?', '', 'options', 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1400&q=80')
+    ('dddddddd-1111-1111-1111-111111111111', 'budget',
+     'What is your budget per person?', '', 'options',
+     'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1400&q=80')
+ON CONFLICT (code) DO UPDATE
+    SET label     = EXCLUDED.label,
+        image_url = EXCLUDED.image_url;
+
+INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
+VALUES
+    ('ffffffff-1111-1111-1111-111111111111', 'occasion',
+     'What is the occasion for this event?', '', 'options',
+     'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-2222-2222-2222-222222222222', 'vibe',
+     'What vibe are you going for?', '', 'options',
+     'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-3333-3333-3333-333333333333', 'activity',
+     'What kind of activity do you have in mind?', '', 'options',
+     'https://images.unsplash.com/photo-1528495612343-9ca9f4a4de28?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-4444-4444-4444-444444444444', 'setting',
+     'Where would you prefer to go?', '', 'options',
+     'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-5555-5555-5555-555555555555', 'time-of-day',
+     'When during the day do you plan to go?', '', 'options',
+     'https://images.unsplash.com/photo-1495364141860-b0d03eccd065?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-6666-6666-6666-666666666666', 'food-drinks',
+     'How important is food or drinks at this event?', '', 'options',
+     'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-7777-7777-7777-777777777777', 'group-dynamic',
+     'What best describes your group for this event?', '', 'options',
+     'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-8888-8888-8888-888888888888', 'energy-level',
+     'How active or energetic should the event be?', '', 'options',
+     'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-9999-9999-9999-999999999999', 'must-have',
+     'Is there anything that is a must-have for this event?', '', 'options',
+     'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&w=1400&q=80')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO question_options (id, question_id, value)
 VALUES
-('eeeeeeee-1111-1111-1111-111111111111', 'dddddddd-1111-1111-1111-111111111111', 'Low (Under 50 NIS)'),
-('eeeeeeee-2222-2222-2222-222222222222', 'dddddddd-1111-1111-1111-111111111111', 'Medium (50-150 NIS)'),
-('eeeeeeee-3333-3333-3333-333333333333', 'dddddddd-1111-1111-1111-111111111111', 'High (150-300 NIS)'),
-('eeeeeeee-4444-4444-4444-444444444444', 'dddddddd-1111-1111-1111-111111111111', 'Luxury (Over 300 NIS)'),
-('eeeeeeee-5555-5555-5555-555555555555', 'dddddddd-2222-2222-2222-222222222222', 'Party and Social Gathering'),
-('eeeeeeee-6666-6666-6666-666666666666', 'dddddddd-2222-2222-2222-222222222222', 'Relaxation and Wellness'),
-('eeeeeeee-7777-7777-7777-777777777777', 'dddddddd-2222-2222-2222-222222222222', 'Restaurant and Dining'),
-('eeeeeeee-8888-8888-8888-888888888888', 'dddddddd-2222-2222-2222-222222222222', 'Outdoor and Adventure'),
-('eeeeeeee-9999-9999-9999-999999999999', 'dddddddd-3333-3333-3333-333333333333', 'Car'),
-('eeeeeeee-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'dddddddd-3333-3333-3333-333333333333', 'Public Transport'),
-('eeeeeeee-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dddddddd-3333-3333-3333-333333333333', 'Bike'),
-('eeeeeeee-cccc-cccc-cccc-cccccccccccc', 'dddddddd-3333-3333-3333-333333333333', 'Walking'),
-('eeeeeeee-1111-1111-1111-111111111112', 'dddddddd-5555-5555-5555-555555555555', 'Spontaneous and open-ended'),
-('eeeeeeee-1111-1111-1111-111111111113', 'dddddddd-5555-5555-5555-555555555555', 'Planned for tonight with a known place'),
-('eeeeeeee-1111-1111-1111-111111111114', 'dddddddd-5555-5555-5555-555555555555', 'Booked reservation ahead of time'),
-('eeeeeeee-1111-1111-1111-111111111115', 'dddddddd-5555-5555-5555-555555555555', 'Mix of plan and flexibility'),
-('eeeeeeee-2222-2222-2222-222222222223', 'dddddddd-6666-6666-6666-666666666666', 'Stay local and easy'),
-('eeeeeeee-2222-2222-2222-222222222224', 'dddddddd-6666-6666-6666-666666666666', 'Try a trendy new venue'),
-('eeeeeeee-2222-2222-2222-222222222225', 'dddddddd-6666-6666-6666-666666666666', 'Go for a memorable destination'),
-('eeeeeeee-2222-2222-2222-222222222226', 'dddddddd-6666-6666-6666-666666666666', 'Choose something with a unique vibe'),
-('eeeeeeee-3333-3333-3333-333333333337', 'dddddddd-7777-7777-7777-777777777777', 'One focused plan (dinner only)'),
-('eeeeeeee-3333-3333-3333-333333333338', 'dddddddd-7777-7777-7777-777777777777', 'Dinner then drinks'),
-('eeeeeeee-3333-3333-3333-333333333339', 'dddddddd-7777-7777-7777-777777777777', 'Dinner plus an activity'),
-('eeeeeeee-3333-3333-3333-333333333330', 'dddddddd-7777-7777-7777-777777777777', 'Bar/cafe crawl with a few stops'),
-('eeeeeeee-dddd-dddd-dddd-dddddddddddd', 'dddddddd-4444-4444-4444-444444444444', 'Small (1-10 people)'),
-('eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', 'dddddddd-4444-4444-4444-444444444444', 'Medium (11-50 people)'),
-('eeeeeeee-ffff-ffff-ffff-ffffffffffff', 'dddddddd-4444-4444-4444-444444444444', 'Large (51-100 people)'),
-('eeeeeeee-999a-9999-9999-999999999999', 'dddddddd-4444-4444-4444-444444444444', 'Very Large (101+ people)')
+    ('bbbbbbbb-1111-1111-1111-111111111101', 'dddddddd-1111-1111-1111-111111111111', 'Low — up to 50 NIS'),
+    ('bbbbbbbb-1111-1111-1111-111111111102', 'dddddddd-1111-1111-1111-111111111111', 'Moderate — 50 to 150 NIS'),
+    ('bbbbbbbb-1111-1111-1111-111111111103', 'dddddddd-1111-1111-1111-111111111111', 'Generous — 150 to 300 NIS'),
+    ('bbbbbbbb-1111-1111-1111-111111111104', 'dddddddd-1111-1111-1111-111111111111', 'Splurge — over 300 NIS')
 ON CONFLICT (id) DO NOTHING;
+
+-- Occasion options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-1111-1111-1111-111111111101', 'ffffffff-1111-1111-1111-111111111111', 'Birthday or milestone'),
+    ('ffffffff-1111-1111-1111-111111111102', 'ffffffff-1111-1111-1111-111111111111', 'Date night or romantic'),
+    ('ffffffff-1111-1111-1111-111111111103', 'ffffffff-1111-1111-1111-111111111111', 'Friends hangout'),
+    ('ffffffff-1111-1111-1111-111111111104', 'ffffffff-1111-1111-1111-111111111111', 'Team or work event'),
+    ('ffffffff-1111-1111-1111-111111111105', 'ffffffff-1111-1111-1111-111111111111', 'Family gathering'),
+    ('ffffffff-1111-1111-1111-111111111106', 'ffffffff-1111-1111-1111-111111111111', 'Just for fun')
+ON CONFLICT (id) DO NOTHING;
+
+-- Vibe options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-2222-2222-2222-222222222201', 'ffffffff-2222-2222-2222-222222222222', 'Lively and energetic'),
+    ('ffffffff-2222-2222-2222-222222222202', 'ffffffff-2222-2222-2222-222222222222', 'Relaxed and laid-back'),
+    ('ffffffff-2222-2222-2222-222222222203', 'ffffffff-2222-2222-2222-222222222222', 'Upscale and refined'),
+    ('ffffffff-2222-2222-2222-222222222204', 'ffffffff-2222-2222-2222-222222222222', 'Fun and playful'),
+    ('ffffffff-2222-2222-2222-222222222205', 'ffffffff-2222-2222-2222-222222222222', 'Cozy and intimate')
+ON CONFLICT (id) DO NOTHING;
+
+-- Activity options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-3333-3333-3333-333333333301', 'ffffffff-3333-3333-3333-333333333333', 'Food and dining'),
+    ('ffffffff-3333-3333-3333-333333333302', 'ffffffff-3333-3333-3333-333333333333', 'Drinks and nightlife'),
+    ('ffffffff-3333-3333-3333-333333333303', 'ffffffff-3333-3333-3333-333333333333', 'Outdoor adventure'),
+    ('ffffffff-3333-3333-3333-333333333304', 'ffffffff-3333-3333-3333-333333333333', 'Culture or arts'),
+    ('ffffffff-3333-3333-3333-333333333305', 'ffffffff-3333-3333-3333-333333333333', 'Entertainment (escape room, bowling, cinema)'),
+    ('ffffffff-3333-3333-3333-333333333306', 'ffffffff-3333-3333-3333-333333333333', 'Wellness and relaxation')
+ON CONFLICT (id) DO NOTHING;
+
+-- Setting options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-4444-4444-4444-444444444401', 'ffffffff-4444-4444-4444-444444444444', 'Indoors — restaurant, cafe, bar'),
+    ('ffffffff-4444-4444-4444-444444444402', 'ffffffff-4444-4444-4444-444444444444', 'Outdoors — park, rooftop, beach'),
+    ('ffffffff-4444-4444-4444-444444444403', 'ffffffff-4444-4444-4444-444444444444', 'A mix of both'),
+    ('ffffffff-4444-4444-4444-444444444404', 'ffffffff-4444-4444-4444-444444444444', 'No strong preference')
+ON CONFLICT (id) DO NOTHING;
+
+-- Time of day options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-5555-5555-5555-555555555501', 'ffffffff-5555-5555-5555-555555555555', 'Morning or brunch (8am-12pm)'),
+    ('ffffffff-5555-5555-5555-555555555502', 'ffffffff-5555-5555-5555-555555555555', 'Afternoon (12pm-5pm)'),
+    ('ffffffff-5555-5555-5555-555555555503', 'ffffffff-5555-5555-5555-555555555555', 'Evening (5pm-9pm)'),
+    ('ffffffff-5555-5555-5555-555555555504', 'ffffffff-5555-5555-5555-555555555555', 'Late night (9pm onward)')
+ON CONFLICT (id) DO NOTHING;
+
+-- Food and drinks options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-6666-6666-6666-666666666601', 'ffffffff-6666-6666-6666-666666666666', 'It is the main focus — great food or drinks'),
+    ('ffffffff-6666-6666-6666-666666666602', 'ffffffff-6666-6666-6666-666666666666', 'Nice to have but not the main point'),
+    ('ffffffff-6666-6666-6666-666666666603', 'ffffffff-6666-6666-6666-666666666666', 'Not important — we will eat before or after'),
+    ('ffffffff-6666-6666-6666-666666666604', 'ffffffff-6666-6666-6666-666666666666', 'Completely open')
+ON CONFLICT (id) DO NOTHING;
+
+-- Group dynamic options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-7777-7777-7777-777777777701', 'ffffffff-7777-7777-7777-777777777777', 'Close friends who know each other well'),
+    ('ffffffff-7777-7777-7777-777777777702', 'ffffffff-7777-7777-7777-777777777777', 'Mixed group — some people are new'),
+    ('ffffffff-7777-7777-7777-777777777703', 'ffffffff-7777-7777-7777-777777777777', 'Colleagues or professional acquaintances'),
+    ('ffffffff-7777-7777-7777-777777777704', 'ffffffff-7777-7777-7777-777777777777', 'Couple or two people'),
+    ('ffffffff-7777-7777-7777-777777777705', 'ffffffff-7777-7777-7777-777777777777', 'Family including children')
+ON CONFLICT (id) DO NOTHING;
+
+-- Energy level options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-8888-8888-8888-888888888801', 'ffffffff-8888-8888-8888-888888888888', 'High energy — dancing, sports, adventure'),
+    ('ffffffff-8888-8888-8888-888888888802', 'ffffffff-8888-8888-8888-888888888888', 'Moderate — a fun activity or walkable experience'),
+    ('ffffffff-8888-8888-8888-888888888803', 'ffffffff-8888-8888-8888-888888888888', 'Low — sitting down, relaxing, or just talking'),
+    ('ffffffff-8888-8888-8888-888888888804', 'ffffffff-8888-8888-8888-888888888888', 'Flexible — open to anything')
+ON CONFLICT (id) DO NOTHING;
+
+-- Must-have options
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-9999-9999-9999-999999999901', 'ffffffff-9999-9999-9999-999999999999', 'Parking available'),
+    ('ffffffff-9999-9999-9999-999999999902', 'ffffffff-9999-9999-9999-999999999999', 'Kid-friendly'),
+    ('ffffffff-9999-9999-9999-999999999903', 'ffffffff-9999-9999-9999-999999999999', 'Pet-friendly'),
+    ('ffffffff-9999-9999-9999-999999999904', 'ffffffff-9999-9999-9999-999999999999', 'Wheelchair accessible'),
+    ('ffffffff-9999-9999-9999-999999999905', 'ffffffff-9999-9999-9999-999999999999', 'Private or semi-private space'),
+    ('ffffffff-9999-9999-9999-999999999906', 'ffffffff-9999-9999-9999-999999999999', 'None of the above')
+ON CONFLICT (id) DO NOTHING;
+
+-- QUESTION TAGS
+-- Assign tags to questions so getSlides() can filter tag-based follow-up questions.
+-- Tags align with the vibe taxonomy: initial, preference, dining, sightseeing, active,
+-- clubbing, casual, cultural.
+-- These UPDATE statements are idempotent — safe to re-run on existing databases.
+UPDATE slider_questions SET tags = ARRAY['initial','preference']     WHERE code = 'occasion';
+UPDATE slider_questions SET tags = ARRAY['initial']                  WHERE code = 'vibe';
+UPDATE slider_questions SET tags = ARRAY['dining','active','cultural','casual'] WHERE code = 'activity';
+UPDATE slider_questions SET tags = ARRAY['preference','budget']      WHERE code = 'budget';
+UPDATE slider_questions SET tags = ARRAY['active','casual']          WHERE code = 'energy-level';
+UPDATE slider_questions SET tags = ARRAY['dining','casual']          WHERE code = 'food-drinks';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'group-dynamic';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'must-have';
+UPDATE slider_questions SET tags = ARRAY['active','casual','sightseeing'] WHERE code = 'setting';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'time-of-day';

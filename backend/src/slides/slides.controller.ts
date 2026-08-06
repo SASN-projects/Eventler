@@ -6,6 +6,7 @@ import {
   Param,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { SlidesService } from './slides.service';
 import { CreateSlideAnswersDto } from './dto/create-slide-answers.dto';
@@ -18,9 +19,13 @@ export class SlidesController {
   constructor(private readonly slidesService: SlidesService) { }
 
   @Get()
-  getSlides(@Request() req: AuthRequest) {
+  getSlides(
+    @Request() req: AuthRequest,
+    @Query('vibes') vibes?: string,
+  ) {
     const userId = req?.user?.sub || '11111111-1111-1111-1111-111111111111';
-    return this.slidesService.getSlides(userId);
+    const vibesArray = vibes ? vibes.split(',').map((v) => v.trim()) : undefined;
+    return this.slidesService.getSlides(userId, vibesArray);
   }
 
   @Post('submit-answers/:eventId')

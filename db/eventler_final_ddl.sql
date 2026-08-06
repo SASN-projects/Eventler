@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS slider_questions (
     description TEXT,
     answer_mode answer_mode_enum NOT NULL,
     image_url TEXT,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
