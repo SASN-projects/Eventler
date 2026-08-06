@@ -216,6 +216,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
           await loadEventCreator(resumeEvent.eventId);
           await loadRecommendations(resumeEvent.eventId);
           return;
+        }
 
         const [questions, answers, eventDetails] = await Promise.all([
           fetchSlidesQuestions(),

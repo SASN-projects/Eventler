@@ -34,34 +34,6 @@ VALUES
 ('44444444-4444-4444-4444-444444444444', 'cccccccc-3333-3333-3333-333333333333')
 ON CONFLICT (user_id, venue_id) DO NOTHING;
 
--- SCHEMA COMPATIBILITY
--- Add tags column to slider_questions if it does not exist yet
--- (supports existing dev databases built from an earlier DDL version).
-ALTER TABLE slider_questions ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-
--- SLIDER QUESTIONS AND OPTIONS
---
--- RETIRED QUESTIONS (idempotent cleanup — safe on both fresh and existing databases)
--- Options must be deleted before their parent questions due to the FK constraint.
-DELETE FROM question_options
-WHERE question_id IN (
-    SELECT id FROM slider_questions
-    WHERE code IN (
-        'transportation', 'location-type', 'evening-structure',
-        'crowd', 'planning-style', 'event-type'
-    )
-);
-DELETE FROM slider_questions
-WHERE code IN (
-    'transportation', 'location-type', 'evening-structure',
-    'crowd', 'planning-style', 'event-type'
-);
-
--- Remove old budget options before reinserting with improved labels.
--- The budget question row (dddddddd-1111-...) is kept and updated below.
-DELETE FROM question_options
-WHERE question_id = 'dddddddd-1111-1111-1111-111111111111';
-
 -- Upsert budget question: keep stable ID, update label and image.
 INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
 VALUES
@@ -72,7 +44,6 @@ ON CONFLICT (code) DO UPDATE
     SET label     = EXCLUDED.label,
         image_url = EXCLUDED.image_url;
 
--- New questions (9): insert only — conflict is a no-op.
 INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
 VALUES
     ('ffffffff-1111-1111-1111-111111111111', 'occasion',
@@ -112,7 +83,6 @@ VALUES
      'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&w=1400&q=80')
 ON CONFLICT (code) DO NOTHING;
 
--- Budget options (replacement — old rows deleted above)
 INSERT INTO question_options (id, question_id, value)
 VALUES
     ('bbbbbbbb-1111-1111-1111-111111111101', 'dddddddd-1111-1111-1111-111111111111', 'Low — up to 50 NIS'),
@@ -224,4 +194,4 @@ UPDATE slider_questions SET tags = ARRAY['dining','casual']          WHERE code 
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'group-dynamic';
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'must-have';
 UPDATE slider_questions SET tags = ARRAY['active','casual','sightseeing'] WHERE code = 'setting';
-UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'time-of-day';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'time-of-day';
