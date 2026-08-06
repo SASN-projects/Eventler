@@ -8,9 +8,10 @@ export interface GenerateRecommendationsResponse {
   message?: string;
 }
 
-export const fetchSlidesQuestions = async (): Promise<Question[]> => {
+export const fetchSlidesQuestions = async (vibes?: string): Promise<Question[]> => {
   try {
-    const { data } = await api.get("/slides");
+    const url = vibes ? `/slides?vibes=${encodeURIComponent(vibes)}` : '/slides';
+    const { data } = await api.get(url);
     return data.map(
       (question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
         ...question,
@@ -18,10 +19,11 @@ export const fetchSlidesQuestions = async (): Promise<Question[]> => {
       }),
     );
   } catch {
-    console.log("fetching slides failed");
+    console.log('fetching slides failed');
     return [];
   }
 };
+
 
 export const postNewEvent = async (
   time: Date,

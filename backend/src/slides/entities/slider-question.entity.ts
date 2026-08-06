@@ -28,9 +28,13 @@ export class SliderQuestion {
   @Column('text', { name: 'image_url', nullable: true })
     imageUrl?: string;
 
+  @Column('text', { array: true, default: '{}' })
+    tags: string[];
+
   @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
   @OneToMany(() => QuestionOption, (option) => option.question)
     options: QuestionOption[];
 }
+

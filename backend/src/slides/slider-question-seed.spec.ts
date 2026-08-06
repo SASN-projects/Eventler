@@ -32,6 +32,11 @@ interface QuestionConfig {
    * 'optional' — extra context that improves specificity when present.
    */
   constraintType: 'hard' | 'soft' | 'optional';
+  /**
+   * Tag array used by getSlides() for vibe-based follow-up question filtering.
+   * Must match db/eventler_final_dml.sql QUESTION TAGS section.
+   */
+  tags: string[];
 }
 
 const EXPECTED_QUESTIONS: QuestionConfig[] = [
@@ -41,6 +46,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'hard',
+    tags: ['initial', 'preference'],
   },
   {
     code: 'vibe',
@@ -48,6 +54,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['initial'],
   },
   {
     code: 'activity',
@@ -55,6 +62,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['dining', 'active', 'cultural', 'casual'],
   },
   {
     code: 'budget',
@@ -62,6 +70,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'hard',
+    tags: ['preference', 'budget'],
   },
   {
     code: 'setting',
@@ -69,6 +78,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['active', 'casual', 'sightseeing'],
   },
   {
     code: 'time-of-day',
@@ -76,6 +86,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'hard',
+    tags: ['preference'],
   },
   {
     code: 'food-drinks',
@@ -83,6 +94,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['dining', 'casual'],
   },
   {
     code: 'group-dynamic',
@@ -90,6 +102,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['preference'],
   },
   {
     code: 'energy-level',
@@ -97,6 +110,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'soft',
+    tags: ['active', 'casual'],
   },
   {
     code: 'must-have',
@@ -104,6 +118,7 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     answerMode: AnswerMode.OPTIONS,
     minOptions: 2,
     constraintType: 'hard',
+    tags: ['preference'],
   },
 ];
 
@@ -333,5 +348,31 @@ describe('SliderQuestion seed validation', () => {
   it('vibe label matches the DML text', () => {
     const vibe = EXPECTED_QUESTIONS.find((q) => q.code === 'vibe');
     expect(vibe?.label).toBe('What vibe are you going for?');
+  });
+
+  // ── Tags validation (synced with DML QUESTION TAGS section) ──────────────
+
+  it('all questions have a non-empty tags array', () => {
+    for (const q of EXPECTED_QUESTIONS) {
+      expect(Array.isArray(q.tags)).toBe(true);
+      expect(q.tags.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('vibe and occasion carry the "initial" tag for first-position rendering', () => {
+    const vibeQ = EXPECTED_QUESTIONS.find((q) => q.code === 'vibe');
+    const occasionQ = EXPECTED_QUESTIONS.find((q) => q.code === 'occasion');
+    expect(vibeQ?.tags).toContain('initial');
+    expect(occasionQ?.tags).toContain('initial');
+  });
+
+  it('all hard constraint questions carry the "preference" tag', () => {
+    const hardCodes = EXPECTED_QUESTIONS
+      .filter((q) => q.constraintType === 'hard')
+      .map((q) => q.code);
+    for (const code of hardCodes) {
+      const q = EXPECTED_QUESTIONS.find((q) => q.code === code);
+      expect(q?.tags).toContain('preference');
+    }
   });
 });

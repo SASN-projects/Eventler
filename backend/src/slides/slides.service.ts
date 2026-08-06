@@ -28,14 +28,12 @@ export class SlidesService {
     private groupRepository: Repository<Group>,
   ) { }
 
-  async getSlides(userId: string): Promise<SliderQuestion[]> {
+  async getSlides(userId: string, vibes?: string[]): Promise<SliderQuestion[]> {
     // 1. Fetch user to get their preferences
     const user = await this.userRepository.findOne({
       where: { id: userId },
       relations: ['preferences'],
     });
-
-    const preferredCodes: string[] = user?.preferences?.interests || [];
 
     // 2. Fetch all questions from the database along with their options
     const allQuestions = await this.sliderQuestionRepository
@@ -45,34 +43,116 @@ export class SlidesService {
       .addOrderBy('option.value', 'ASC')
       .getMany();
 
-    // 3. Separate questions into preferred and other categories
-    const preferredQuestions = allQuestions.filter((q) =>
-      preferredCodes.includes(q.code),
+    // 3. Find the vibe selector question (always shown first when no active vibes)
+    const vibeQuestion = allQuestions.find(q => q.code === 'vibe');
+
+    // 4. Build the set of preferred question codes from user preferences.
+    //    Map interest strings → new question codes (retired codes are intentionally absent).
+    const preferredCodes = new Set<string>();
+
+    const interestMapping: Record<string, string> = {
+      budget:        'budget',
+      cost:          'budget',
+      price:         'budget',
+      food:          'food-drinks',
+      drinks:        'food-drinks',
+      dining:        'activity',
+      outdoor:       'setting',
+      indoor:        'setting',
+      active:        'energy-level',
+      activity:      'activity',
+      occasion:      'occasion',
+      vibe:          'vibe',
+      group:         'group-dynamic',
+      social:        'group-dynamic',
+      accessibility: 'must-have',
+      musthave:      'must-have',
+    };
+
+    if (user?.preferences?.interests) {
+      user.preferences.interests.forEach(interest => {
+        const mappedCode = interestMapping[interest.toLowerCase()];
+        if (mappedCode) {
+          preferredCodes.add(mappedCode);
+        }
+      });
+    }
+
+    // Auto-detect preference fields
+    if (user?.preferences?.preferredBudgetMin !== undefined ||
+        user?.preferences?.preferredBudgetMax !== undefined) {
+      preferredCodes.add('budget');
+    }
+
+    // Exclude vibe from preferredCodes — it is handled separately as the first question
+    preferredCodes.delete('vibe');
+
+    const preferredQuestions = allQuestions.filter(q =>
+      preferredCodes.has(q.code) && q.code !== 'vibe',
     );
-    const otherQuestions = allQuestions.filter(
-      (q) => !preferredCodes.includes(q.code),
-    );
 
-    // 4. Shuffle other questions randomly
-    const shuffledOthers = [...otherQuestions].sort(() => Math.random() - 0.5);
+    // 5. Determine active vibes for tag-based follow-up questions
+    const activeVibes: string[] = vibes ? [...vibes] : [];
+    if (activeVibes.length === 0 && user?.preferences?.preferredVibe) {
+      activeVibes.push(user.preferences.preferredVibe);
+    }
 
-    // 5. Select enough other questions to reach 7 total
-    const needed = Math.max(0, 7 - preferredQuestions.length);
-    const selectedOthers = shuffledOthers.slice(0, needed);
+    const knownVibes = ['dining', 'sightseeing', 'active', 'clubbing', 'casual', 'cultural'];
+    if (activeVibes.length === 0 && user?.preferences?.interests) {
+      user.preferences.interests.forEach(interest => {
+        if (knownVibes.includes(interest.toLowerCase())) {
+          activeVibes.push(interest.toLowerCase());
+        }
+      });
+    }
 
-    // 6. Combine and sort alphabetically by code
-    const selectedQuestions = [...preferredQuestions, ...selectedOthers];
-    selectedQuestions.sort((a, b) => a.code.localeCompare(b.code));
+    // 6. Filter tag-based follow-up questions (not vibe, not already preferred)
+    let vibeFollowUpQuestions: SliderQuestion[] = [];
+    if (activeVibes.length > 0) {
+      vibeFollowUpQuestions = allQuestions.filter(q =>
+        q.code !== 'vibe' &&
+        !preferredCodes.has(q.code) &&
+        q.tags &&
+        q.tags.some(tag => activeVibes.includes(tag)),
+      );
+    }
 
-    // 7. Ensure options inside each question are sorted alphabetically by value
-    for (const q of selectedQuestions) {
-      if (q.options) {
+    // Fallback: when no tag-based follow-ups found, use all remaining non-vibe non-preferred questions
+    if (vibeFollowUpQuestions.length === 0) {
+      vibeFollowUpQuestions = allQuestions.filter(q =>
+        q.code !== 'vibe' &&
+        !preferredCodes.has(q.code),
+      );
+    }
+
+    // 7. Shuffle follow-up questions randomly for variety
+    const shuffledFollowUps = [...vibeFollowUpQuestions].sort(() => Math.random() - 0.5);
+
+    // 8. Select follow-ups to fill up to 7 questions total
+    //    (vibe question counts as 1 if shown first)
+    const includeVibe = (vibeQuestion && (!vibes || vibes.length === 0)) ? 1 : 0;
+    const targetTotal = 7;
+    const needed = Math.max(0, targetTotal - includeVibe - preferredQuestions.length);
+    const selectedFollowUps = shuffledFollowUps.slice(0, needed);
+
+    // 9. Assemble final list: vibe first (if applicable), then preferred, then follow-ups
+    const resultQuestions: SliderQuestion[] = [];
+    if (vibeQuestion && includeVibe) {
+      resultQuestions.push(vibeQuestion);
+    }
+    resultQuestions.push(...preferredQuestions);
+    resultQuestions.push(...selectedFollowUps);
+
+    // 10. Sort options alphabetically within each question (vibe question options stay as-is)
+    for (const q of resultQuestions) {
+      if (q.options && q.code !== 'vibe') {
         q.options.sort((a, b) => a.value.localeCompare(b.value));
       }
     }
 
-    return selectedQuestions;
+    return resultQuestions;
   }
+
 
   async submitAnswers(
     eventId: string,

@@ -34,6 +34,11 @@ VALUES
 ('44444444-4444-4444-4444-444444444444', 'cccccccc-3333-3333-3333-333333333333')
 ON CONFLICT (user_id, venue_id) DO NOTHING;
 
+-- SCHEMA COMPATIBILITY
+-- Add tags column to slider_questions if it does not exist yet
+-- (supports existing dev databases built from an earlier DDL version).
+ALTER TABLE slider_questions ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+
 -- SLIDER QUESTIONS AND OPTIONS
 --
 -- RETIRED QUESTIONS (idempotent cleanup — safe on both fresh and existing databases)
@@ -204,3 +209,19 @@ VALUES
     ('ffffffff-9999-9999-9999-999999999905', 'ffffffff-9999-9999-9999-999999999999', 'Private or semi-private space'),
     ('ffffffff-9999-9999-9999-999999999906', 'ffffffff-9999-9999-9999-999999999999', 'None of the above')
 ON CONFLICT (id) DO NOTHING;
+
+-- QUESTION TAGS
+-- Assign tags to questions so getSlides() can filter tag-based follow-up questions.
+-- Tags align with the vibe taxonomy: initial, preference, dining, sightseeing, active,
+-- clubbing, casual, cultural.
+-- These UPDATE statements are idempotent — safe to re-run on existing databases.
+UPDATE slider_questions SET tags = ARRAY['initial','preference']     WHERE code = 'occasion';
+UPDATE slider_questions SET tags = ARRAY['initial']                  WHERE code = 'vibe';
+UPDATE slider_questions SET tags = ARRAY['dining','active','cultural','casual'] WHERE code = 'activity';
+UPDATE slider_questions SET tags = ARRAY['preference','budget']      WHERE code = 'budget';
+UPDATE slider_questions SET tags = ARRAY['active','casual']          WHERE code = 'energy-level';
+UPDATE slider_questions SET tags = ARRAY['dining','casual']          WHERE code = 'food-drinks';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'group-dynamic';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'must-have';
+UPDATE slider_questions SET tags = ARRAY['active','casual','sightseeing'] WHERE code = 'setting';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'time-of-day';

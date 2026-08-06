@@ -44,7 +44,7 @@ Questions and their selectable options are defined exclusively in **`db/eventler
 
 ### How answers enter the recommendation prompt
 
-1. The frontend calls `GET /slides` — the service returns up to **7** questions (sorted by `code` ASC).
+1. The frontend calls `GET /slides` (optionally with `?vibes=dining,casual`) — the service returns up to **7** questions.
 2. The user submits answers via `POST /slides/submit-answers/:eventId`.
 3. Answers are stored in `event_responses` using the question's **label text** as the `question` column value.
 4. At recommendation time, `getEventAnswers(eventId)` returns all answers for the event.
@@ -53,9 +53,39 @@ Questions and their selectable options are defined exclusively in **`db/eventler
    - **Group**: majority-vote per label → `"- <label>: <winning answer> (N/M responses)"`
 6. The rendered summary is placed in the `{{userPreferencesSummary}}` section of the Langfuse prompt template.
 
+### Tag-based dynamic question selection
+
+Each `slider_questions` row has a `tags TEXT[]` column (added by the `dynamic-questions` merge). Tags connect questions to the vibe taxonomy: `initial`, `preference`, `dining`, `sightseeing`, `active`, `clubbing`, `casual`, `cultural`.
+
+`SlidesService.getSlides(userId, vibes?)` uses tags as follows:
+
+1. **`initial` tag** — questions tagged `initial` (`vibe`, `occasion`) are candidates for the first position.
+2. **`preference` tag** — questions tagged `preference` match the user's stored `user_preferences.interests` and are prioritized.
+3. **Vibe tags** (e.g. `dining`, `active`) — when the user selects a vibe (via `?vibes=dining`), follow-up questions are filtered to those sharing the vibe tag.
+4. **Fallback** — if no tag-filtered questions are found, all remaining questions are used.
+
+Assigned tags per question:
+
+| Code | Tags |
+|---|---|
+| `occasion` | `initial`, `preference` |
+| `vibe` | `initial` |
+| `activity` | `dining`, `active`, `cultural`, `casual` |
+| `budget` | `preference`, `budget` |
+| `energy-level` | `active`, `casual` |
+| `food-drinks` | `dining`, `casual` |
+| `group-dynamic` | `preference` |
+| `must-have` | `preference` |
+| `setting` | `active`, `casual`, `sightseeing` |
+| `time-of-day` | `preference` |
+
 ### Display cap
 
-`SlidesService.getSlides()` returns up to **7** questions per session (raised from 6 in v1.1 to support the expanded 10-question set). User-preferred question codes (from `user_preferences.interests`) are prioritized; the remainder is selected randomly from other questions.
+`SlidesService.getSlides()` returns up to **7** questions per session (raised from 6 in v1.1 to support the expanded 10-question set). The selection order is:
+
+1. Vibe question first (if no `?vibes=` param supplied)
+2. User-preferred questions (matched via `interestMapping` → new question codes)
+3. Tag-filtered follow-ups (or all remaining, if no tags match)
 
 ### How to update questions safely
 
@@ -63,8 +93,9 @@ Questions and their selectable options are defined exclusively in **`db/eventler
 1. Assign a new stable UUID (use `gen_random_uuid()` once and hard-code it).
 2. Add an `INSERT INTO slider_questions ... ON CONFLICT (code) DO NOTHING` row.
 3. Add `INSERT INTO question_options ... ON CONFLICT (id) DO NOTHING` rows for the options.
-4. Update `EXPECTED_QUESTIONS` in `src/slides/slider-question-seed.spec.ts`.
-5. Run `npm run test` to validate.
+4. Add a `UPDATE slider_questions SET tags = ARRAY[...] WHERE code = 'your-code'` statement in the QUESTION TAGS section.
+5. Update `EXPECTED_QUESTIONS` in `src/slides/slider-question-seed.spec.ts` (including `tags`).
+6. Run `npm run test` to validate.
 
 #### Retiring a question
 1. Add the question code to `RETIRED_CODES` in `slider-question-seed.spec.ts`.
@@ -79,6 +110,7 @@ Questions and their selectable options are defined exclusively in **`db/eventler
 #### Updating an existing question's label or options
 - **Label**: use `ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label`.
 - **Options**: `DELETE` old options first (they don't have a unique constraint on `value`), then re-insert with new UUIDs.
+- **Tags**: update the `UPDATE slider_questions SET tags = ...` statement in the DML QUESTION TAGS section.
 - **Important**: changing a question's label changes what is stored in future `event_responses.question` rows. Historical rows are unaffected.
 
 ### DML validation checklist
@@ -91,6 +123,7 @@ Run these checks after any question bank change:
 - [ ] All `answer_mode` values are either `'options'` or `'value'`
 - [ ] New option UUIDs are unique across the entire `question_options` table
 - [ ] `DELETE` statements precede `INSERT` statements for replaced options
+- [ ] `tags` array is non-empty and uses only values from: `initial`, `preference`, `dining`, `sightseeing`, `active`, `clubbing`, `casual`, `cultural`
 - [ ] `npm run test` passes (especially `slider-question-seed.spec.ts`)
 
 ---

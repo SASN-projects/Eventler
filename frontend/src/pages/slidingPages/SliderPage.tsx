@@ -1,5 +1,5 @@
 import type { FunctionComponent } from "react";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { FullSizeContainer } from "../../components/layouts";
 import Slide from "./Slide";
 import type { Answers, Question } from "./types";
@@ -19,9 +19,7 @@ export const Slider: FunctionComponent<SlidesProps> = ({
   disabled = false,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
-  const [answers, setAnswers] = useState<Answers>(
-    initialAnswers ?? createAnswersObject(questions),
-  );
+  const [answers, setAnswers] = useState<Answers>({});
 
   useEffect(() => {
     const baseAnswers = initialAnswers ?? createAnswersObject(questions);
@@ -55,7 +53,9 @@ export const Slider: FunctionComponent<SlidesProps> = ({
     }
   };
 
+
   const currentQuestion = questions[currentStepIndex];
+
   if (!currentQuestion) {
     return null;
   }
