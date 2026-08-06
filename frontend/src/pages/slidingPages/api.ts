@@ -13,7 +13,7 @@ export const fetchSlidesQuestions = async (vibes?: string): Promise<Question[]> 
     const url = vibes ? `/slides?vibes=${encodeURIComponent(vibes)}` : '/slides';
     const { data } = await api.get(url);
     return data.map(
-      (question: { image_url?: string; imageUrl?: string; [key: string]: unknown }) => ({
+      (question: { image_url?: string; imageUrl?: string;[key: string]: unknown }) => ({
         ...question,
         imageUrl: question.image_url ?? question.imageUrl,
       }),
@@ -60,11 +60,19 @@ export const postNewEvent = async (
 };
 
 export const submitAnswers = async (eventId: string, answers: Answers) => {
-  const data = {
-    answers: Object.entries(answers).map(([question, answerValue]) => ({
+  const normalizedAnswers = Object.entries(answers)
+    .map(([question, answerValue]) => ({
       question,
-      answerValue,
-    })),
+      answerValue: typeof answerValue === "string" ? answerValue.trim() : "",
+    }))
+    .filter((answer) => answer.answerValue.length > 0);
+
+  if (normalizedAnswers.length === 0) {
+    throw new Error("At least one non-empty answer is required.");
+  }
+
+  const data = {
+    answers: normalizedAnswers,
   };
 
   await api.post(`/slides/submit-answers/${eventId}`, data);

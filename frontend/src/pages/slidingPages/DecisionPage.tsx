@@ -32,6 +32,12 @@ import {
   type Recommendation,
 } from "./types";
 
+type EventAnswer = {
+  userId?: string;
+  question?: string;
+  answerValue?: string;
+};
+
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
 }
@@ -108,7 +114,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setDecisionStep("recommendation");
   };
 
-  const onPreferencesConfirm = async (_selected: string[]) => {
+  const onPreferencesConfirm = async () => {
     setDecisionStep("vibe-select");
   };
 
@@ -129,6 +135,20 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       return;
     }
 
+    const vibeQuestionLabel = slidersQuestions.find((question) => question.code === "vibe")?.label
+      ?? "What's your vibe?";
+    const vibeFromAnswers = answers[vibeQuestionLabel]?.trim() ?? "";
+    const vibe = selectedVibe.trim() || vibeFromAnswers;
+
+    if (!vibe) {
+      setGenerationError("Please choose a vibe before generating recommendations.");
+      return;
+    }
+
+    if (vibe !== selectedVibe) {
+      setSelectedVibe(vibe);
+    }
+
     setLastSubmittedAnswers(answers);
     setIsGeneratingRecommendation(true);
     setGenerationError("");
@@ -136,11 +156,15 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     try {
       // Merge the vibe answer into final submitted answers
       const finalAnswers = {
-        "What's your vibe?": selectedVibe,
+        [vibeQuestionLabel]: vibe,
         ...answers,
       };
 
-      await submitAnswers(eventId, finalAnswers);
+      const sanitizedAnswers = Object.fromEntries(
+        Object.entries(finalAnswers).filter(([, answerValue]) => typeof answerValue === "string" && answerValue.trim().length > 0),
+      );
+
+      await submitAnswers(eventId, sanitizedAnswers);
 
       const creatorId = eventCreatedById ?? (await loadEventCreator(eventId));
       const isCreator = auth?.user?.id === creatorId;
@@ -226,9 +250,10 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
         const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
         const currentUserId = auth?.user?.id ?? null;
+        const eventAnswers = (answers || []) as EventAnswer[];
         const hasCurrentUserAnswered = Boolean(
           currentUserId &&
-            (answers || []).some((item: any) => item.userId === currentUserId),
+          eventAnswers.some((item) => item.userId === currentUserId),
         );
 
         setEventCreatedById(creatorId);
@@ -243,12 +268,12 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
           return;
         }
 
-        const mappedAnswers = (answers || [])
-          .filter((item: any) => item.userId === currentUserId)
+        const mappedAnswers = eventAnswers
+          .filter((item) => item.userId === currentUserId)
           .reduce(
-            (acc: Answers, item: any) => ({
+            (acc: Answers, item) => ({
               ...acc,
-              [item.question]: item.answerValue || "",
+              [item.question ?? ""]: item.answerValue || "",
             }),
             {} as Answers,
           );
