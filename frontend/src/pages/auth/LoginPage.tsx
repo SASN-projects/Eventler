@@ -13,9 +13,10 @@ const PageWrap = styled(Box)({
   flexDirection: 'column',
   justifyContent: 'center',
   alignItems: 'center',
-  minHeight: '100%',
+  minHeight: '100vh',
+  width: '100vw',
   padding: '32px 24px',
-  background: 'linear-gradient(160deg, #b8c8f0 0%, #c9aee8 45%, #f0bcd4 100%)',
+  background: 'var(--eventler-gradient)',
   backgroundAttachment: 'fixed',
   boxSizing: 'border-box',
 });
@@ -25,10 +26,10 @@ const AppTitle = styled(Typography)({
   fontSize: '42px',
   fontWeight: 900,
   color: 'white',
-  letterSpacing: '-0.5px',
+  letterSpacing: 0,
   marginBottom: '40px',
   fontFamily: 'Nunito, sans-serif',
-  textShadow: '0 2px 12px rgba(120, 80, 180, 0.18)',
+  textShadow: '0 8px 24px rgba(39, 49, 66, 0.18)',
 });
 
 /* ── Form wrapper ── */
@@ -43,17 +44,18 @@ const Form = styled('form')({
 /* ── Footer link text ── */
 const FooterText = styled(Typography)({
   marginTop: '20px',
-  color: 'rgba(60,40,80,0.75)',
+  color: 'rgba(255,255,255,0.86)',
   fontSize: '14px',
   fontWeight: 600,
   fontFamily: 'Nunito, sans-serif',
 });
 
 const LinkSpan = styled('span')({
-  color: '#5b6fd6',
-  fontWeight: 700,
+  color: '#ffffff',
+  fontWeight: 900,
   cursor: 'pointer',
   fontFamily: 'Nunito, sans-serif',
+  textDecorationColor: 'rgba(255,255,255,0.55)',
   '&:hover': { textDecoration: 'underline' },
 });
 

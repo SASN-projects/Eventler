@@ -79,12 +79,12 @@ export const PreferencesSetup: FunctionComponent<PreferencesSetupProps> = ({ onC
           sx={{
             textTransform: "none",
             bgcolor: "white",
-            color: "#9c27b0",
+            color: "var(--eventler-secondary)",
             fontWeight: 800,
             borderRadius: "16px",
             py: 1.25,
-            boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
-            "&:hover": { bgcolor: "#f8f0fc" },
+            boxShadow: "0 10px 24px rgba(85, 73, 145, 0.16)",
+            "&:hover": { bgcolor: "#eef1ff" },
             "&.Mui-disabled": { bgcolor: "rgba(255,255,255,0.4)", color: "rgba(0,0,0,0.25)" },
           }}
         >

@@ -20,6 +20,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
@@ -122,6 +123,23 @@ const mergeMembersById = (...memberGroups: Member[][]): Member[] => {
   });
 
   return Array.from(membersById.values());
+};
+
+const dialogPaperSx: SxProps<Theme> = {
+  background:
+    "linear-gradient(180deg, #ffffff 0%, var(--eventler-surface-soft) 100%)",
+};
+
+const dialogFieldSx: SxProps<Theme> = {
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "var(--eventler-secondary)",
+  },
+};
+
+const quietButtonSx: SxProps<Theme> = {
+  color: "var(--eventler-muted)",
+  fontWeight: 800,
+  textTransform: "none",
 };
 
 const AvatarStack: React.FC<{ members: Member[] }> = ({ members }) => {
@@ -230,6 +248,8 @@ const GroupCard: React.FC<{
               fontWeight: 700,
               fontSize: "11px",
               minWidth: 92,
+              borderColor: "rgba(109, 114, 232, 0.26)",
+              color: "var(--eventler-secondary)",
             }}
           >
             View events
@@ -546,11 +566,12 @@ const GroupsPanel: React.FC<{
           position: "sticky",
           top: 0,
           zIndex: 10,
-          backgroundColor: "white",
+          backgroundColor: "rgba(255,255,255,0.86)",
+          backdropFilter: "blur(16px)",
           pt: 2,
           pb: 1,
           px: 1,
-          borderBottom: "1px solid rgba(0,0,0,0.04)",
+          borderBottom: "1px solid var(--eventler-border)",
         }}
       >
         {error ? (
@@ -583,18 +604,18 @@ const GroupsPanel: React.FC<{
             width: "10px",
           },
           "&::-webkit-scrollbar-track": {
-            backgroundColor: "#f3f3f5",
+            backgroundColor: "#f3f1fb",
             borderRadius: "999px",
           },
           "&::-webkit-scrollbar-thumb": {
-            backgroundColor: "#d6a8ff",
+            backgroundColor: "rgba(109, 114, 232, 0.34)",
             borderRadius: "999px",
           },
           "&::-webkit-scrollbar-thumb:hover": {
-            backgroundColor: "#b67cff",
+            backgroundColor: "rgba(109, 114, 232, 0.55)",
           },
           scrollbarWidth: "thin",
-          scrollbarColor: "#d6a8ff #f3f3f5",
+          scrollbarColor: "rgba(109, 114, 232, 0.4) #f3f1fb",
         }}
       >
         {loading ? (
@@ -606,8 +627,10 @@ const GroupsPanel: React.FC<{
             sx={{
               p: 4,
               textAlign: "center",
-              borderRadius: "24px",
-              border: "1px dashed rgba(0,0,0,0.12)",
+              borderRadius: "18px",
+              border: "1px dashed rgba(109, 114, 232, 0.28)",
+              color: "var(--eventler-muted)",
+              backgroundColor: "rgba(255,255,255,0.78)",
             }}
           >
             You have not created or joined any groups yet.
@@ -632,6 +655,7 @@ const GroupsPanel: React.FC<{
         onClose={() => setCreateOpen(false)}
         fullWidth
         maxWidth="sm"
+        PaperProps={{ sx: dialogPaperSx }}
       >
         <DialogTitle>Create New Group</DialogTitle>
         <DialogContent>
@@ -642,6 +666,7 @@ const GroupsPanel: React.FC<{
               onChange={(event) => setNewName(event.target.value)}
               fullWidth
               required
+              sx={dialogFieldSx}
             />
             <TextField
               label="Description"
@@ -650,6 +675,7 @@ const GroupsPanel: React.FC<{
               fullWidth
               multiline
               minRows={2}
+              sx={dialogFieldSx}
             />
             <Autocomplete<Member, true, false, false>
               multiple
@@ -666,6 +692,8 @@ const GroupsPanel: React.FC<{
                     label={getMemberName(option)}
                     {...getTagProps({ index })}
                     key={option.id}
+                    color="secondary"
+                    variant="outlined"
                   />
                 ))
               }
@@ -685,13 +713,14 @@ const GroupsPanel: React.FC<{
                   {...params}
                   label="Add members"
                   placeholder="Select users"
+                  sx={dialogFieldSx}
                 />
               )}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)} disabled={creating}>
+          <Button onClick={() => setCreateOpen(false)} disabled={creating} sx={quietButtonSx}>
             Cancel
           </Button>
           <PrimeButton
@@ -708,6 +737,7 @@ const GroupsPanel: React.FC<{
         onClose={() => setDetailOpen(false)}
         fullWidth
         maxWidth="sm"
+        PaperProps={{ sx: dialogPaperSx }}
       >
         <DialogTitle sx={{ pr: 10 }}>
           {editing ? "Edit Group" : (detailGroup?.name ?? "Group")}
@@ -747,6 +777,7 @@ const GroupsPanel: React.FC<{
                     onChange={(event) => setEditName(event.target.value)}
                     fullWidth
                     required
+                    sx={dialogFieldSx}
                   />
                   <TextField
                     label="Description"
@@ -755,6 +786,7 @@ const GroupsPanel: React.FC<{
                     fullWidth
                     multiline
                     minRows={2}
+                    sx={dialogFieldSx}
                   />
                   <Autocomplete<Member, true, false, false>
                     multiple
@@ -789,6 +821,8 @@ const GroupsPanel: React.FC<{
                             {...tagProps}
                             onDelete={isCreator ? undefined : tagProps.onDelete}
                             key={option.id}
+                            color="secondary"
+                            variant="outlined"
                           />
                         );
                       })
@@ -809,6 +843,7 @@ const GroupsPanel: React.FC<{
                         {...params}
                         label="Group members"
                         placeholder="Add or remove users"
+                        sx={dialogFieldSx}
                       />
                     )}
                   />
@@ -848,9 +883,9 @@ const GroupsPanel: React.FC<{
         <DialogActions>
           {editing ? (
             <>
-              <Button onClick={() => setEditing(false)} disabled={saving}>
-                Cancel
-              </Button>
+                  <Button onClick={() => setEditing(false)} disabled={saving} sx={quietButtonSx}>
+                    Cancel
+                  </Button>
               <PrimeButton
                 onClick={saveGroup}
                 disabled={saving || !editName.trim()}
@@ -859,7 +894,7 @@ const GroupsPanel: React.FC<{
               </PrimeButton>
             </>
           ) : (
-            <Button onClick={() => setDetailOpen(false)}>Close</Button>
+            <Button onClick={() => setDetailOpen(false)} sx={quietButtonSx}>Close</Button>
           )}
         </DialogActions>
       </Dialog>
@@ -869,6 +904,7 @@ const GroupsPanel: React.FC<{
         onClose={closeGroupEvents}
         fullWidth
         maxWidth="md"
+        PaperProps={{ sx: dialogPaperSx }}
       >
         <DialogTitle>{currentGroupName || "Group"} events</DialogTitle>
         <DialogContent dividers>
@@ -881,8 +917,10 @@ const GroupsPanel: React.FC<{
               sx={{
                 p: 4,
                 textAlign: "center",
-                borderRadius: "24px",
-                border: "1px dashed rgba(0,0,0,0.12)",
+                borderRadius: "18px",
+                border: "1px dashed rgba(109, 114, 232, 0.28)",
+                color: "var(--eventler-muted)",
+                backgroundColor: "rgba(255,255,255,0.78)",
               }}
             >
               No events found for this group.
@@ -896,7 +934,7 @@ const GroupsPanel: React.FC<{
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeGroupEvents}>Close</Button>
+          <Button onClick={closeGroupEvents} sx={quietButtonSx}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

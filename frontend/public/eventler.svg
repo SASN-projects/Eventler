@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="eventler-mark" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7985ff"/>
+      <stop offset="0.52" stop-color="#ff5876"/>
+      <stop offset="1" stop-color="#ffc857"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#eventler-mark)"/>
+  <path fill="#fff" d="M20 18h24a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4Zm2 12h20v-5H22v5Zm0 10h8v-6h-8v6Zm12 0h8v-6h-8v6Z"/>
+  <circle cx="23" cy="18" r="3" fill="#273142"/>
+  <circle cx="41" cy="18" r="3" fill="#273142"/>
+</svg>
