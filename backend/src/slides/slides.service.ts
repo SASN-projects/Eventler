@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, forwardRef, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SlideAnswer } from './entities/slide-answer.entity';
@@ -10,6 +10,7 @@ import { EventStatus } from '../events/enums/event-status.enum';
 import { User } from '../auth/entities/user.entity';
 import { Group } from '../groups/entities/group.entity';
 import { EventType } from '../events/enums/event.enums';
+import { GroupLifecycleService } from '../events/group-lifecycle.service';
 
 @Injectable()
 export class SlidesService {
@@ -26,7 +27,9 @@ export class SlidesService {
     private userRepository: Repository<User>,
     @InjectRepository(Group)
     private groupRepository: Repository<Group>,
-  ) { }
+    @Inject(forwardRef(() => GroupLifecycleService))
+    private groupLifecycleService: GroupLifecycleService,
+  ) {}
 
   async getSlides(userId: string, vibes?: string[]): Promise<SliderQuestion[]> {
     // 1. Fetch user to get their preferences
@@ -169,6 +172,25 @@ export class SlidesService {
       throw new NotFoundException(`Event with id ${eventId} not found`);
     }
 
+    // ── Lazy deadline check (group events only) ───────────────────────────
+    // If the event's closeAt has passed and it's still OPEN, auto-close before
+    // processing the answer so we return the correct rejection message.
+    if (event.eventType === EventType.GROUP) {
+      const closedByDeadline = await this.groupLifecycleService.checkAndCloseIfDeadlinePassed(event);
+      if (closedByDeadline) {
+        // Re-load the updated event so the status gate below fires correctly
+        const refreshed = await this.eventRepository.findOne({ where: { id: eventId } });
+        if (refreshed) Object.assign(event, refreshed);
+      }
+    }
+
+    // ── OPEN gate: reject answers for closed group questionnaires ─────────
+    if (event.eventType === EventType.GROUP && event.status !== EventStatus.OPEN) {
+      throw new BadRequestException(
+        'Questionnaire is closed. No new answers are accepted.',
+      );
+    }
+
     const existingResponses = await this.eventResponseRepository.find({
       where: { eventId, userId },
     });
@@ -192,8 +214,8 @@ export class SlidesService {
 
     await this.eventResponseRepository.save(answersToSave);
 
-    // Only transition to RECOMMENDED when all group members have answered (for group events)
     if (event.eventType === EventType.GROUP && event.groupId) {
+      // ── Group event: check if all members have now answered ───────────
       const group = await this.groupRepository.findOne({
         where: { id: event.groupId },
         relations: ['members'],
@@ -210,22 +232,18 @@ export class SlidesService {
           ).map((r) => r.userId),
         );
 
-        const allMembersAnswered = groupMemberIds.every((memberId) =>
-          answeredUserIds.has(memberId),
+        // Delegate close + generation to GroupLifecycleService
+        await this.groupLifecycleService.checkAndCloseIfAllMembersAnswered(
+          eventId,
+          answeredUserIds,
+          groupMemberIds,
         );
-
-        if (allMembersAnswered) {
-          await this.eventRepository.update(
-            { id: eventId },
-            { status: EventStatus.RECOMMENDED },
-          );
-        }
       }
     } else {
-      // For individual events, immediately transition to RECOMMENDED
+      // ── Individual event: immediately ready for recommendations ───────
       await this.eventRepository.update(
         { id: eventId },
-        { status: EventStatus.RECOMMENDED },
+        { status: EventStatus.RECOMMENDATIONS_READY },
       );
     }
 

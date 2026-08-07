@@ -51,6 +51,29 @@ export class EventsController {
     return await this.eventsService.remove(id, req.user.sub);
   }
 
+  /**
+   * Owner-triggered manual close of a group questionnaire.
+   * Transitions: OPEN → CLOSED → GENERATING_RECOMMENDATIONS → RECOMMENDATIONS_READY
+   */
+  @Post(':id/close')
+  async closeQuestionnaire(@Request() req: AuthRequest, @Param('id') id: string) {
+    return await this.eventsService.closeQuestionnaire(id, req.user.sub);
+  }
+
+  /**
+   * Owner-triggered final recommendation selection.
+   * Validates RECOMMENDATIONS_READY status and rec-to-event ownership.
+   * Transitions: RECOMMENDATIONS_READY → FINAL_SELECTION_MADE
+   */
+  @Post(':id/select-recommendation/:recommendationId')
+  async selectFinalRecommendation(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+    @Param('recommendationId') recommendationId: string,
+  ) {
+    return await this.eventsService.selectFinalRecommendation(id, recommendationId, req.user.sub);
+  }
+
   @Post('recommendations/:id')
   async createRecommendations(
     @Request() req: AuthRequest,

@@ -286,8 +286,8 @@ describe('RecommendationsService', () => {
     expect(langfuseServiceMock.trace).not.toHaveBeenCalled();
   });
 
-  it('marks the event as finalized when a recommendation is selected', async () => {
-    const event = makeEvent({ status: 'collecting_responses' });
+  it('marks the event as final_selection_made when a recommendation is selected', async () => {
+    const event = makeEvent({ status: 'recommendations_ready' });
     eventRepositoryMock.findOne.mockResolvedValue(event);
     recommendationRepositoryMock.findOne.mockResolvedValue({
       id: 'rec-1',
@@ -300,13 +300,13 @@ describe('RecommendationsService', () => {
 
     expect(result.success).toBe(true);
     expect(eventRepositoryMock.save).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'finalized',
+      status: 'final_selection_made',
       finalizedAt: expect.any(Date),
     }));
   });
 
   it('blocks non-creators from selecting a recommendation', async () => {
-    const event = makeEvent({ status: 'collecting_responses', createdById: 'creator-1' });
+    const event = makeEvent({ status: 'recommendations_ready', createdById: 'creator-1' });
     eventRepositoryMock.findOne.mockResolvedValue(event);
     recommendationRepositoryMock.findOne.mockResolvedValue({
       id: 'rec-1',
@@ -741,6 +741,7 @@ describe('RecommendationsService', () => {
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent({
         eventType: 'group',
         groupId: 'group-123',
+        status: 'closed',
       }));
 
       historyServiceMock.getHistorySignal.mockResolvedValue({
@@ -870,6 +871,7 @@ describe('RecommendationsService', () => {
         makeEvent({
           eventType: 'group',
           groupId: 'group-123',
+          status: 'closed',
         }),
       );
 
@@ -920,7 +922,7 @@ describe('RecommendationsService', () => {
         (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
       );
 
-      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123' }));
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123', status: 'closed' }));
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
         { question: 'Vibe', answerValue: 'Relaxed' },
         { question: 'Vibe', answerValue: 'Relaxed' },
@@ -947,7 +949,7 @@ describe('RecommendationsService', () => {
         (input: any, answers: any, history: any, options: any) => realBuilder.build(input, answers, history, options),
       );
 
-      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123' }));
+      eventRepositoryMock.findOne.mockResolvedValue(makeEvent({ eventType: 'group', groupId: 'group-123', status: 'closed' }));
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
         { question: 'Vibe', answerValue: 'Relaxed' },
         { question: 'Vibe', answerValue: 'Relaxed' },
@@ -1034,6 +1036,7 @@ describe('RecommendationsService', () => {
       eventRepositoryMock.findOne.mockResolvedValue(makeEvent({
         eventType: 'group',
         groupId: 'group-123',
+        status: 'closed',
       }));
       slideAnswerServiceMock.getEventAnswers.mockResolvedValue([
         { question: 'Vibe', answerValue: 'Relaxed' },

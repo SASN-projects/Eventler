@@ -201,7 +201,7 @@ export class RecommendationsService {
     };
   }
 
-  async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
+  async generateRecommendation(eventId: string, requesterUserId?: string): Promise<GenerateRecommendationResponse> {
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
@@ -211,6 +211,29 @@ export class RecommendationsService {
       return {
         success: false,
         message: `Event with id ${eventId} not found`,
+      };
+    }
+
+    if (requesterUserId && event.createdById && event.createdById !== requesterUserId) {
+      return {
+        success: false,
+        message: 'Only the event creator can generate recommendations for this event.',
+      };
+    }
+
+    // ── Group lifecycle guard ──────────────────────────────────────────────
+    // For group events, generation is only allowed once the questionnaire has
+    // been closed (status = CLOSED or GENERATING_RECOMMENDATIONS, which means
+    // GroupLifecycleService is already coordinating this call). Attempting to
+    // generate while the questionnaire is still OPEN or in DRAFT is rejected.
+    if (
+      event.eventType === EventType.GROUP &&
+      event.status !== EventStatus.CLOSED &&
+      event.status !== EventStatus.GENERATING_RECOMMENDATIONS
+    ) {
+      return {
+        success: false,
+        message: `Recommendations cannot be generated for a group event in status '${event.status}'. The questionnaire must be closed first.`,
       };
     }
 
@@ -352,6 +375,7 @@ export class RecommendationsService {
                 title: recommendation.title,
                 description: recommendation.description,
                 address: recommendation.address,
+                eventId,
               }),
             );
             const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
@@ -486,6 +510,7 @@ export class RecommendationsService {
               title: recommendation.title,
               description: recommendation.description,
               address: recommendation.address,
+              eventId,
             }),
           );
 
@@ -549,7 +574,11 @@ export class RecommendationsService {
     };
   }
 
-  async selectRecommendation(eventId: string, recommendationId: string, userId?: string): Promise<GenerateRecommendationResponse> {
+  async selectRecommendation(
+    eventId: string,
+    recommendationId: string,
+    userId?: string,
+  ): Promise<GenerateRecommendationResponse> {
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: [],
@@ -569,19 +598,27 @@ export class RecommendationsService {
       };
     }
 
+    if (event.status !== EventStatus.RECOMMENDATIONS_READY) {
+      return {
+        success: false,
+        message: `A recommendation can only be selected when the event is in RECOMMENDATIONS_READY status. Current status: ${event.status}`,
+      };
+    }
+
+    // Validate the recommendation belongs to this event (prevents cross-event selection)
     const recommendation = await this.recommendationRepository.findOne({
-      where: { id: recommendationId },
+      where: { id: recommendationId, eventId },
     });
 
     if (!recommendation) {
       return {
         success: false,
-        message: `Recommendation with id ${recommendationId} not found`,
+        message: `Recommendation with id ${recommendationId} not found for this event`,
       };
     }
 
     event.recommendation = recommendation;
-    event.status = EventStatus.FINALIZED;
+    event.status = EventStatus.FINAL_SELECTION_MADE;
     event.finalizedAt = new Date();
     await this.eventRepository.save(event);
 

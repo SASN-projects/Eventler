@@ -2,14 +2,20 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from './entities/event.entity';
 import { EventType } from './entities/event-type.entity';
+import { EventStatus } from './enums/event-status.enum';
 import { GroupMember } from '../groups/entities/group-member.entity';
+import { Recommendation } from '../recommendations/entities/recommendation.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { GroupLifecycleService } from './group-lifecycle.service';
 
 @Injectable()
 export class EventsService {
@@ -20,7 +26,11 @@ export class EventsService {
     private eventTypeRepository: Repository<EventType>,
     @InjectRepository(GroupMember)
     private groupMemberRepository: Repository<GroupMember>,
-  ) { }
+    @InjectRepository(Recommendation)
+    private recommendationRepository: Repository<Recommendation>,
+    @Inject(forwardRef(() => GroupLifecycleService))
+    private groupLifecycleService: GroupLifecycleService,
+  ) {}
 
   async create(userId: string, createEventDto: CreateEventDto) {
     const event = this.eventRepository.create({
@@ -158,5 +168,65 @@ export class EventsService {
     }
 
     return eventType;
+  }
+
+  /**
+   * Owner-triggered close of a group questionnaire.
+   * Validates that the caller is the event creator and that the event is OPEN,
+   * then delegates to GroupLifecycleService which handles the full lifecycle
+   * (CLOSED → GENERATING_RECOMMENDATIONS → RECOMMENDATIONS_READY).
+   */
+  async closeQuestionnaire(eventId: string, userId: string): Promise<Event> {
+    return this.groupLifecycleService.ownerCloseQuestionnaire(eventId, userId);
+  }
+
+  /**
+   * Owner-triggered final recommendation selection.
+   * Validates:
+   * - Caller is the event creator
+   * - Event status is RECOMMENDATIONS_READY
+   * - The given recommendation belongs to this event
+   * Then transitions to FINAL_SELECTION_MADE.
+   */
+  async selectFinalRecommendation(
+    eventId: string,
+    recommendationId: string,
+    userId: string,
+  ): Promise<Event> {
+    const event = await this.eventRepository.findOne({
+      where: { id: eventId },
+      relations: ['creator'],
+    });
+
+    if (!event) {
+      throw new NotFoundException(`Event with id ${eventId} not found`);
+    }
+
+    if (event.creator.id !== userId) {
+      throw new ForbiddenException('Only the event creator can select a recommendation.');
+    }
+
+    if (event.status !== EventStatus.RECOMMENDATIONS_READY) {
+      throw new BadRequestException(
+        `A recommendation can only be selected when the event is in RECOMMENDATIONS_READY status. Current status: ${event.status}`,
+      );
+    }
+
+    const recommendation = await this.recommendationRepository.findOne({
+      where: { id: recommendationId, eventId },
+    });
+
+    if (!recommendation) {
+      throw new NotFoundException(
+        `Recommendation with id ${recommendationId} not found for this event`,
+      );
+    }
+
+    event.recommendation = recommendation;
+    event.status = EventStatus.FINAL_SELECTION_MADE;
+    event.finalizedAt = new Date();
+    await this.eventRepository.save(event);
+
+    return event;
   }
 }
