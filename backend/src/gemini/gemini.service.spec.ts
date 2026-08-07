@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { GeminiService } from './gemini.service';
+import { GeminiService, classifyGeminiError } from './gemini.service';
 import { ILangfuseTrace, ILangfuseGeneration } from '../langfuse/interfaces/langfuse.interface';
 import { sanitizeData } from '../langfuse/utils/redact';
 
@@ -259,6 +259,77 @@ describe('GeminiService', () => {
     it('handles null and undefined gracefully', () => {
       expect(sanitizeData(null)).toBeNull();
       expect(sanitizeData(undefined)).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Error Classification Tests
+  // -------------------------------------------------------------------------
+  describe('classifyGeminiError', () => {
+    it('classifies 503 Service Unavailable / high demand as retryable', () => {
+      const err = new Error('503 Service Unavailable: This model is currently experiencing high demand.');
+      (err as any).status = 503;
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(true);
+      expect(classified.errorCode).toBe('PROVIDER_TEMPORARILY_UNAVAILABLE');
+      expect(classified.providerUnavailable).toBe(true);
+      expect(classified.statusCode).toBe(503);
+    });
+
+    it('classifies 429 Rate Limit / Resource Exhausted as retryable', () => {
+      const err = new Error('429 Resource Exhausted: Rate limit exceeded');
+      (err as any).status = 429;
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(true);
+      expect(classified.errorCode).toBe('PROVIDER_RATE_LIMIT');
+      expect(classified.providerUnavailable).toBe(true);
+    });
+
+    it('classifies network timeouts and fetch failures as retryable', () => {
+      const err = new Error('request to https://generativelanguage.googleapis.com failed, reason: fetch failed ETIMEDOUT');
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(true);
+      expect(classified.errorCode).toBe('PROVIDER_NETWORK_TIMEOUT');
+      expect(classified.providerUnavailable).toBe(true);
+    });
+
+    it('classifies 500 server errors as retryable', () => {
+      const err = new Error('Internal server error');
+      (err as any).status = 500;
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(true);
+      expect(classified.errorCode).toBe('PROVIDER_SERVER_ERROR');
+    });
+
+    it('classifies 401/403 auth errors as non-retryable', () => {
+      const err = new Error('API_KEY_INVALID: API key not valid. Please pass a valid API key.');
+      (err as any).status = 400;
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(false);
+      expect(classified.errorCode).toBe('PROVIDER_AUTH_ERROR');
+      expect(classified.providerUnavailable).toBe(false);
+    });
+
+    it('classifies 400 bad request / invalid argument as non-retryable', () => {
+      const err = new Error('Invalid argument: prompt exceeds context limit');
+      (err as any).status = 400;
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(false);
+      expect(classified.errorCode).toBe('PROVIDER_INVALID_REQUEST');
+    });
+
+    it('classifies safety blocks as non-retryable', () => {
+      const err = new Error('Candidate was blocked due to SAFETY');
+      const classified = classifyGeminiError(err);
+
+      expect(classified.isRetryable).toBe(false);
+      expect(classified.errorCode).toBe('PROVIDER_SAFETY_BLOCKED');
     });
   });
 });

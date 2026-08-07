@@ -110,6 +110,7 @@ describe('RecommendationsService', () => {
 
     geminiServiceMock = {
       generateJsonContent: jest.fn(),
+      getDefaultModel: jest.fn().mockReturnValue('gemini-2.5-flash'),
     };
 
     googlePlacesServiceMock = {
@@ -422,22 +423,104 @@ describe('RecommendationsService', () => {
     jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
 
     eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
-    geminiServiceMock.generateJsonContent.mockRejectedValue(new Error('Gemini API is down'));
+    const err = new Error('503 Service Unavailable: High demand');
+    (err as any).status = 503;
+    geminiServiceMock.generateJsonContent.mockRejectedValue(err);
 
     const result = await service.generateRecommendation('test-event-uuid');
 
     expect(result.success).toBe(false);
-    expect(result.message).toContain('Failed to generate recommendation after 3 attempts');
+    expect(result.message).toContain('PROVIDER_TEMPORARILY_UNAVAILABLE');
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockTrace.update).toHaveBeenCalledWith(
       expect.objectContaining({
         output: expect.objectContaining({
           success: false,
-          error: expect.stringContaining('Failed to generate recommendation after 3 attempts'),
+        }),
+        metadata: expect.objectContaining({
+          retryable: true,
+          providerErrorCode: 'PROVIDER_TEMPORARILY_UNAVAILABLE',
+          providerUnavailable: true,
         }),
       }),
     );
+  });
+
+  it('does NOT retry non-retryable provider errors (e.g. Auth 401)', async () => {
+    jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+    const authErr = new Error('API_KEY_INVALID: API key not valid');
+    (authErr as any).status = 401;
+    geminiServiceMock.generateJsonContent.mockRejectedValue(authErr);
+
+    const result = await service.generateRecommendation('test-event-uuid');
+
+    expect(result.success).toBe(false);
+    expect(geminiServiceMock.generateJsonContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses GEMINI_FALLBACK_MODEL when primary model retries are exhausted on 503 error', async () => {
+    jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => fn());
+
+    const customConfigService = {
+      get: jest.fn((key: string) => {
+        if (key === 'LANGFUSE_PROMPT_NAME') return 'event-recommendation-planner';
+        if (key === 'GEMINI_MAX_RETRIES') return 2;
+        if (key === 'GEMINI_MODEL') return 'gemini-2.5-flash';
+        if (key === 'GEMINI_FALLBACK_MODEL') return 'gemini-1.5-flash';
+        return undefined;
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        RecommendationsService,
+        RecommendationQualityEvaluator,
+        { provide: getRepositoryToken(Recommendation), useValue: recommendationRepositoryMock },
+        { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
+        { provide: getRepositoryToken(Venue), useValue: {} },
+        { provide: SlidesService, useValue: slideAnswerServiceMock },
+        { provide: LangfuseService, useValue: langfuseServiceMock },
+        { provide: GeminiService, useValue: geminiServiceMock },
+        { provide: GooglePlacesService, useValue: googlePlacesServiceMock },
+        { provide: RecommendationJudgeService, useValue: judgeServiceMock },
+        { provide: RecommendationPromptContextBuilder, useValue: promptContextBuilderMock },
+        { provide: RecommendationHistoryService, useValue: historyServiceMock },
+        { provide: ConfigService, useValue: customConfigService },
+      ],
+    }).compile();
+
+    const customService = module.get<RecommendationsService>(RecommendationsService);
+    eventRepositoryMock.findOne.mockResolvedValue(makeEvent());
+
+    const err503 = new Error('503 Service Unavailable');
+    (err503 as any).status = 503;
+
+    geminiServiceMock.generateJsonContent
+      .mockRejectedValueOnce(err503)
+      .mockRejectedValueOnce(err503)
+      .mockResolvedValueOnce(threeRecommendations);
+
+    const result = await customService.generateRecommendation('test-event-uuid');
+
+    expect(result.success).toBe(true);
+    expect(geminiServiceMock.generateJsonContent).toHaveBeenCalledTimes(3);
+    expect(geminiServiceMock.generateJsonContent.mock.calls[2][0].modelName).toBe('gemini-1.5-flash');
+  });
+
+  it('computes exponential backoff delay with jitter bounds', () => {
+    const delay1 = service.computeBackoffDelay(1, 2000, 15000);
+    expect(delay1).toBeGreaterThanOrEqual(1000);
+    expect(delay1).toBeLessThanOrEqual(2000);
+
+    const delay2 = service.computeBackoffDelay(2, 2000, 15000);
+    expect(delay2).toBeGreaterThanOrEqual(2000);
+    expect(delay2).toBeLessThanOrEqual(4000);
+
+    const delayMax = service.computeBackoffDelay(10, 2000, 15000);
+    expect(delayMax).toBeGreaterThanOrEqual(7500);
+    expect(delayMax).toBeLessThanOrEqual(15000);
   });
 
   // -------------------------------------------------------------------------

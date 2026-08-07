@@ -10,7 +10,7 @@ import { SchemaType, ObjectSchema } from '@google/generative-ai';
 import { Venue } from '../venues/entities/venue.entity';
 import { SlidesService } from '../slides/slides.service';
 import { LangfuseService } from '../langfuse/langfuse.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { GeminiService, classifyGeminiError, ClassifiedGeminiError } from '../gemini/gemini.service';
 import { ILangfuseTrace } from '../langfuse/interfaces/langfuse.interface';
 import { RecommendationQualityEvaluator } from './recommendation-quality.evaluator';
 import { RecommendationJudgeService } from './recommendation-judge.service';
@@ -437,8 +437,18 @@ export class RecommendationsService {
       this.logger.warn('Google Places API key is not configured; using Gemini-only recommendations.');
     }
 
-    const maxRetries = 3;
+    const maxRetries = Number(this.configService.get('GEMINI_MAX_RETRIES')) || 4;
+    const baseDelayMs = Number(this.configService.get('GEMINI_RETRY_BASE_DELAY_MS')) || 2000;
+    const maxDelayMs = Number(this.configService.get('GEMINI_RETRY_MAX_DELAY_MS')) || 15000;
+    const primaryModel =
+      this.configService.get<string>('GEMINI_MODEL') ||
+      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-2.5-flash');
+    const fallbackModel = this.configService.get<string>('GEMINI_FALLBACK_MODEL');
+
     let lastError: Error | null = null;
+    let lastClassified: ClassifiedGeminiError | null = null;
+    let currentModel = primaryModel;
+    let modelFallbackUsed = false;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -452,7 +462,7 @@ export class RecommendationsService {
             currentPreferencesSummary,
           },
         );
-        const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt);
+        const rawResponse = await this.callGeminiModel(prompt, promptMeta, trace, attempt, currentModel);
 
         // ── Quality evaluation (deterministic, fire-and-forget) ──────────
         const scores = this.qualityEvaluator.evaluate(rawResponse);
@@ -546,6 +556,12 @@ export class RecommendationsService {
             recommendationsCount: savedRecommendations.length,
             recommendationIds: savedRecommendations.map((r) => r.id),
           },
+          metadata: {
+            model: currentModel,
+            modelFallbackUsed,
+            primaryModel,
+            fallbackModel: modelFallbackUsed ? fallbackModel : undefined,
+          },
         });
 
         return {
@@ -559,9 +575,29 @@ export class RecommendationsService {
         };
       } catch (error: any) {
         lastError = error as Error;
-        this.logger.warn(`Recommendation attempt ${attempt} failed: ${error.message}`);
+        const classified = (error as any).classified || classifyGeminiError(error);
+        lastClassified = classified;
+
+        this.logger.warn(`Recommendation attempt ${attempt} (${currentModel}) failed [${classified.errorCode}]: ${error.message}`);
+
+        // Non-retryable error -> abort retries immediately
+        if (!classified.isRetryable) {
+          this.logger.warn(`Non-retryable provider error encountered [${classified.errorCode}]; aborting retries.`);
+          break;
+        }
+
+        // Primary model retries exhausted & fallback model configured -> try fallback model once
+        if (attempt === maxRetries && fallbackModel && fallbackModel !== primaryModel && !modelFallbackUsed) {
+          this.logger.warn(`Primary model ${primaryModel} failed after ${maxRetries} attempts. Trying fallback model ${fallbackModel}.`);
+          currentModel = fallbackModel;
+          modelFallbackUsed = true;
+          attempt = 0; // Reset loop counter for fallback model
+          continue;
+        }
+
         if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          const delay = this.computeBackoffDelay(attempt, baseDelayMs, maxDelayMs);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -570,16 +606,24 @@ export class RecommendationsService {
     trace.update({
       output: {
         success: false,
-        error: `Failed to generate recommendation after ${maxRetries} attempts. Last error: ${lastError?.message}`,
+        error: lastClassified?.message || lastError?.message,
       },
       metadata: {
         attempts: maxRetries,
+        retryable: lastClassified?.isRetryable ?? false,
+        providerErrorCode: lastClassified?.errorCode ?? 'PROVIDER_ERROR',
+        providerUnavailable: lastClassified?.providerUnavailable ?? false,
+        modelFallbackUsed,
+        primaryModel,
+        fallbackModel: modelFallbackUsed ? fallbackModel : undefined,
       },
     });
 
     return {
       success: false,
-      message: `Failed to generate recommendation after ${maxRetries} attempts. Last error: ${lastError?.message}`,
+      message: lastClassified?.isRetryable
+        ? `${lastClassified.errorCode}: ${lastClassified.message}`
+        : `Failed to generate recommendation: ${lastClassified?.message || lastError?.message}`,
     };
   }
 
@@ -728,11 +772,17 @@ export class RecommendationsService {
     return lines.join('\n');
   }
 
+  public computeBackoffDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+    const rawDelay = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+    return Math.floor(rawDelay * (0.5 + Math.random() * 0.5));
+  }
+
   private async callGeminiModel(
     prompt: string,
     promptMeta: PromptMeta,
     parentTrace?: ILangfuseTrace,
     attempt = 1,
+    modelName?: string,
   ): Promise<string> {
     const responseSchema: ObjectSchema = {
       type: SchemaType.OBJECT,
@@ -759,10 +809,13 @@ export class RecommendationsService {
         prompt,
         responseSchema,
         parentTrace,
+        modelName,
         promptName: `${promptName} (attempt ${attempt})`,
         promptVersion: String(promptMeta.promptVersion),
         metadata: {
           attempt,
+          attemptNumber: attempt,
+          model: modelName || (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-2.5-flash'),
           promptName,
           promptVersion: promptMeta.promptVersion,
           promptSource: promptMeta.promptSource,

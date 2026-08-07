@@ -670,6 +670,56 @@ No historical user selection data is available.
 
 ---
 
+## Provider Availability & Reliability (Gemini 503 / 429 Handling)
+
+### Overview
+
+When Google Gemini experiences transient capacity spikes, it may return errors such as:
+`503 Service Unavailable` ("This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.") or `429 Resource Exhausted`.
+
+Eventler implements a resilient retry and fallback strategy designed to handle provider availability issues cleanly without breaking business state or exposing raw provider stack traces.
+
+### Retry & Fallback Architecture
+
+1. **Error Classification**:
+   - **Retryable Errors**: `503 Service Unavailable`, `429 Rate Limit / Resource Exhausted`, timeouts (`ETIMEDOUT`, `fetch failed`), and `5xx` server errors.
+   - **Non-Retryable Errors**: `401`/`403` Auth errors, `400` Invalid Argument/Request errors, and Safety Blocks abort immediately without unnecessary retries.
+
+2. **Exponential Backoff with Full Jitter**:
+   - Configurable via environment variables:
+     - `GEMINI_MAX_RETRIES` (default: `4`)
+     - `GEMINI_RETRY_BASE_DELAY_MS` (default: `2000`)
+     - `GEMINI_RETRY_MAX_DELAY_MS` (default: `15000`)
+   - Jitter prevents thundering herd spikes against the Gemini API during provider recovery.
+
+3. **Optional Secondary Fallback Model**:
+   - Primary model is configured via `GEMINI_MODEL` (or defaults to `gemini-2.5-flash`).
+   - If configured via `GEMINI_FALLBACK_MODEL` (e.g. `gemini-1.5-flash` or `gemini-2.0-flash`), the system automatically switches to the fallback model if primary model retries are exhausted on a retryable 503/429 error.
+   - Preserves prompt context, privacy redaction rules, and quality evaluation scoring.
+
+4. **Questionnaire Lifecycle Safety**:
+   - Closed group questionnaires remain `CLOSED` if provider generation fails after all retries.
+   - Questionnaires are never reopened automatically after provider failure, and new answer submissions remain blocked.
+   - The event owner can trigger recommendation generation again later.
+
+5. **Safe Error Handling & Privacy**:
+   - End-user API responses receive safe, actionable messages (e.g. `PROVIDER_TEMPORARILY_UNAVAILABLE`) rather than raw SDK stack traces.
+   - Raw prompts, raw member answers, model outputs, and API credentials are never logged or exposed.
+
+### How to Verify Failures in Langfuse
+
+1. Open your [Langfuse dashboard](https://cloud.langfuse.com) and navigate to **Traces**.
+2. Select any `generate-recommendations` trace.
+3. For attempt-level generations, inspect the **Metadata** tab:
+   - `retryable`: `true` / `false`
+   - `providerErrorCode`: e.g. `PROVIDER_TEMPORARILY_UNAVAILABLE`
+   - `providerUnavailable`: `true` / `false`
+   - `modelFallbackUsed`: `true` / `false`
+   - `model`: Model name used for that attempt.
+4. Verify that raw prompts and raw user answers are not exposed in error logs.
+
+---
+
 ## License
 
 MIT
