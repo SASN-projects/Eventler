@@ -33,6 +33,24 @@ export class EventsService {
   ) {}
 
   async create(userId: string, createEventDto: CreateEventDto) {
+    // ── Group event: validate questionnaire deadline ────────────────────────
+    // For group events the creator must supply a future deadlineAt so group
+    // members know when the questionnaire closes. Reject early with a clear
+    // 400 so the frontend can show the deadline-picker screen again.
+    if (createEventDto.eventType === 'group') {
+      if (!createEventDto.deadlineAt) {
+        throw new BadRequestException(
+          'A questionnaire deadline (deadlineAt) is required for group events.',
+        );
+      }
+      const deadlineDate = new Date(createEventDto.deadlineAt);
+      if (isNaN(deadlineDate.getTime()) || deadlineDate <= new Date()) {
+        throw new BadRequestException(
+          'The questionnaire deadline (deadlineAt) must be a valid date in the future.',
+        );
+      }
+    }
+
     const event = this.eventRepository.create({
       ...createEventDto,
       createdById: userId,

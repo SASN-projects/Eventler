@@ -6,16 +6,19 @@ import { PrimeButton } from "../../components/buttons";
 import { FullSizeContainer } from "../../components/layouts";
 import { AuthContext } from "../../contexts/AuthContext";
 import BaseQuestions from "./BaseQuestions";
+import CreatorDecisionPage from "./CreatorDecisionPage";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
 import Slide from "./Slide";
 import { PreferencesConfirm } from "./PreferencesConfirm";
 import ThankYouPage from "./ThankYouPage";
 import {
+  closeQuestionnaire,
   fetchSlidesQuestions,
   getEventAnswers,
   getEventDetails,
   getRecomendationsById,
+  pollUntilRecommendationsReady,
   submitAnswers,
 } from "./api";
 import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
@@ -40,10 +43,12 @@ type EventAnswer = {
 
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
+  onFinalSelectionComplete?: () => void;
 }
 
 const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   resumeEvent,
+  onFinalSelectionComplete,
 }) => {
   const auth = useContext(AuthContext);
   const [eventId, setEventId] = useState("");
@@ -52,6 +57,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
+  const [isClosingQuestionnaire, setIsClosingQuestionnaire] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [existingAnswers, setExistingAnswers] = useState<Answers>({});
   const [hasLoadedResume, setHasLoadedResume] = useState(false);
@@ -60,6 +66,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [generationError, setGenerationError] = useState("");
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<Answers | null>(null);
   const [selectedVibe, setSelectedVibe] = useState("");
+  const [thankYouVariant, setThankYouVariant] = useState<"waiting" | "creator-success">("waiting");
 
   const fetchQuestions = async () => {
     setIsLoadingQuestions(true);
@@ -81,14 +88,15 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       : "Could not generate recommendations. Please try again.";
   };
 
-  const loadEventCreator = async (id: string) => {
+  const loadEventDetails = async (id: string) => {
     const eventDetails = await getEventDetails(id);
     const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+    const isGroup = (eventDetails?.eventType ?? "").toLowerCase() === "group";
     setEventCreatedById(creatorId);
-    return creatorId;
+    return { creatorId, isGroup, eventDetails };
   };
 
-  const onBaseComplete = async (id: string) => {
+  const onBaseComplete = async (id: string, _isGroup = false) => {
     setExistingAnswers({});
     setRecommendations([]);
     setGenerationError("");
@@ -96,22 +104,27 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setSelectedVibe("");
     setDecisionStep("sliding");
     setEventId(id);
-    await loadEventCreator(id);
+    await loadEventDetails(id);
   };
 
   const loadRecommendations = async (id: string) => {
-    const response = await getRecomendationsById(id);
-    if (!response.success) {
-      throw new Error(response.message || "Could not generate recommendations. Please try again.");
-    }
+    setIsGeneratingRecommendation(true);
+    try {
+      const response = await getRecomendationsById(id);
+      if (!response.success) {
+        throw new Error(response.message || "Could not generate recommendations. Please try again.");
+      }
 
-    const nextRecommendations = Array.isArray(response.data) ? response.data : [];
-    if (nextRecommendations.length !== 3) {
-      throw new Error(`Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`);
-    }
+      const nextRecommendations = Array.isArray(response.data) ? response.data : [];
+      if (nextRecommendations.length !== 3) {
+        throw new Error(`Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`);
+      }
 
-    setRecommendations(nextRecommendations);
-    setDecisionStep("recommendation");
+      setRecommendations(nextRecommendations);
+      setDecisionStep("recommendation");
+    } finally {
+      setIsGeneratingRecommendation(false);
+    }
   };
 
   const onPreferencesConfirm = async () => {
@@ -120,7 +133,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
   const onVibeConfirm = async (vibe: string) => {
     setSelectedVibe(vibe);
-    // Fetch questions matching the selected vibe
     const questions = await fetchSlidesQuestions(vibe);
     setSlidersQuestions(questions);
     setDecisionStep("sliding");
@@ -154,7 +166,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setGenerationError("");
 
     try {
-      // Merge the vibe answer into final submitted answers
       const finalAnswers = {
         [vibeQuestionLabel]: vibe,
         ...answers,
@@ -166,24 +177,64 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
       await submitAnswers(eventId, sanitizedAnswers);
 
-      const creatorId = eventCreatedById ?? (await loadEventCreator(eventId));
-      const isCreator = auth?.user?.id === creatorId;
+      const { creatorId, isGroup } = await loadEventDetails(eventId);
+      const isCreator = auth?.user?.id === (creatorId ?? eventCreatedById);
 
       if (!isCreator) {
+        setThankYouVariant("waiting");
         setDecisionStep("thankYou");
-        setTimeout(() => {
-          onRestart();
-        }, 2000);
         return;
       }
 
-      await loadRecommendations(eventId);
+      if (isGroup) {
+        setDecisionStep("creator-decision");
+      } else {
+        await loadRecommendations(eventId);
+      }
     } catch (error) {
       setRecommendations([]);
       setGenerationError(getErrorMessage(error));
       setDecisionStep("sliding");
     } finally {
       setIsGeneratingRecommendation(false);
+    }
+  };
+
+  const handleCreatorFinishNow = async () => {
+    if (!eventId) return;
+    setIsClosingQuestionnaire(true);
+    setGenerationError("");
+    setDecisionStep("generating");
+
+    try {
+      await closeQuestionnaire(eventId);
+      const finalStatus = await pollUntilRecommendationsReady(eventId);
+
+      if (finalStatus === "recommendations_ready") {
+        await loadRecommendations(eventId);
+      } else if (finalStatus === "closed") {
+        throw new Error("Recommendation generation failed. The questionnaire is closed and you can try generating again.");
+      } else {
+        throw new Error(`Event status is '${finalStatus}'. Could not complete recommendation generation.`);
+      }
+    } catch (err) {
+      setGenerationError(getErrorMessage(err));
+      setDecisionStep("creator-decision");
+    } finally {
+      setIsClosingQuestionnaire(false);
+    }
+  };
+
+  const handleCreatorKeepOpen = () => {
+    setThankYouVariant("waiting");
+    setDecisionStep("thankYou");
+  };
+
+  const handleFinalSelectionSuccess = () => {
+    setThankYouVariant("creator-success");
+    setDecisionStep("thankYou");
+    if (onFinalSelectionComplete) {
+      onFinalSelectionComplete();
     }
   };
 
@@ -195,11 +246,13 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setHasLoadedResume(false);
     setResumeRequestKey(null);
     setIsGeneratingRecommendation(false);
+    setIsClosingQuestionnaire(false);
     setIsResuming(false);
     setEventCreatedById(null);
     setGenerationError("");
     setLastSubmittedAnswers(null);
     setSelectedVibe("");
+    setThankYouVariant("waiting");
   };
 
   useEffect(() => {
@@ -216,6 +269,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         setGenerationError("");
         setLastSubmittedAnswers(null);
         setSelectedVibe("");
+        setThankYouVariant("waiting");
         return;
       }
 
@@ -235,25 +289,45 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setEventId(resumeEvent.eventId);
 
       try {
-        const eventDetails = await getEventDetails(resumeEvent.eventId);
-        const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+        const { creatorId, isGroup, eventDetails } = await loadEventDetails(resumeEvent.eventId);
         const currentUserId = auth?.user?.id ?? null;
+        const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
         const normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
 
-        setEventCreatedById(creatorId);
-
         if (normalizedStatus === "final_selection_made" || normalizedStatus === "finalized") {
+          setThankYouVariant(isCreator ? "creator-success" : "waiting");
           setDecisionStep("thankYou");
           return;
         }
 
-        setDecisionStep(resumeEvent.mode === "recommendations" ? "recommendation" : "sliding");
-
-        if (resumeEvent.mode === "recommendations") {
-          await loadRecommendations(resumeEvent.eventId);
+        if (normalizedStatus === "recommendations_ready") {
+          if (isCreator) {
+            await loadRecommendations(resumeEvent.eventId);
+          } else {
+            setThankYouVariant("waiting");
+            setDecisionStep("thankYou");
+          }
           return;
         }
 
+        if (normalizedStatus === "closed" || normalizedStatus === "generating_recommendations") {
+          if (isCreator) {
+            setDecisionStep("generating");
+            const finalStatus = await pollUntilRecommendationsReady(resumeEvent.eventId);
+            if (finalStatus === "recommendations_ready") {
+              await loadRecommendations(resumeEvent.eventId);
+            } else {
+              setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
+              setDecisionStep("creator-decision");
+            }
+          } else {
+            setThankYouVariant("waiting");
+            setDecisionStep("thankYou");
+          }
+          return;
+        }
+
+        // Status is OPEN / DRAFT — check member answers
         const [questions, answers] = await Promise.all([
           fetchSlidesQuestions(),
           getEventAnswers(resumeEvent.eventId),
@@ -268,9 +342,12 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         setSlidersQuestions(questions);
 
         if (hasCurrentUserAnswered) {
-          if (creatorId && creatorId === currentUserId) {
+          if (isCreator && isGroup) {
+            setDecisionStep("creator-decision");
+          } else if (isCreator && !isGroup) {
             await loadRecommendations(resumeEvent.eventId);
           } else {
+            setThankYouVariant("waiting");
             setDecisionStep("thankYou");
           }
           return;
@@ -392,7 +469,26 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         />
       </FullSizeContainer>
     ),
+    "group-deadline": loadingScreen, // Handled inside BaseQuestions dialog
     sliding: slidingStep,
+    "creator-decision": (
+      <CreatorDecisionPage
+        onFinishNow={handleCreatorFinishNow}
+        onKeepOpen={handleCreatorKeepOpen}
+        isClosing={isClosingQuestionnaire}
+      />
+    ),
+    generating: (
+      <LoadingContainer>
+        <CircularProgress size={50} sx={{ color: "#edb53c", mb: 2 }} />
+        <LoadingTextContainer>
+          <LoadingTitle>Closing questionnaire & generating recommendations…</LoadingTitle>
+          <LoadingSubtitle>
+            Analyzing group preferences to find top 3 matching venues. Please wait a moment.
+          </LoadingSubtitle>
+        </LoadingTextContainer>
+      </LoadingContainer>
+    ),
     recommendation:
       isResuming || isGeneratingRecommendation ? (
         loadingScreen
@@ -400,10 +496,11 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         <RecommendationsPage
           eventId={eventId}
           onRestart={onRestart}
+          onFinalSelectionComplete={handleFinalSelectionSuccess}
           recommendations={recommendations}
         />
       ),
-    thankYou: <ThankYouPage />,
+    thankYou: <ThankYouPage variant={thankYouVariant} />,
   };
 
   return <FullSizeContainer>{steps[decisionStep]}</FullSizeContainer>;

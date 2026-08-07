@@ -62,13 +62,14 @@ const AppContent: FunctionComponent = () => {
       currentUserId && creatorId && creatorId === currentUserId,
     );
 
+    const isRecommendationsMode =
+      (normalizedStatus === "recommendations_ready" || normalizedStatus === "recommended") &&
+      isEventCreator;
+
     setShowProfile(false);
     setResumeEvent({
       eventId: event.id,
-      mode:
-        normalizedStatus === "recommended" && isEventCreator
-          ? "recommendations"
-          : "slides",
+      mode: isRecommendationsMode ? "recommendations" : "slides",
     });
     setResetKey((prev) => prev + 1);
   };
@@ -97,7 +98,11 @@ const AppContent: FunctionComponent = () => {
                     onContinueEvent={handleContinueEvent}
                   />
                 ) : (
-                  <DecisionPage key={resetKey} resumeEvent={resumeEvent} />
+                  <DecisionPage
+                    key={resetKey}
+                    resumeEvent={resumeEvent}
+                    onFinalSelectionComplete={() => setResumeEvent(null)}
+                  />
                 )}
               </MainContentArea>
 

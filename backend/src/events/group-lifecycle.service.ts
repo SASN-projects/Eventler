@@ -45,6 +45,7 @@ export class GroupLifecycleService {
       EventStatus.RECOMMENDATIONS_READY,
       EventStatus.FINAL_SELECTION_MADE,
       EventStatus.FINALIZED,
+      EventStatus.CANCELLED,
     ];
     if (alreadyClosedStatuses.includes(event.status)) {
       this.logger.debug(`Event ${eventId} is already in status ${event.status}; close is a no-op.`);

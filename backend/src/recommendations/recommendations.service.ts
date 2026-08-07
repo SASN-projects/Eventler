@@ -222,24 +222,27 @@ export class RecommendationsService {
     }
 
     // ── Group lifecycle guard ──────────────────────────────────────────────
-    // For group events, if the owner manually triggers recommendation generation
-    // while the questionnaire is still OPEN (collecting_responses) or DRAFT,
-    // transition the questionnaire to CLOSED so recommendation generation proceeds.
+    // For group events, the questionnaire MUST already be CLOSED before
+    // recommendation generation can proceed. The caller (GroupLifecycleService
+    // via closeQuestionnaire(), or the creator via POST /events/:id/close)
+    // is responsible for closing the questionnaire first.
+    //
+    // OPEN (collecting_responses) events are explicitly rejected so the frontend
+    // receives a clear, actionable message — never silently auto-closed here.
     if (event.eventType === EventType.GROUP) {
-      if (
-        event.status === EventStatus.OPEN ||
-        event.status === EventStatus.DRAFT
-      ) {
-        event.status = EventStatus.CLOSED;
-        await this.eventRepository.save(event);
-      } else if (
-        event.status !== EventStatus.CLOSED &&
-        event.status !== EventStatus.GENERATING_RECOMMENDATIONS &&
-        event.status !== EventStatus.RECOMMENDATIONS_READY
-      ) {
+      const allowedStatuses: EventStatus[] = [
+        EventStatus.CLOSED,
+        EventStatus.GENERATING_RECOMMENDATIONS,
+        EventStatus.RECOMMENDATIONS_READY,
+      ];
+      if (!allowedStatuses.includes(event.status)) {
+        const hint =
+          event.status === EventStatus.OPEN || event.status === EventStatus.DRAFT
+            ? ' The questionnaire must be closed first.'
+            : '';
         return {
           success: false,
-          message: `Recommendations cannot be generated for a group event in status '${event.status}'.`,
+          message: `Recommendations cannot be generated for a group event in status '${event.status}'.${hint}`,
         };
       }
     }
