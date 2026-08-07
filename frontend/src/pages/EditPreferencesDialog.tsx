@@ -60,7 +60,7 @@ export default function EditPreferencesDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: "24px", p: 1.5 } }}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Edit Event Preferences</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ color: "text.secondary", mb: 1 }}>
@@ -86,9 +86,8 @@ export default function EditPreferencesDialog({
         <Button
           onClick={handleSave}
           variant="contained"
-          color="secondary"
           disabled={loading || selected.length === 0}
-          sx={{ textTransform: "none", borderRadius: "12px", fontWeight: 700, px: 3 }}
+          sx={{ textTransform: "none", borderRadius: "14px", fontWeight: 800, px: 3, background: "linear-gradient(135deg, var(--eventler-primary) 0%, var(--eventler-secondary) 100%)" }}
         >
           Save Choices
         </Button>

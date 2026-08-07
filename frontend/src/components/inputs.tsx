@@ -28,6 +28,8 @@ export const FieldInput: FunctionComponent<FieldInputProps> = ({ label, value, i
                 backgroundColor: 'white',
                 fontFamily: 'Nunito, sans-serif',
                 overflow: 'hidden',
+                boxShadow: '0 10px 24px rgba(85, 73, 145, 0.12)',
+                border: '1px solid rgba(255,255,255,0.62)',
                 '&::before': { display: 'none' },
                 '&::after': { display: 'none' },
                 '&:hover': { backgroundColor: 'white' },
@@ -36,11 +38,12 @@ export const FieldInput: FunctionComponent<FieldInputProps> = ({ label, value, i
             '& .MuiInputLabel-root': {
                 fontFamily: 'Nunito, sans-serif',
                 fontWeight: 600,
-                color: '#999',
-                '&.Mui-focused': { color: 'rgba(120,80,200,0.8)' },
+                color: 'var(--eventler-muted)',
+                '&.Mui-focused': { color: 'var(--eventler-secondary)' },
             },
             '& .MuiInputBase-input': {
                 fontFamily: 'Nunito, sans-serif',
+                color: 'var(--eventler-text)',
             },
         }}
     />

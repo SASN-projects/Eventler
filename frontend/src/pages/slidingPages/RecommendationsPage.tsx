@@ -105,6 +105,7 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({
 
   const renderRecommendation = (recommendation: Recommendation, index: number) => {
     const isSelected = selectedIndex === index;
+    const showSelectionButton = canSelectRecommendation && isSelected;
 
     return (
       <RecommendationCard
@@ -177,22 +178,21 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({
 
         <Box sx={{ flex: 1 }} />
 
-        {canSelectRecommendation ? (
+        {showSelectionButton ? (
           <PrimeButton
             onClick={(event) => {
               event.stopPropagation();
-              setSelectedIndex(index);
               handleSubmitSelection(recommendation.id);
             }}
             sx={{ alignSelf: "center", marginTop: "8px", padding: "8px 16px", fontSize: "14px" }}
           >
             that's my event
           </PrimeButton>
-        ) : (
+        ) : !canSelectRecommendation ? (
           <Typography sx={{ fontSize: "13px", color: "#718096", textAlign: "center" }}>
             Only the event creator can choose the final recommendation.
           </Typography>
-        )}
+        ) : null}
       </RecommendationCard>
     );
   };

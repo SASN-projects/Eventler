@@ -4,13 +4,43 @@ import { FullSizeContainer } from '../../components/layouts';
 
 // BaseQuestions.tsx styles
 export const BaseQuestionsContainer = styled(FullSizeContainer)({
-    justifyContent: 'space-evenly',
-    alignItems: 'center'
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '28px',
+    padding: '32px 20px',
+    background: 'var(--eventler-gradient-soft)'
 });
 
 export const BaseQuestionsTitle = styled(Typography)({
-    fontSize: '30px',
-    margin: '30px'
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 'min(340px, 88vw)',
+    margin: '0 0 4px',
+    padding: '18px 28px 20px',
+    borderRadius: '24px',
+    border: '1px solid rgba(255,255,255,0.78)',
+    background: 'rgba(255,255,255,0.74)',
+    boxShadow: 'var(--eventler-shadow)',
+    color: 'transparent',
+    backgroundImage: 'var(--eventler-gradient)',
+    backgroundClip: 'text',
+    WebkitBackgroundClip: 'text',
+    fontSize: 'clamp(42px, 10vw, 64px)',
+    fontWeight: 900,
+    lineHeight: 1,
+    letterSpacing: 0,
+    textAlign: 'center',
+    textShadow: '0 12px 30px rgba(255, 88, 118, 0.1)',
+    '&::before': {
+        content: '""',
+        position: 'absolute',
+        inset: '8px',
+        borderRadius: '18px',
+        background: 'linear-gradient(135deg, rgba(255, 88, 118, 0.12), rgba(109, 114, 232, 0.1))',
+        zIndex: -1
+    },
 });
 
 export const InputsContainer = styled(Box)({
@@ -22,11 +52,13 @@ export const InputsContainer = styled(Box)({
 
 // RecommendationsPage.tsx styles
 export const RecommendationContainer = styled(FullSizeContainer)({
-    justifyContent: 'flex-start',
+    justifyContent: 'safe center',
     alignItems: 'center',
-    gap: '8px',
+    gap: '12px',
     padding: '24px',
-    overflowY: 'auto'
+    overflowY: 'auto',
+    minHeight: '100%',
+    background: 'var(--eventler-gradient-soft)'
 });
 
 export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
@@ -36,9 +68,9 @@ export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isS
     flexDirection: 'column',
     borderRadius: '8px',
     alignItems: 'stretch',
-    backgroundColor: $isSelected ? '#fff8b5' : '#e3f2fd',
-    border: $isSelected ? '3px solid #edb53c' : '3px solid transparent',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+    backgroundColor: $isSelected ? '#fff8dd' : '#ffffff',
+    border: $isSelected ? '3px solid var(--eventler-accent)' : '1px solid var(--eventler-border)',
+    boxShadow: 'var(--eventler-shadow-soft)',
     cursor: 'pointer',
     transition: 'border-color 0.2s, background-color 0.2s, transform 0.2s',
     minWidth: 0,
@@ -50,8 +82,8 @@ export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isS
 
 export const RecommendationName = styled(Typography)<{ $isSelected?: boolean }>(({ $isSelected }) => ({
     fontSize: '20px',
-    fontWeight: $isSelected  ? 'bold' : 'normal',
-    color: $isSelected ? '#edb53c' : '#1976d2',
+    fontWeight: $isSelected  ? 900 : 800,
+    color: $isSelected ? '#b7791f' : 'var(--eventler-secondary)',
     lineHeight: 1.2,
 }));
 
@@ -141,8 +173,8 @@ export const OptionBox = styled(Box)<{ selected: boolean }>(({ selected }) => ({
     padding: '16px 32px',
     borderRadius: '16px',
     backgroundColor: '#FFFFFF',
-    boxShadow: '0px 2px 10px rgba(0,0,0,0.05)',
-    border: selected ? '3px solid #50a4ff' : '3px solid transparent',
+    boxShadow: 'var(--eventler-shadow-soft)',
+    border: selected ? '3px solid var(--eventler-secondary)' : '3px solid transparent',
     transition: 'border-color 0.2s',
     '&:hover': {
         filter: 'brightness(0.98)'
@@ -150,9 +182,9 @@ export const OptionBox = styled(Box)<{ selected: boolean }>(({ selected }) => ({
 }));
 
 export const OptionText = styled(Typography)({
-    color: '#50a4ff',
+    color: 'var(--eventler-secondary)',
     fontSize: '18px',
-    fontWeight: 500
+    fontWeight: 800
 });
 
 // DecisionPage.tsx styles
