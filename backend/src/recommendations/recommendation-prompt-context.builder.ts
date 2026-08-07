@@ -79,6 +79,103 @@ export interface RecommendationPromptContextOptions {
 }
 
 /**
+ * Builds a current/provisional group preference summary from raw group member answers,
+ * explicitly surfacing disagreement between group members instead of only reporting the
+ * winning answer.
+ *
+ * CURRENT BEHAVIOR: Derives a per-question answer distribution directly from the
+ * EventResponse rows collected from group members for this event. This is a provisional
+ * approach because a canonical finalized group-answer artifact does not yet exist.
+ *
+ * Conflict handling:
+ *  - Unanimous questions are reported as such.
+ *  - Non-unanimous questions report the full answer distribution (not just the winner),
+ *    and are flagged with a CONFLICT NOTICE instructing the model to favor recommendations
+ *    that are broadly acceptable to dissenting members rather than only the majority, and
+ *    to use the 3 recommendation slots to reflect the range of preferences where reasonable.
+ *  - When there is no strict majority (a tie), this is called out explicitly so the model
+ *    does not assume false consensus.
+ *
+ * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this function
+ * should be replaced by consuming that artifact instead.
+ *
+ * This is exported as a standalone function (rather than only a private builder method) so
+ * RecommendationsService — which precomputes this summary early for reuse in judge metadata —
+ * and RecommendationPromptContextBuilder share a single source of truth and cannot drift apart.
+ */
+export function buildGroupConsensusSummary(eventAnswers: RecommendationSlideAnswer[] = []): string {
+  if (!eventAnswers || eventAnswers.length === 0) {
+    return 'No current group member answers were provided.';
+  }
+
+  const groupedAnswers = new Map<string, Map<string, number>>();
+
+  for (const answer of eventAnswers) {
+    const question = answer?.question?.trim();
+    const answerValue = answer?.answerValue?.trim();
+    if (!question || !answerValue) {
+      continue;
+    }
+
+    const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
+    answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
+    groupedAnswers.set(question, answersByQuestion);
+  }
+
+  if (groupedAnswers.size === 0) {
+    return 'No current group member answers were provided.';
+  }
+
+  // Header reflects provisional/current state — not finalized group answers.
+  const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
+  const conflictingQuestions: string[] = [];
+
+  for (const [question, answersByQuestion] of groupedAnswers.entries()) {
+    const distribution = [...answersByQuestion.entries()].sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    );
+    const totalResponses = distribution.reduce((sum, [, count]) => sum + count, 0);
+    const [topAnswer, topCount] = distribution[0];
+
+    if (distribution.length === 1) {
+      lines.push(`- ${question}: unanimous — all ${topCount}/${totalResponses} responses chose "${topAnswer}".`);
+      continue;
+    }
+
+    conflictingQuestions.push(question);
+    const hasStrictMajority = topCount * 2 > totalResponses;
+
+    if (hasStrictMajority) {
+      const otherAnswersText = distribution
+        .slice(1)
+        .map(([value, count]) => `"${value}" (${count}/${totalResponses})`)
+        .join(', ');
+      lines.push(
+        `- ${question}: majority prefers "${topAnswer}" (${topCount}/${totalResponses}), but this is NOT unanimous — other member(s) preferred ${otherAnswersText}.`,
+      );
+    } else {
+      const allOptionsText = distribution
+        .map(([value, count]) => `"${value}" (${count}/${totalResponses})`)
+        .join(', ');
+      lines.push(`- ${question}: no clear majority — group is evenly split between ${allOptionsText}.`);
+    }
+  }
+
+  if (conflictingQuestions.length > 0) {
+    lines.push(
+      '',
+      `CONFLICT NOTICE: The group did NOT fully agree on: ${conflictingQuestions.join(', ')}. ` +
+        'Do not simply discard the minority preferences. Favor recommendations that reasonably satisfy the ' +
+        'majority while remaining broadly acceptable to dissenting members, and use the 3 recommendation slots ' +
+        'to reflect the range of group preferences where reasonable, rather than 3 near-identical options that ' +
+        'only please the majority.',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Builds the RecommendationPromptContext from event data, slide answers,
  * and an optional historical preference summary.
  *
@@ -163,48 +260,12 @@ export class RecommendationPromptContextBuilder {
   /**
    * Builds a current/provisional group preference summary from raw group member answers.
    *
-   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
-   * collected from group members for this event. This is a provisional approach because a
-   * canonical finalized group-answer artifact does not yet exist.
-   *
-   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
-   * should be replaced by consuming that artifact instead.
-   *
-   * TODO: Once finalized group answers exist, replace this derivation with the finalized
-   * group-answer artifact.
+   * Delegates to {@link buildGroupConsensusSummary}, the single source of truth for
+   * deriving this summary, so that RecommendationsService (which precomputes this summary
+   * for reuse in judge metadata) and this builder never drift apart.
    */
   private buildGroupPreferencesSummary(eventAnswers: RecommendationSlideAnswer[]): string {
-    if (!eventAnswers || eventAnswers.length === 0) {
-      return 'No current group member answers were provided.';
-    }
-
-    const groupedAnswers = new Map<string, Map<string, number>>();
-
-    for (const answer of eventAnswers) {
-      const question = answer.question?.trim();
-      const answerValue = answer.answerValue?.trim();
-      if (!question || !answerValue) {
-        continue;
-      }
-
-      const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
-      answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
-      groupedAnswers.set(question, answersByQuestion);
-    }
-
-    // Header reflects provisional/current state — not finalized group answers.
-    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
-
-    for (const [question, answersByQuestion] of groupedAnswers.entries()) {
-      const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
-      const [winningAnswer, winningCount] = [...answersByQuestion.entries()].sort(
-        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
-      )[0];
-
-      lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
-    }
-
-    return lines.length > 1 ? lines.join('\n') : 'No current group member answers were provided.';
+    return buildGroupConsensusSummary(eventAnswers);
   }
 
   private buildConstraintsSummary(input: RecommendationEventInput): string {
@@ -267,6 +328,18 @@ export class RecommendationPromptContextBuilder {
       ? 'historical group preference signals'
       : 'historical user preference signals';
 
+    const groupConflictGuidance = preferenceScope === 'group'
+      ? [
+        '',
+        'GROUP CONFLICT HANDLING — this event was answered by multiple group members and their answers may disagree:',
+        '- Treat a CONFLICT NOTICE (if present in the group preference summary) as a signal that the group is not unanimous on that question.',
+        '- Never silently discard minority/dissenting preferences — a majority is not the same as consensus.',
+        '- Prefer recommendations that reasonably satisfy the majority while remaining broadly acceptable to dissenting members (compromise options), rather than options that only please the majority and would alienate the rest of the group.',
+        '- When a question has no clear majority (an even split/tie), do not arbitrarily pick one side — favor recommendations that work reasonably well under either preference.',
+        '- Use the 3 recommendation slots deliberately: where preferences conflict, it is acceptable (and often better) for the 3 recommendations to collectively cover the range of group preferences instead of all leaning toward a single side.',
+      ]
+      : [];
+
     return [
       'PRIORITY ORDER — always follow this exact order:',
       '1. Hard constraints come first — never violate location, date, participant count, or schema requirements.',
@@ -277,6 +350,7 @@ export class RecommendationPromptContextBuilder {
       '6. Specificity — be concrete and actionable; avoid vague or generic suggestions.',
       '7. Practical usefulness — recommendations should be realistic and achievable.',
       '8. Avoid hallucinations — do not invent venues, phone numbers, or addresses.',
+      ...groupConflictGuidance,
       '',
       'Historical preferences are only a soft secondary signal. They must never override explicit current-event preferences or hard constraints.',
       'If current-event preferences conflict with historical behavior, current-event preferences win.',

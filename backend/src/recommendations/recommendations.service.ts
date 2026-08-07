@@ -23,6 +23,7 @@ import {
 import {
   RecommendationPromptContextBuilder,
   RecommendationEventInput,
+  buildGroupConsensusSummary,
 } from './recommendation-prompt-context.builder';
 import {
   RecommendationHistoryService,
@@ -631,55 +632,13 @@ export class RecommendationsService {
   /**
    * Builds a current/provisional group preference summary from raw group member answers.
    *
-   * CURRENT BEHAVIOR: Derives a majority-vote summary directly from the EventResponse rows
-   * collected from group members for this event. This is a provisional approach because a
-   * canonical finalized group-answer artifact does not yet exist.
-   *
-   * FUTURE BEHAVIOR: When a finalized group-answer artifact is implemented, this method
-   * should be replaced by consuming that artifact instead of deriving the summary from raw
-   * member answers.
-   *
-   * TODO: Once finalized group answers exist, replace this derivation with the finalized
-   * group-answer artifact. The policy order will then become:
-   *   current group event hard constraints > finalized group answers/preferences > historical group preferences
+   * Delegates to the shared {@link buildGroupConsensusSummary} function so that this
+   * pre-computation (needed here for judge metadata, ahead of the retry loop) and the
+   * RecommendationPromptContextBuilder's own group summary logic share a single source
+   * of truth and cannot drift apart.
    */
   private buildGroupPreferencesSummary(eventAnswers: any[] = []): string {
-    if (!eventAnswers || eventAnswers.length === 0) {
-      return 'No current group member answers were provided.';
-    }
-
-    const groupedAnswers = new Map<string, Map<string, number>>();
-
-    for (const answer of eventAnswers) {
-      const question = typeof answer?.question === 'string' ? answer.question.trim() : '';
-      const answerValue = typeof answer?.answerValue === 'string' ? answer.answerValue.trim() : '';
-
-      if (!question || !answerValue) {
-        continue;
-      }
-
-      const answersByQuestion = groupedAnswers.get(question) ?? new Map<string, number>();
-      answersByQuestion.set(answerValue, (answersByQuestion.get(answerValue) ?? 0) + 1);
-      groupedAnswers.set(question, answersByQuestion);
-    }
-
-    if (groupedAnswers.size === 0) {
-      return 'No current group member answers were provided.';
-    }
-
-    // Header reflects provisional/current state — not finalized group answers.
-    const lines = ['Current/provisional group preference summary (highest priority after hard constraints):'];
-
-    for (const [question, answersByQuestion] of groupedAnswers.entries()) {
-      const totalResponses = [...answersByQuestion.values()].reduce((sum, count) => sum + count, 0);
-      const [winningAnswer, winningCount] = [...answersByQuestion.entries()].sort(
-        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
-      )[0];
-
-      lines.push(`- ${question}: ${winningAnswer} (${winningCount}/${totalResponses} responses)`);
-    }
-
-    return lines.join('\n');
+    return buildGroupConsensusSummary(eventAnswers);
   }
 
   private async callGeminiModel(
