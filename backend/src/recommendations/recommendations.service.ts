@@ -222,19 +222,26 @@ export class RecommendationsService {
     }
 
     // ── Group lifecycle guard ──────────────────────────────────────────────
-    // For group events, generation is only allowed once the questionnaire has
-    // been closed (status = CLOSED or GENERATING_RECOMMENDATIONS, which means
-    // GroupLifecycleService is already coordinating this call). Attempting to
-    // generate while the questionnaire is still OPEN or in DRAFT is rejected.
-    if (
-      event.eventType === EventType.GROUP &&
-      event.status !== EventStatus.CLOSED &&
-      event.status !== EventStatus.GENERATING_RECOMMENDATIONS
-    ) {
-      return {
-        success: false,
-        message: `Recommendations cannot be generated for a group event in status '${event.status}'. The questionnaire must be closed first.`,
-      };
+    // For group events, if the owner manually triggers recommendation generation
+    // while the questionnaire is still OPEN (collecting_responses) or DRAFT,
+    // transition the questionnaire to CLOSED so recommendation generation proceeds.
+    if (event.eventType === EventType.GROUP) {
+      if (
+        event.status === EventStatus.OPEN ||
+        event.status === EventStatus.DRAFT
+      ) {
+        event.status = EventStatus.CLOSED;
+        await this.eventRepository.save(event);
+      } else if (
+        event.status !== EventStatus.CLOSED &&
+        event.status !== EventStatus.GENERATING_RECOMMENDATIONS &&
+        event.status !== EventStatus.RECOMMENDATIONS_READY
+      ) {
+        return {
+          success: false,
+          message: `Recommendations cannot be generated for a group event in status '${event.status}'.`,
+        };
+      }
     }
 
     // Initialize Langfuse trace
@@ -379,6 +386,7 @@ export class RecommendationsService {
               }),
             );
             const savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+            await this.eventRepository.update({ id: eventId }, { status: EventStatus.RECOMMENDATIONS_READY });
 
             persistSpan.end({
               output: {
@@ -515,6 +523,7 @@ export class RecommendationsService {
           );
 
           savedRecommendations = await this.recommendationRepository.save(recommendationsToSave);
+          await this.eventRepository.update({ id: eventId }, { status: EventStatus.RECOMMENDATIONS_READY });
 
           persistSpan.end({
             output: {

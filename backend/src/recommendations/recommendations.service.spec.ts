@@ -79,6 +79,7 @@ describe('RecommendationsService', () => {
     eventRepositoryMock = {
       findOne: jest.fn(),
       save: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     recommendationRepositoryMock = {
