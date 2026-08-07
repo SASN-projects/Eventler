@@ -233,30 +233,38 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setGenerationError("");
       setLastSubmittedAnswers(null);
       setEventId(resumeEvent.eventId);
-      setDecisionStep(resumeEvent.mode === "recommendations" ? "recommendation" : "sliding");
 
       try {
+        const eventDetails = await getEventDetails(resumeEvent.eventId);
+        const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+        const currentUserId = auth?.user?.id ?? null;
+        const normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+
+        setEventCreatedById(creatorId);
+
+        if (normalizedStatus === "final_selection_made" || normalizedStatus === "finalized") {
+          setDecisionStep("thankYou");
+          return;
+        }
+
+        setDecisionStep(resumeEvent.mode === "recommendations" ? "recommendation" : "sliding");
+
         if (resumeEvent.mode === "recommendations") {
-          await loadEventCreator(resumeEvent.eventId);
           await loadRecommendations(resumeEvent.eventId);
           return;
         }
 
-        const [questions, answers, eventDetails] = await Promise.all([
+        const [questions, answers] = await Promise.all([
           fetchSlidesQuestions(),
           getEventAnswers(resumeEvent.eventId),
-          getEventDetails(resumeEvent.eventId),
         ]);
 
-        const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
-        const currentUserId = auth?.user?.id ?? null;
         const eventAnswers = (answers || []) as EventAnswer[];
         const hasCurrentUserAnswered = Boolean(
           currentUserId &&
           eventAnswers.some((item) => item.userId === currentUserId),
         );
 
-        setEventCreatedById(creatorId);
         setSlidersQuestions(questions);
 
         if (hasCurrentUserAnswered) {
