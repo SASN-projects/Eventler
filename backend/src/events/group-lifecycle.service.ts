@@ -52,15 +52,29 @@ export class GroupLifecycleService {
       return event;
     }
 
-    // Transition to CLOSED
-    event.status = EventStatus.CLOSED;
-    await this.eventRepository.save(event);
+    // Transition to CLOSED only if the event is still OPEN. This prevents
+    // duplicate generation when multiple answer submissions race to close it.
+    const closeResult = await this.eventRepository.update(
+      { id: eventId, status: EventStatus.OPEN },
+      { status: EventStatus.CLOSED },
+    );
+
+    if (!closeResult.affected) {
+      const refreshed = await this.eventRepository.findOne({ where: { id: eventId } });
+      if (!refreshed) {
+        throw new NotFoundException(`Event with id ${eventId} not found`);
+      }
+      this.logger.debug(`Event ${eventId} was already transitioned by another request.`);
+      return refreshed;
+    }
+
     this.logger.log(`Event ${eventId} closed.`);
 
     // Auto-trigger recommendation generation (fire-and-forget with status tracking)
     await this.triggerRecommendationGeneration(eventId);
 
-    return event;
+    const closedEvent = await this.eventRepository.findOne({ where: { id: eventId } });
+    return closedEvent ?? event;
   }
 
   /**
@@ -68,11 +82,17 @@ export class GroupLifecycleService {
    * service, then transitions to RECOMMENDATIONS_READY (or back to CLOSED on failure).
    */
   async triggerRecommendationGeneration(eventId: string): Promise<void> {
-    // Transition to GENERATING_RECOMMENDATIONS
-    await this.eventRepository.update(
-      { id: eventId },
+    // Transition to GENERATING_RECOMMENDATIONS only once.
+    const generatingResult = await this.eventRepository.update(
+      { id: eventId, status: EventStatus.CLOSED },
       { status: EventStatus.GENERATING_RECOMMENDATIONS },
     );
+
+    if (!generatingResult.affected) {
+      this.logger.debug(`Event ${eventId} is not in CLOSED status; skipping generation trigger.`);
+      return;
+    }
+
     this.logger.log(`Event ${eventId} → GENERATING_RECOMMENDATIONS`);
 
     try {

@@ -214,6 +214,8 @@ export class SlidesService {
 
     await this.eventResponseRepository.save(answersToSave);
 
+    let allMembersAnswered = false;
+
     if (event.eventType === EventType.GROUP && event.groupId) {
       // ── Group event: check if all members have now answered ───────────
       const group = await this.groupRepository.findOne({
@@ -233,7 +235,7 @@ export class SlidesService {
         );
 
         // Delegate close + generation to GroupLifecycleService
-        await this.groupLifecycleService.checkAndCloseIfAllMembersAnswered(
+        allMembersAnswered = await this.groupLifecycleService.checkAndCloseIfAllMembersAnswered(
           eventId,
           answeredUserIds,
           groupMemberIds,
@@ -247,9 +249,13 @@ export class SlidesService {
       );
     }
 
+    const refreshedEvent = await this.eventRepository.findOne({ where: { id: eventId } });
+
     return {
       message: 'Slide answers submitted successfully',
       count: answersToSave.length,
+      eventStatus: refreshedEvent?.status || event.status,
+      allMembersAnswered,
     };
   }
 

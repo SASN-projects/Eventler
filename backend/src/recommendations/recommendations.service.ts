@@ -578,7 +578,7 @@ export class RecommendationsService {
         };
       } catch (error: any) {
         lastError = error as Error;
-        const classified = (error as any).classified || classifyGeminiError(error);
+        const classified = (error).classified || classifyGeminiError(error);
         lastClassified = classified;
 
         this.logger.warn(`Recommendation attempt ${attempt} (${currentModel}) failed [${classified.errorCode}]: ${error.message}`);

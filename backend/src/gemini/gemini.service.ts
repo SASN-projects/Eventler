@@ -215,7 +215,7 @@ export class GeminiService {
     } catch (err: any) {
       const endTime = new Date();
       const classified = classifyGeminiError(err);
-      (err as any).classified = classified;
+      (err).classified = classified;
 
       generation?.end({
         level: 'ERROR',

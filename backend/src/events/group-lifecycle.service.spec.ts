@@ -16,19 +16,19 @@ describe('GroupLifecycleService', () => {
   const mockUser = { id: 'user-1', email: 'owner@example.com' } as any;
 
   const createMockEvent = (overrides: Partial<Event> = {}): Event =>
-    ({
-      id: 'event-1',
-      title: 'Group Dinner',
-      description: 'Dinner with friends',
-      eventType: EventType.GROUP,
-      status: EventStatus.OPEN,
-      createdById: 'user-1',
-      creator: mockUser,
-      groupId: 'group-1',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      ...overrides,
-    } as Event);
+  ({
+    id: 'event-1',
+    title: 'Group Dinner',
+    description: 'Dinner with friends',
+    eventType: EventType.GROUP,
+    status: EventStatus.OPEN,
+    createdById: 'user-1',
+    creator: mockUser,
+    groupId: 'group-1',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  } as Event);
 
   beforeEach(async () => {
     const mockRepo = {
@@ -68,12 +68,14 @@ describe('GroupLifecycleService', () => {
       await service.closeQuestionnaire('event-1');
 
       expect(eventRepository.findOne).toHaveBeenCalledWith({ where: { id: 'event-1' } });
-      expect(mockEvent.status).toBe(EventStatus.CLOSED);
-      expect(eventRepository.save).toHaveBeenCalledWith(mockEvent);
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        { id: 'event-1', status: EventStatus.OPEN },
+        { status: EventStatus.CLOSED },
+      );
 
       // Verify recommendation generation triggers
       expect(eventRepository.update).toHaveBeenCalledWith(
-        { id: 'event-1' },
+        { id: 'event-1', status: EventStatus.CLOSED },
         { status: EventStatus.GENERATING_RECOMMENDATIONS },
       );
       expect(recommendationsService.generateRecommendation).toHaveBeenCalledWith('event-1');
@@ -113,9 +115,19 @@ describe('GroupLifecycleService', () => {
       await service.closeQuestionnaire('event-1');
 
       expect(eventRepository.update).toHaveBeenCalledWith(
-        { id: 'event-1' },
+        { id: 'event-1', status: EventStatus.OPEN },
         { status: EventStatus.CLOSED },
       );
+    });
+
+    it('should not trigger generation twice when the event is no longer OPEN', async () => {
+      const mockEvent = createMockEvent({ status: EventStatus.CLOSED });
+      eventRepository.findOne.mockResolvedValue(mockEvent);
+
+      await service.closeQuestionnaire('event-1');
+
+      expect(recommendationsService.generateRecommendation).not.toHaveBeenCalled();
+      expect(eventRepository.update).not.toHaveBeenCalled();
     });
   });
 
@@ -126,7 +138,10 @@ describe('GroupLifecycleService', () => {
 
       await service.ownerCloseQuestionnaire('event-1', 'user-1');
 
-      expect(mockEvent.status).toBe(EventStatus.CLOSED);
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        { id: 'event-1', status: EventStatus.OPEN },
+        { status: EventStatus.CLOSED },
+      );
     });
 
     it('should throw ForbiddenException if user is not the event creator', async () => {
@@ -166,7 +181,10 @@ describe('GroupLifecycleService', () => {
       const wasClosed = await service.checkAndCloseIfDeadlinePassed(mockEvent);
 
       expect(wasClosed).toBe(true);
-      expect(mockEvent.status).toBe(EventStatus.CLOSED);
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        { id: 'event-1', status: EventStatus.OPEN },
+        { status: EventStatus.CLOSED },
+      );
     });
 
     it('should not close questionnaire if deadlineAt is in the future', async () => {
@@ -195,7 +213,10 @@ describe('GroupLifecycleService', () => {
       );
 
       expect(wasClosed).toBe(true);
-      expect(mockEvent.status).toBe(EventStatus.CLOSED);
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        { id: 'event-1', status: EventStatus.OPEN },
+        { status: EventStatus.CLOSED },
+      );
     });
 
     it('should not close questionnaire if not all group members have submitted answers', async () => {

@@ -70,9 +70,9 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
-  // Deadline state — defaults to targetDate + 2 hours
+  // Deadline state — defaults to current time + 10 minutes
   const [groupDeadline, setGroupDeadline] = useState<Date>(
-    new Date(baseParams.time.getTime() + 2 * 60 * 60 * 1000),
+    new Date(Date.now() + 10 * 60 * 1000),
   );
   const [deadlineError, setDeadlineError] = useState("");
 
@@ -100,11 +100,6 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   useEffect(() => {
     loadGroups();
   }, []);
-
-  // Keep default deadline in sync with target time
-  useEffect(() => {
-    setGroupDeadline(new Date(baseParams.time.getTime() + 2 * 60 * 60 * 1000));
-  }, [baseParams.time]);
 
   const createEvent = async (
     eventType: string,
@@ -152,8 +147,8 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   const handleGroupContinue = () => {
     if (!selectedGroupId) return;
     setGroupSelectionOpen(false);
-    // Reset deadline to default (+2 h from target time) and open picker
-    setGroupDeadline(new Date(baseParams.time.getTime() + 2 * 60 * 60 * 1000));
+    // Reset deadline to default (current time + 10 minutes) and open picker
+    setGroupDeadline(new Date(Date.now() + 10 * 60 * 1000));
     setDeadlineError("");
     setDeadlinePickerOpen(true);
   };

@@ -131,6 +131,35 @@ describe('SlidesService', () => {
     );
   });
 
+  it('returns closed status and allMembersAnswered when the last group member submits answers', async () => {
+    const groupEvent = { id: 'event-1', status: EventStatus.OPEN, eventType: EventType.GROUP, groupId: 'group-1' };
+    eventRepositoryMock.findOne
+      .mockResolvedValueOnce(groupEvent)
+      .mockResolvedValueOnce({ ...groupEvent, status: EventStatus.CLOSED });
+
+    groupRepositoryMock.findOne.mockResolvedValue({
+      id: 'group-1',
+      members: [
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+      ],
+    });
+
+    eventResponseRepositoryMock.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { userId: 'user-1', eventId: 'event-1' },
+        { userId: 'user-2', eventId: 'event-1' },
+      ]);
+
+    const result = await service.submitAnswers('event-1', 'user-2', {
+      answers: [{ question: 'mood', answerValue: 'quiet' }],
+    } as any);
+
+    expect(result.allMembersAnswered).toBe(true);
+    expect(result.eventStatus).toBe(EventStatus.CLOSED);
+  });
+
   it('getSlides assembles up to 7 questions when 10 questions are available', async () => {
     const makeQuestion = (code: string) => ({
       id: `id-${code}`,

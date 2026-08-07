@@ -96,7 +96,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     return { creatorId, isGroup, eventDetails };
   };
 
-  const onBaseComplete = async (id: string, _isGroup = false) => {
+  const onBaseComplete = async (id: string) => {
     setExistingAnswers({});
     setRecommendations([]);
     setGenerationError("");
@@ -175,10 +175,11 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         Object.entries(finalAnswers).filter(([, answerValue]) => typeof answerValue === "string" && answerValue.trim().length > 0),
       );
 
-      await submitAnswers(eventId, sanitizedAnswers);
+      const submitResult = await submitAnswers(eventId, sanitizedAnswers);
 
-      const { creatorId, isGroup } = await loadEventDetails(eventId);
+      const { creatorId, isGroup, eventDetails } = await loadEventDetails(eventId);
       const isCreator = auth?.user?.id === (creatorId ?? eventCreatedById);
+      const currentStatus = (eventDetails?.status ?? submitResult?.eventStatus ?? "").toLowerCase();
 
       if (!isCreator) {
         setThankYouVariant("waiting");
@@ -187,7 +188,30 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       }
 
       if (isGroup) {
-        setDecisionStep("creator-decision");
+        const isClosedOrGenerating =
+          Boolean(submitResult?.allMembersAnswered) ||
+          currentStatus === "closed" ||
+          currentStatus === "generating_recommendations" ||
+          currentStatus === "recommendations_ready";
+
+        if (isClosedOrGenerating) {
+          // Bug 3 Fix: Creator is last to answer -> questionnaire auto-closed!
+          // Route directly to generating -> recommendation. Do not show decision screen.
+          setDecisionStep("generating");
+          const finalStatus =
+            currentStatus === "recommendations_ready"
+              ? "recommendations_ready"
+              : await pollUntilRecommendationsReady(eventId);
+
+          if (finalStatus === "recommendations_ready") {
+            await loadRecommendations(eventId);
+          } else {
+            setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
+          }
+        } else {
+          // Questionnaire still OPEN (not all members answered yet)
+          setDecisionStep("creator-decision");
+        }
       } else {
         await loadRecommendations(eventId);
       }
@@ -213,13 +237,13 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       if (finalStatus === "recommendations_ready") {
         await loadRecommendations(eventId);
       } else if (finalStatus === "closed") {
-        throw new Error("Recommendation generation failed. The questionnaire is closed and you can try generating again.");
+        throw new Error("Recommendation generation failed. The questionnaire is closed.");
       } else {
         throw new Error(`Event status is '${finalStatus}'. Could not complete recommendation generation.`);
       }
     } catch (err) {
+      // Bug 4 Fix: Stay on generating step on error; do NOT redirect back to creator-decision!
       setGenerationError(getErrorMessage(err));
-      setDecisionStep("creator-decision");
     } finally {
       setIsClosingQuestionnaire(false);
     }
@@ -317,8 +341,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
             if (finalStatus === "recommendations_ready") {
               await loadRecommendations(resumeEvent.eventId);
             } else {
-              setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
-              setDecisionStep("creator-decision");
+              setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
+              // Stay on generating step (Bug 4 fix)
             }
           } else {
             setThankYouVariant("waiting");
@@ -343,7 +367,25 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
         if (hasCurrentUserAnswered) {
           if (isCreator && isGroup) {
-            setDecisionStep("creator-decision");
+            // Re-verify event details in case all members just finished answering
+            const latestDetails = await getEventDetails(resumeEvent.eventId);
+            const latestStatus = (latestDetails?.status ?? "").toLowerCase();
+
+            if (latestStatus === "closed" || latestStatus === "generating_recommendations" || latestStatus === "recommendations_ready") {
+              setDecisionStep("generating");
+              const finalStatus = latestStatus === "recommendations_ready"
+                ? "recommendations_ready"
+                : await pollUntilRecommendationsReady(resumeEvent.eventId);
+
+              if (finalStatus === "recommendations_ready") {
+                await loadRecommendations(resumeEvent.eventId);
+              } else {
+                setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
+              }
+            } else {
+              // Questionnaire is still OPEN and not all members answered
+              setDecisionStep("creator-decision");
+            }
           } else if (isCreator && !isGroup) {
             await loadRecommendations(resumeEvent.eventId);
           } else {
@@ -480,13 +522,34 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     ),
     generating: (
       <LoadingContainer>
-        <CircularProgress size={50} sx={{ color: "#edb53c", mb: 2 }} />
-        <LoadingTextContainer>
-          <LoadingTitle>Closing questionnaire & generating recommendations…</LoadingTitle>
-          <LoadingSubtitle>
-            Analyzing group preferences to find top 3 matching venues. Please wait a moment.
-          </LoadingSubtitle>
-        </LoadingTextContainer>
+        {generationError ? (
+          <>
+            <LoadingTextContainer>
+              <LoadingTitle>Recommendation generation paused</LoadingTitle>
+              <LoadingSubtitle sx={{ color: "error.main", maxWidth: 520, mb: 2 }}>
+                {generationError}
+              </LoadingSubtitle>
+            </LoadingTextContainer>
+            <PrimeButton
+              onClick={() => {
+                setGenerationError("");
+                handleCreatorFinishNow();
+              }}
+            >
+              Retry generation
+            </PrimeButton>
+          </>
+        ) : (
+          <>
+            <CircularProgress size={50} sx={{ color: "#edb53c", mb: 2 }} />
+            <LoadingTextContainer>
+              <LoadingTitle>Closing questionnaire & generating recommendations…</LoadingTitle>
+              <LoadingSubtitle>
+                Analyzing group preferences to find top 3 matching venues. Please wait a moment.
+              </LoadingSubtitle>
+            </LoadingTextContainer>
+          </>
+        )}
       </LoadingContainer>
     ),
     recommendation:

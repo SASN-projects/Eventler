@@ -90,7 +90,13 @@ export const submitAnswers = async (eventId: string, answers: Answers) => {
     answers: normalizedAnswers,
   };
 
-  await api.post(`/slides/submit-answers/${eventId}`, data);
+  const { data: responseData } = await api.post(`/slides/submit-answers/${eventId}`, data);
+  return responseData as {
+    message: string;
+    count: number;
+    eventStatus?: string;
+    allMembersAnswered?: boolean;
+  };
 };
 
 export const getEventAnswers = async (eventId: string) => {
