@@ -97,7 +97,11 @@ const AppContent: FunctionComponent = () => {
                     onContinueEvent={handleContinueEvent}
                   />
                 ) : (
-                  <DecisionPage key={resetKey} resumeEvent={resumeEvent} />
+                  <DecisionPage
+                    key={resetKey}
+                    resumeEvent={resumeEvent}
+                    onResumeConsumed={() => setResumeEvent(null)}
+                  />
                 )}
               </MainContentArea>
 
