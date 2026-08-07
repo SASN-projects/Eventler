@@ -40,10 +40,12 @@ type EventAnswer = {
 
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
+  onResumeConsumed?: () => void;
 }
 
 const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   resumeEvent,
+  onResumeConsumed,
 }) => {
   const auth = useContext(AuthContext);
   const [eventId, setEventId] = useState("");
@@ -200,6 +202,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setGenerationError("");
     setLastSubmittedAnswers(null);
     setSelectedVibe("");
+    onResumeConsumed?.();
   };
 
   useEffect(() => {
