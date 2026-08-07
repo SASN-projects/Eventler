@@ -52,11 +52,13 @@ export const InputsContainer = styled(Box)({
 
 // RecommendationsPage.tsx styles
 export const RecommendationContainer = styled(FullSizeContainer)({
-    justifyContent: 'flex-start',
+    justifyContent: 'safe center',
     alignItems: 'center',
-    gap: '8px',
+    gap: '12px',
     padding: '24px',
-    overflowY: 'auto'
+    overflowY: 'auto',
+    minHeight: '100%',
+    background: 'var(--eventler-gradient-soft)'
 });
 
 export const RecommendationCard = styled(Box)<{ $isSelected?: boolean }>(({ $isSelected }) => ({

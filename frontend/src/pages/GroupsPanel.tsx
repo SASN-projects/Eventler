@@ -566,12 +566,10 @@ const GroupsPanel: React.FC<{
           position: "sticky",
           top: 0,
           zIndex: 10,
-          backgroundColor: "rgba(255,255,255,0.86)",
-          backdropFilter: "blur(16px)",
+          backgroundColor: "transparent",
           pt: 2,
           pb: 1,
           px: 1,
-          borderBottom: "1px solid var(--eventler-border)",
         }}
       >
         {error ? (
