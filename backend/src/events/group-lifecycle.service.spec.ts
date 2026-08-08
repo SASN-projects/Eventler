@@ -162,8 +162,49 @@ describe('GroupLifecycleService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw BadRequestException if questionnaire is not OPEN', async () => {
+    it('should return current event if status is GENERATING_RECOMMENDATIONS (no-op)', async () => {
+      const mockEvent = createMockEvent({ status: EventStatus.GENERATING_RECOMMENDATIONS });
+      eventRepository.findOne.mockResolvedValue(mockEvent);
+
+      const result = await service.ownerCloseQuestionnaire('event-1', 'user-1');
+
+      expect(result.status).toBe(EventStatus.GENERATING_RECOMMENDATIONS);
+      expect(eventRepository.update).not.toHaveBeenCalled();
+      expect(recommendationsService.generateRecommendation).not.toHaveBeenCalled();
+    });
+
+    it('should return current event if status is RECOMMENDATIONS_READY (no-op)', async () => {
       const mockEvent = createMockEvent({ status: EventStatus.RECOMMENDATIONS_READY });
+      eventRepository.findOne.mockResolvedValue(mockEvent);
+
+      const result = await service.ownerCloseQuestionnaire('event-1', 'user-1');
+
+      expect(result.status).toBe(EventStatus.RECOMMENDATIONS_READY);
+      expect(eventRepository.update).not.toHaveBeenCalled();
+      expect(recommendationsService.generateRecommendation).not.toHaveBeenCalled();
+    });
+
+    it('should trigger generation when status is already CLOSED (deadline auto-close idempotency)', async () => {
+      const closedEvent = createMockEvent({ status: EventStatus.CLOSED });
+      const generatingEvent = createMockEvent({ status: EventStatus.GENERATING_RECOMMENDATIONS });
+
+      // findOne returns: first call for ownerCloseQuestionnaire, second for refresh after triggerRecommendationGeneration
+      eventRepository.findOne
+        .mockResolvedValueOnce(closedEvent)   // initial load in ownerCloseQuestionnaire
+        .mockResolvedValueOnce(generatingEvent); // refresh after triggerRecommendationGeneration
+
+      await service.ownerCloseQuestionnaire('event-1', 'user-1');
+
+      // Should have triggered generation (CLOSED → GENERATING_RECOMMENDATIONS)
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        { id: 'event-1', status: EventStatus.CLOSED },
+        { status: EventStatus.GENERATING_RECOMMENDATIONS },
+      );
+      expect(recommendationsService.generateRecommendation).toHaveBeenCalledWith('event-1');
+    });
+
+    it('should throw BadRequestException if event is CANCELLED', async () => {
+      const mockEvent = createMockEvent({ status: EventStatus.CANCELLED });
       eventRepository.findOne.mockResolvedValue(mockEvent);
 
       await expect(

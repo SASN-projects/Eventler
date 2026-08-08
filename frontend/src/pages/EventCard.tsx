@@ -1,6 +1,7 @@
 import { Box, Stack, Typography, Chip, Button } from "@mui/material";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import TimerIcon from "@mui/icons-material/Timer";
 import PersonIcon from "@mui/icons-material/Person";
 import { formatDate, formatTimeRange } from "./slidingPages/profile.utils";
 import {
@@ -127,6 +128,33 @@ const EventCard: FunctionComponent<EventCardProps> = ({
               {dateStr} {timeStr && `| ${timeStr}`}
             </Typography>
           </Stack>
+
+          {/* Bug 3 fix: Show questionnaire deadline for open group events */}
+          {(event.eventType === "group" || (event.group && !event.recommendation)) &&
+            normalizedStatus === "collecting_responses" &&
+            event.deadlineAt && (
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{ color: "#718096", mt: 0.5 }}
+              >
+                <TimerIcon sx={{ fontSize: "15px", color: "#e8973a" }} />
+                <Typography
+                  variant="body2"
+                  sx={{ fontSize: "12px", fontWeight: 500, color: "#e8973a" }}
+                >
+                  Open until:{" "}
+                  {new Date(event.deadlineAt).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Typography>
+              </Stack>
+            )}
+
         </Box>
 
         <Stack

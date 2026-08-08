@@ -178,12 +178,36 @@ export class GroupLifecycleService {
       throw new ForbiddenException('Only the event creator can close this questionnaire.');
     }
 
-    if (event.status !== EventStatus.OPEN) {
-      throw new BadRequestException(
-        `Questionnaire cannot be closed in its current status: ${event.status}.`,
+    // Idempotent: if the deadline already closed the questionnaire (or it was
+    // otherwise progressed beyond OPEN), route to the correct next step instead
+    // of throwing a 400 that blocks the creator's flow.
+    if (event.status === EventStatus.CLOSED) {
+      // Already CLOSED (e.g. deadline auto-closed it) — ensure generation is triggered.
+      this.logger.debug(
+        `Event ${eventId} already CLOSED (deadline may have closed it); ensuring generation is triggered.`,
       );
+      await this.triggerRecommendationGeneration(eventId);
+      const refreshed = await this.eventRepository.findOne({ where: { id: eventId } });
+      return refreshed ?? event;
     }
 
+    if (
+      event.status === EventStatus.GENERATING_RECOMMENDATIONS ||
+      event.status === EventStatus.RECOMMENDATIONS_READY ||
+      event.status === EventStatus.FINAL_SELECTION_MADE ||
+      event.status === EventStatus.FINALIZED
+    ) {
+      this.logger.debug(
+        `Event ${eventId} is already in status ${event.status}; owner close is a no-op.`,
+      );
+      return event;
+    }
+
+    if (event.status === EventStatus.CANCELLED) {
+      throw new BadRequestException(`Event ${eventId} has been cancelled and cannot be closed.`);
+    }
+
+    // OPEN → proceed with the shared idempotent close + generation trigger.
     return this.closeQuestionnaire(eventId);
   }
 }

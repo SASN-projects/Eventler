@@ -225,16 +225,31 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       }
 
       if (isGroup) {
+        // Bug 1 fix: also treat expired deadline as "closed" so the creator
+        // never sees the "finish now or keep waiting" decision screen after deadline.
+        const deadlineHasPassed = Boolean(
+          eventDetails?.deadlineAt && new Date(eventDetails.deadlineAt) <= new Date(),
+        );
         const isClosedOrGenerating =
           Boolean(submitResult?.allMembersAnswered) ||
+          deadlineHasPassed ||
           currentStatus === "closed" ||
           currentStatus === "generating_recommendations" ||
           currentStatus === "recommendations_ready";
 
         if (isClosedOrGenerating) {
-          // Bug 3 Fix: Creator is last to answer -> questionnaire auto-closed!
-          // Route directly to generating -> recommendation. Do not show decision screen.
+          // Route directly to generating → recommendation. Do not show decision screen.
           setDecisionStep("generating");
+
+          // If deadline passed but DB still shows OPEN, trigger close idempotently.
+          if (deadlineHasPassed && currentStatus === "collecting_responses") {
+            try {
+              await closeQuestionnaire(eventId);
+            } catch {
+              // Ignore — idempotent on backend; polling will detect actual status.
+            }
+          }
+
           const finalStatus =
             currentStatus === "recommendations_ready"
               ? "recommendations_ready"
@@ -246,7 +261,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
             setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
           }
         } else {
-          // Questionnaire still OPEN (not all members answered yet)
+          // Questionnaire still OPEN and deadline has not passed
           setDecisionStep("creator-decision");
         }
       } else {
@@ -268,18 +283,40 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setDecisionStep("generating");
 
     try {
+      // Bug 2 fix: closeQuestionnaire is now idempotent on the backend — if the deadline
+      // already closed the questionnaire it will trigger generation and return current state
+      // rather than throwing 400. So we can safely call it here regardless.
       await closeQuestionnaire(eventId);
       const finalStatus = await pollUntilRecommendationsReady(eventId);
 
       if (finalStatus === "recommendations_ready") {
         await loadPersistedRecommendations(eventId);
       } else if (finalStatus === "closed") {
-        throw new Error("Recommendation generation failed. The questionnaire is closed.");
+        setGenerationError("Recommendation generation failed. Click retry to try again.");
       } else {
-        throw new Error(`Event status is '${finalStatus}'. Could not complete recommendation generation.`);
+        setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
       }
     } catch (err) {
-      // Bug 4 Fix: Stay on generating step on error; do NOT redirect back to creator-decision!
+      // If close still fails for an unexpected reason, re-read current status and route
+      // rather than showing a terminal error that blocks the creator.
+      try {
+        const currentDetails = await getEventDetails(eventId);
+        const currentStatus = (currentDetails?.status ?? "").toLowerCase();
+        if (currentStatus === "recommendations_ready") {
+          await loadPersistedRecommendations(eventId);
+          return;
+        } else if (currentStatus !== "collecting_responses" && currentStatus !== "") {
+          const finalStatus = await pollUntilRecommendationsReady(eventId);
+          if (finalStatus === "recommendations_ready") {
+            await loadPersistedRecommendations(eventId);
+          } else {
+            setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
+          }
+          return;
+        }
+      } catch {
+        // Fall through to show original error
+      }
       setGenerationError(getErrorMessage(err));
     } finally {
       setIsClosingQuestionnaire(false);
@@ -354,7 +391,25 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         const { creatorId, isGroup, eventDetails } = await loadEventDetails(resumeEvent.eventId);
         const currentUserId = auth?.user?.id ?? null;
         const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
-        const normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+        let normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+
+        // Bug 1 fix: if OPEN but deadline has passed, close idempotently and re-read status.
+        // The backend lazy close only fires during submitAnswers; we need the same logic
+        // when the creator resumes after the deadline without anyone submitting post-deadline.
+        if (isGroup && normalizedStatus === "collecting_responses" && eventDetails?.deadlineAt) {
+          const deadlineDate = new Date(eventDetails.deadlineAt);
+          if (!isNaN(deadlineDate.getTime()) && deadlineDate <= new Date()) {
+            try {
+              await closeQuestionnaire(resumeEvent.eventId);
+            } catch {
+              // Ignore errors — may already be closed; status re-read below determines routing.
+            }
+            const refreshed = await getEventDetails(resumeEvent.eventId);
+            if (refreshed?.status) {
+              normalizedStatus = refreshed.status.toLowerCase();
+            }
+          }
+        }
 
         if (normalizedStatus === "final_selection_made" || normalizedStatus === "finalized") {
           setThankYouVariant(isCreator ? "creator-success" : "waiting");
