@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from "@mui/material";
 import type { ChangeEvent, FunctionComponent } from "react";
 import type { User } from "./slidingPages/profile.types";
 
@@ -8,6 +8,8 @@ interface EditProfileDialogProps {
   onSave: () => void;
   onClose: () => void;
   onChange: (field: keyof User) => (e: ChangeEvent<HTMLInputElement>) => void;
+  saving?: boolean;
+  error?: string;
 }
 
 const textFieldSx = {
@@ -16,7 +18,7 @@ const textFieldSx = {
   },
 };
 
-const EditProfileDialog: FunctionComponent<EditProfileDialogProps> = ({ open, onClose, user, onChange, onSave }) => (
+const EditProfileDialog: FunctionComponent<EditProfileDialogProps> = ({ open, onClose, user, onChange, onSave, saving = false, error = "" }) => (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
     <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Edit Profile Details</DialogTitle>
     <DialogContent>
@@ -42,14 +44,19 @@ const EditProfileDialog: FunctionComponent<EditProfileDialogProps> = ({ open, on
           sx={textFieldSx}
         />
         <TextField label="Occupation" value={user.occupation || ""} onChange={onChange("occupation")} fullWidth size="small" sx={textFieldSx} />
+        {error && (
+          <Typography color="error" sx={{ fontSize: "13px", lineHeight: 1.4 }}>
+            {error}
+          </Typography>
+        )}
       </Stack>
     </DialogContent>
     <DialogActions sx={{ px: 3, pb: 2 }}>
-      <Button onClick={onClose} sx={{ textTransform: "none", color: "text.secondary", fontWeight: 700 }}>
+      <Button onClick={onClose} disabled={saving} sx={{ textTransform: "none", color: "text.secondary", fontWeight: 700 }}>
         Cancel
       </Button>
-      <Button onClick={onSave} variant="contained" sx={{ textTransform: "none", borderRadius: "14px", fontWeight: 800, px: 3, background: "linear-gradient(135deg, var(--eventler-primary) 0%, var(--eventler-secondary) 100%)" }}>
-        Save Changes
+      <Button onClick={onSave} variant="contained" disabled={saving} sx={{ textTransform: "none", borderRadius: "14px", fontWeight: 800, px: 3, background: "linear-gradient(135deg, var(--eventler-primary) 0%, var(--eventler-secondary) 100%)" }}>
+        {saving ? "Saving..." : "Save Changes"}
       </Button>
     </DialogActions>
   </Dialog>

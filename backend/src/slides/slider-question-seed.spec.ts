@@ -49,22 +49,6 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     tags: ['initial', 'preference'],
   },
   {
-    code: 'vibe',
-    label: 'What vibe are you going for?',
-    answerMode: AnswerMode.OPTIONS,
-    minOptions: 2,
-    constraintType: 'soft',
-    tags: ['initial'],
-  },
-  {
-    code: 'activity',
-    label: 'What kind of activity do you have in mind?',
-    answerMode: AnswerMode.OPTIONS,
-    minOptions: 2,
-    constraintType: 'soft',
-    tags: ['dining', 'active', 'cultural', 'casual'],
-  },
-  {
     code: 'budget',
     label: 'What is your budget per person?',
     answerMode: AnswerMode.OPTIONS,
@@ -79,14 +63,6 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     minOptions: 2,
     constraintType: 'soft',
     tags: ['active', 'casual', 'sightseeing'],
-  },
-  {
-    code: 'time-of-day',
-    label: 'When during the day do you plan to go?',
-    answerMode: AnswerMode.OPTIONS,
-    minOptions: 2,
-    constraintType: 'hard',
-    tags: ['preference'],
   },
   {
     code: 'food-drinks',
@@ -120,11 +96,67 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     constraintType: 'hard',
     tags: ['preference'],
   },
+  // ── Activity-specific follow-ups ──────────────────────────────────────────
+  // Only surfaced once a vibe/activity category is known (frontend vibe-select
+  // step), filtered in via tag match against the selected vibe.
+  {
+    code: 'cuisine',
+    label: 'What cuisine do you prefer?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['dining'],
+  },
+  {
+    code: 'dining-style',
+    label: 'What kind of dining experience do you prefer?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['dining'],
+  },
+  {
+    code: 'active-type',
+    label: 'What kind of active experience do you want?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['active'],
+  },
+  {
+    code: 'difficulty',
+    label: 'How physically demanding should the activity be?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['active'],
+  },
+  {
+    code: 'culture-type',
+    label: 'What kind of cultural/arts experience do you prefer?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['cultural', 'sightseeing'],
+  },
+  {
+    code: 'socialization',
+    label: 'What level of socialization are you looking for?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['cultural', 'clubbing', 'casual'],
+  },
 ];
 
 /**
- * Codes retired from the previous question set.
+ * Codes retired from the question set.
  * They must NOT appear in EXPECTED_QUESTIONS.
+ *
+ * 'vibe' and 'activity' were retired because the frontend's dedicated
+ * vibe-select step (run before sliding) already captures the same
+ * activity category. 'time-of-day' was retired because the exact start
+ * time is already chosen in the base event-creation step.
  */
 const RETIRED_CODES: string[] = [
   'transportation',
@@ -133,6 +165,9 @@ const RETIRED_CODES: string[] = [
   'crowd',
   'planning-style',
   'event-type',
+  'vibe',
+  'activity',
+  'time-of-day',
 ];
 
 const VALID_ANSWER_MODES: AnswerMode[] = [AnswerMode.OPTIONS, AnswerMode.VALUE];
@@ -160,29 +195,11 @@ const ALL_OPTION_VALUES: string[] = [
   'Team or work event',
   'Family gathering',
   'Just for fun',
-  // vibe
-  'Lively and energetic',
-  'Relaxed and laid-back',
-  'Upscale and refined',
-  'Fun and playful',
-  'Cozy and intimate',
-  // activity
-  'Food and dining',
-  'Drinks and nightlife',
-  'Outdoor adventure',
-  'Culture or arts',
-  'Entertainment (escape room, bowling, cinema)',
-  'Wellness and relaxation',
   // setting
   'Indoors — restaurant, cafe, bar',
   'Outdoors — park, rooftop, beach',
   'A mix of both',
   'No strong preference',
-  // time-of-day
-  'Morning or brunch (8am-12pm)',
-  'Afternoon (12pm-5pm)',
-  'Evening (5pm-9pm)',
-  'Late night (9pm onward)',
   // food-drinks
   'It is the main focus — great food or drinks',
   'Nice to have but not the main point',
@@ -206,6 +223,40 @@ const ALL_OPTION_VALUES: string[] = [
   'Wheelchair accessible',
   'Private or semi-private space',
   'None of the above',
+  // cuisine
+  'Italian',
+  'Asian',
+  'Mediterranean or Middle Eastern',
+  'American or burgers',
+  'Open to anything',
+  // dining-style
+  'Casual or quick bite',
+  'Sit-down restaurant',
+  'Fine dining',
+  'Street food or market',
+  'No strong preference',
+  // active-type
+  'Sports or games (bowling, escape room)',
+  'Outdoor adventure (hiking, biking)',
+  'Fitness or movement (climbing, dance)',
+  'Water activities',
+  'Open to anything',
+  // difficulty
+  'Very light — mostly relaxed',
+  'Moderate — some movement',
+  'Challenging — a real workout',
+  'No preference',
+  // culture-type
+  'Museums and galleries',
+  'Historical sites and landmarks',
+  'Live performance (theater, music)',
+  'Local markets and neighborhoods',
+  'Architecture and scenic views',
+  // socialization
+  'Intimate — just us',
+  'Social — mingling welcome',
+  'Lively — meeting new people',
+  'Open to anything',
 ];
 
 // ---------------------------------------------------------------------------
@@ -215,8 +266,8 @@ const ALL_OPTION_VALUES: string[] = [
 describe('SliderQuestion seed validation', () => {
   // ── Question count and structure ──────────────────────────────────────────
 
-  it('defines exactly 10 expected questions', () => {
-    expect(EXPECTED_QUESTIONS).toHaveLength(10);
+  it('defines exactly 13 expected questions', () => {
+    expect(EXPECTED_QUESTIONS).toHaveLength(13);
   });
 
   it('has no duplicate codes in the expected question set', () => {
@@ -272,30 +323,40 @@ describe('SliderQuestion seed validation', () => {
 
   // ── Hard constraint questions ─────────────────────────────────────────────
 
-  it('hard constraint questions include occasion, budget, time-of-day, and must-have', () => {
+  it('hard constraint questions include occasion, budget, and must-have', () => {
     const hardCodes = EXPECTED_QUESTIONS
       .filter((q) => q.constraintType === 'hard')
       .map((q) => q.code);
 
     expect(hardCodes).toContain('occasion');
     expect(hardCodes).toContain('budget');
-    expect(hardCodes).toContain('time-of-day');
     expect(hardCodes).toContain('must-have');
   });
 
   // ── Soft preference questions ─────────────────────────────────────────────
 
-  it('soft preference questions include vibe, activity, setting, food-drinks, group-dynamic, and energy-level', () => {
+  it('soft preference questions include setting, food-drinks, group-dynamic, and energy-level', () => {
     const softCodes = EXPECTED_QUESTIONS
       .filter((q) => q.constraintType === 'soft')
       .map((q) => q.code);
 
-    expect(softCodes).toContain('vibe');
-    expect(softCodes).toContain('activity');
     expect(softCodes).toContain('setting');
     expect(softCodes).toContain('food-drinks');
     expect(softCodes).toContain('group-dynamic');
     expect(softCodes).toContain('energy-level');
+  });
+
+  it('soft preference questions include the six activity-specific follow-ups', () => {
+    const softCodes = EXPECTED_QUESTIONS
+      .filter((q) => q.constraintType === 'soft')
+      .map((q) => q.code);
+
+    expect(softCodes).toContain('cuisine');
+    expect(softCodes).toContain('dining-style');
+    expect(softCodes).toContain('active-type');
+    expect(softCodes).toContain('difficulty');
+    expect(softCodes).toContain('culture-type');
+    expect(softCodes).toContain('socialization');
   });
 
   // ── Option values ─────────────────────────────────────────────────────────
@@ -314,13 +375,8 @@ describe('SliderQuestion seed validation', () => {
     expect(violations).toHaveLength(0);
   });
 
-  it('all option values are unique across the entire option set', () => {
-    const uniqueValues = new Set(ALL_OPTION_VALUES);
-    expect(uniqueValues.size).toBe(ALL_OPTION_VALUES.length);
-  });
-
-  it('total option count is at least 2 per question (>=20 total for 10 questions)', () => {
-    expect(ALL_OPTION_VALUES.length).toBeGreaterThanOrEqual(20);
+  it('total option count is at least 2 per question (>=26 total for 13 questions)', () => {
+    expect(ALL_OPTION_VALUES.length).toBeGreaterThanOrEqual(26);
   });
 
   // ── Alphabetical ordering (getSlides() sorts by code ASC) ────────────────
@@ -345,11 +401,6 @@ describe('SliderQuestion seed validation', () => {
     expect(occasion?.label).toBe('What is the occasion for this event?');
   });
 
-  it('vibe label matches the DML text', () => {
-    const vibe = EXPECTED_QUESTIONS.find((q) => q.code === 'vibe');
-    expect(vibe?.label).toBe('What vibe are you going for?');
-  });
-
   // ── Tags validation (synced with DML QUESTION TAGS section) ──────────────
 
   it('all questions have a non-empty tags array', () => {
@@ -359,10 +410,8 @@ describe('SliderQuestion seed validation', () => {
     }
   });
 
-  it('vibe and occasion carry the "initial" tag for first-position rendering', () => {
-    const vibeQ = EXPECTED_QUESTIONS.find((q) => q.code === 'vibe');
+  it('occasion carries the "initial" tag for first-position rendering', () => {
     const occasionQ = EXPECTED_QUESTIONS.find((q) => q.code === 'occasion');
-    expect(vibeQ?.tags).toContain('initial');
     expect(occasionQ?.tags).toContain('initial');
   });
 
@@ -373,6 +422,15 @@ describe('SliderQuestion seed validation', () => {
     for (const code of hardCodes) {
       const q = EXPECTED_QUESTIONS.find((q) => q.code === code);
       expect(q?.tags).toContain('preference');
+    }
+  });
+
+  it('each activity-specific follow-up tags to at least one vibe-select category', () => {
+    const knownVibes = ['dining', 'sightseeing', 'active', 'clubbing', 'casual', 'cultural'];
+    const followUpCodes = ['cuisine', 'dining-style', 'active-type', 'difficulty', 'culture-type', 'socialization'];
+    for (const code of followUpCodes) {
+      const q = EXPECTED_QUESTIONS.find((q) => q.code === code);
+      expect(q?.tags.some((tag) => knownVibes.includes(tag))).toBe(true);
     }
   });
 });

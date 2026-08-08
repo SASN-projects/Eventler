@@ -9,14 +9,18 @@ import {
   PreferenceLabel,
 } from "../slidingPages/profile.styles";
 
+// Codes here must match the active (non-retired) slider_questions codes in
+// db/eventler_final_dml.sql / backend SlidesService.VALID_PREFERENCE_CODES.
+// 'vibe' and 'activity' are excluded — captured by the dedicated vibe-select
+// step. 'time-of-day' is excluded — redundant with the event's chosen start time.
 export const PREFERENCE_OPTIONS = [
   { code: "budget", label: "Budget", icon: "💰" },
-  { code: "event-type", label: "Event Type", icon: "🎉" },
-  { code: "transportation", label: "Transportation", icon: "🚗" },
-  { code: "crowd", label: "Crowd Size", icon: "👥" },
-  { code: "planning-style", label: "Planning Style", icon: "📅" },
-  { code: "location-type", label: "Location Vibe", icon: "📍" },
-  { code: "evening-structure", label: "Evening Plan", icon: "🍻" },
+  { code: "occasion", label: "Occasion", icon: "🎉" },
+  { code: "setting", label: "Setting", icon: "📍" },
+  { code: "food-drinks", label: "Food & Drinks", icon: "🍽️" },
+  { code: "group-dynamic", label: "Group Dynamic", icon: "👥" },
+  { code: "energy-level", label: "Energy Level", icon: "⚡" },
+  { code: "must-have", label: "Must-Haves", icon: "✅" },
 ];
 
 interface PreferencesSetupProps {

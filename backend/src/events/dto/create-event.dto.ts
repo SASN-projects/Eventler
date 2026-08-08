@@ -20,7 +20,8 @@ export class CreateEventDto {
     description: string;
 
   @IsEnum(EventStatus)
-    status: EventStatus;
+  @IsOptional()
+    status?: EventStatus = EventStatus.DRAFT;
 
   @IsUUID()
   @IsOptional()
@@ -40,6 +41,10 @@ export class CreateEventDto {
 
   @IsDateString()
     deadlineAt: string;
+
+  @IsDateString()
+  @IsOptional()
+    closeAt?: string;
 
   @IsInt()
   @Min(1)

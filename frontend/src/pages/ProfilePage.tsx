@@ -15,6 +15,7 @@ import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import PeopleOutlineIcon from "@mui/icons-material/PeopleOutline";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import axios from "axios";
 import api from "../config/api";
 import type { User } from "./slidingPages/profile.types";
 import { ProfileContainer, TabButton } from "./slidingPages/profile.styles";
@@ -106,12 +107,12 @@ const FavoriteCardSubtitle = styled(Typography)({
 
 const PREF_MAP: Record<string, string> = {
   budget: "💰 Budget",
-  "event-type": "🎉 Type",
-  transportation: "🚗 Transport",
-  crowd: "👥 Crowd",
-  "planning-style": "📅 Plan",
-  "location-type": "📍 Vibe",
-  "evening-structure": "🍻 Structure",
+  occasion: "🎉 Occasion",
+  setting: "📍 Setting",
+  "food-drinks": "🍽️ Food & Drinks",
+  "group-dynamic": "👥 Group",
+  "energy-level": "⚡ Energy",
+  "must-have": "✅ Must-haves",
 };
 
 export default function ProfilePage({
@@ -135,6 +136,8 @@ export default function ProfilePage({
   const [events, setEvents] = useState<any[]>([]);
   const [preferences, setPreferences] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [user, setUser] = useState<User>({
     username: "",
     firstName: "",
@@ -173,13 +176,42 @@ export default function ProfilePage({
     loadData();
   }, []);
 
+  const buildUpdatePayload = () => {
+    const username = user.username?.trim();
+    if (!username) {
+      throw new Error("Username is required.");
+    }
+
+    return {
+      username,
+      firstName: user.firstName.trim(),
+      lastName: user.lastName.trim(),
+      email: user.email.trim(),
+      ...(user.city?.trim() ? { city: user.city.trim() } : {}),
+      ...(user.country?.trim() ? { country: user.country.trim() } : {}),
+      ...(user.dateOfBirth?.trim() ? { dateOfBirth: user.dateOfBirth.trim() } : {}),
+      ...(user.occupation?.trim() ? { occupation: user.occupation.trim() } : {}),
+    };
+  };
+
   const handleSave = async () => {
+    setSavingProfile(true);
+    setSaveError("");
     try {
-      await api.put("/users/me", user);
+      const payload = buildUpdatePayload();
+      const { data } = await api.put("/users/me", payload);
+      setUser(data);
+      localStorage.setItem("eventler_user", JSON.stringify(data));
       setOpenEdit(false);
-    } catch {
-      localStorage.setItem("eventler_user", JSON.stringify(user));
-      setOpenEdit(false);
+    } catch (error) {
+      const message = axios.isAxiosError<{ message?: string }>(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error
+          ? error.message
+          : "Could not save profile changes.";
+      setSaveError(message);
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -188,7 +220,10 @@ export default function ProfilePage({
       <ProfileHeader
         user={user}
         onClose={onClose}
-        onEditClick={() => setOpenEdit(true)}
+        onEditClick={() => {
+          setSaveError("");
+          setOpenEdit(true);
+        }}
       />
       <Container
         maxWidth="md"
@@ -390,6 +425,8 @@ export default function ProfilePage({
         user={user}
         onChange={(f) => (e) => setUser((s) => ({ ...s, [f]: e.target.value }))}
         onSave={handleSave}
+        saving={savingProfile}
+        error={saveError}
       />
       <EditPreferencesDialog
         open={openPrefs}

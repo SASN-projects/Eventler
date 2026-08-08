@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE event_type_enum AS ENUM ('individual', 'group', 'manual');
-CREATE TYPE event_status_enum AS ENUM ('draft', 'collecting_responses', 'recommended', 'finalized', 'cancelled');
+CREATE TYPE event_status_enum AS ENUM ('draft', 'collecting_responses', 'closed', 'generating_recommendations', 'recommendations_ready', 'finalized', 'final_selection_made', 'cancelled');
 CREATE TYPE group_role_enum AS ENUM ('owner', 'member');
 CREATE TYPE participant_status_enum AS ENUM ('pending', 'submitted', 'declined');
 CREATE TYPE answer_mode_enum AS ENUM ('options','value');
@@ -98,6 +98,7 @@ CREATE INDEX IF NOT EXISTS index_user_feed_items_user_rank ON user_feed_items (u
 
 CREATE TABLE IF NOT EXISTS recommendations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     address TEXT NOT NULL,
@@ -178,4 +179,6 @@ CREATE TABLE IF NOT EXISTS event_responses (
 CREATE INDEX IF NOT EXISTS index_events_created_by ON events(created_by);
 CREATE INDEX IF NOT EXISTS index_events_group_id ON events(group_id);
 CREATE INDEX IF NOT EXISTS index_events_selected_venue_id ON events(selected_venue_id);
+CREATE INDEX IF NOT EXISTS index_events_status_type ON events(status, event_type);
+CREATE INDEX IF NOT EXISTS index_recommendations_event_id ON recommendations(event_id);
 CREATE INDEX IF NOT EXISTS index_event_responses_event_id ON event_responses(event_id);

@@ -34,6 +34,13 @@ VALUES
 ('44444444-4444-4444-4444-444444444444', 'cccccccc-3333-3333-3333-333333333333')
 ON CONFLICT (user_id, venue_id) DO NOTHING;
 
+-- Retire 'vibe', 'activity', and 'time-of-day' as slide questions: vibe/activity
+-- category is now captured by the dedicated vibe-select step before sliding starts,
+-- and the exact start time is already chosen in the base event-creation step.
+-- Safe to delete outright — event_responses.question is free text, not an FK to
+-- slider_questions, and question_options cascades on delete.
+DELETE FROM slider_questions WHERE code IN ('vibe', 'activity', 'time-of-day');
+
 -- Upsert budget question: keep stable ID, update label and image.
 INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
 VALUES
@@ -50,21 +57,9 @@ VALUES
      'What is the occasion for this event?', '', 'options',
      'https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=1400&q=80'),
 
-    ('ffffffff-2222-2222-2222-222222222222', 'vibe',
-     'What vibe are you going for?', '', 'options',
-     'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1400&q=80'),
-
-    ('ffffffff-3333-3333-3333-333333333333', 'activity',
-     'What kind of activity do you have in mind?', '', 'options',
-     'https://images.unsplash.com/photo-1528495612343-9ca9f4a4de28?auto=format&fit=crop&w=1400&q=80'),
-
     ('ffffffff-4444-4444-4444-444444444444', 'setting',
      'Where would you prefer to go?', '', 'options',
      'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?auto=format&fit=crop&w=1400&q=80'),
-
-    ('ffffffff-5555-5555-5555-555555555555', 'time-of-day',
-     'When during the day do you plan to go?', '', 'options',
-     'https://images.unsplash.com/photo-1495364141860-b0d03eccd065?auto=format&fit=crop&w=1400&q=80'),
 
     ('ffffffff-6666-6666-6666-666666666666', 'food-drinks',
      'How important is food or drinks at this event?', '', 'options',
@@ -80,7 +75,33 @@ VALUES
 
     ('ffffffff-9999-9999-9999-999999999999', 'must-have',
      'Is there anything that is a must-have for this event?', '', 'options',
-     'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&w=1400&q=80')
+     'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?auto=format&fit=crop&w=1400&q=80'),
+
+    -- Activity-specific follow-ups (only surfaced once a vibe/activity category is
+    -- known — see QUESTION TAGS below).
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'cuisine',
+     'What cuisine do you prefer?', '', 'options',
+     'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'dining-style',
+     'What kind of dining experience do you prefer?', '', 'options',
+     'https://images.unsplash.com/photo-1592861956120-e524fc739696?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-cccc-cccc-cccc-cccccccccccc', 'active-type',
+     'What kind of active experience do you want?', '', 'options',
+     'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-dddd-dddd-dddd-dddddddddddd', 'difficulty',
+     'How physically demanding should the activity be?', '', 'options',
+     'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'culture-type',
+     'What kind of cultural/arts experience do you prefer?', '', 'options',
+     'https://images.unsplash.com/photo-1554907984-15263bfd63bd?auto=format&fit=crop&w=1400&q=80'),
+
+    ('ffffffff-1234-1234-1234-123412341234', 'socialization',
+     'What level of socialization are you looking for?', '', 'options',
+     'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1400&q=80')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO question_options (id, question_id, value)
@@ -102,27 +123,6 @@ VALUES
     ('ffffffff-1111-1111-1111-111111111106', 'ffffffff-1111-1111-1111-111111111111', 'Just for fun')
 ON CONFLICT (id) DO NOTHING;
 
--- Vibe options
-INSERT INTO question_options (id, question_id, value)
-VALUES
-    ('ffffffff-2222-2222-2222-222222222201', 'ffffffff-2222-2222-2222-222222222222', 'Lively and energetic'),
-    ('ffffffff-2222-2222-2222-222222222202', 'ffffffff-2222-2222-2222-222222222222', 'Relaxed and laid-back'),
-    ('ffffffff-2222-2222-2222-222222222203', 'ffffffff-2222-2222-2222-222222222222', 'Upscale and refined'),
-    ('ffffffff-2222-2222-2222-222222222204', 'ffffffff-2222-2222-2222-222222222222', 'Fun and playful'),
-    ('ffffffff-2222-2222-2222-222222222205', 'ffffffff-2222-2222-2222-222222222222', 'Cozy and intimate')
-ON CONFLICT (id) DO NOTHING;
-
--- Activity options
-INSERT INTO question_options (id, question_id, value)
-VALUES
-    ('ffffffff-3333-3333-3333-333333333301', 'ffffffff-3333-3333-3333-333333333333', 'Food and dining'),
-    ('ffffffff-3333-3333-3333-333333333302', 'ffffffff-3333-3333-3333-333333333333', 'Drinks and nightlife'),
-    ('ffffffff-3333-3333-3333-333333333303', 'ffffffff-3333-3333-3333-333333333333', 'Outdoor adventure'),
-    ('ffffffff-3333-3333-3333-333333333304', 'ffffffff-3333-3333-3333-333333333333', 'Culture or arts'),
-    ('ffffffff-3333-3333-3333-333333333305', 'ffffffff-3333-3333-3333-333333333333', 'Entertainment (escape room, bowling, cinema)'),
-    ('ffffffff-3333-3333-3333-333333333306', 'ffffffff-3333-3333-3333-333333333333', 'Wellness and relaxation')
-ON CONFLICT (id) DO NOTHING;
-
 -- Setting options
 INSERT INTO question_options (id, question_id, value)
 VALUES
@@ -130,15 +130,6 @@ VALUES
     ('ffffffff-4444-4444-4444-444444444402', 'ffffffff-4444-4444-4444-444444444444', 'Outdoors — park, rooftop, beach'),
     ('ffffffff-4444-4444-4444-444444444403', 'ffffffff-4444-4444-4444-444444444444', 'A mix of both'),
     ('ffffffff-4444-4444-4444-444444444404', 'ffffffff-4444-4444-4444-444444444444', 'No strong preference')
-ON CONFLICT (id) DO NOTHING;
-
--- Time of day options
-INSERT INTO question_options (id, question_id, value)
-VALUES
-    ('ffffffff-5555-5555-5555-555555555501', 'ffffffff-5555-5555-5555-555555555555', 'Morning or brunch (8am-12pm)'),
-    ('ffffffff-5555-5555-5555-555555555502', 'ffffffff-5555-5555-5555-555555555555', 'Afternoon (12pm-5pm)'),
-    ('ffffffff-5555-5555-5555-555555555503', 'ffffffff-5555-5555-5555-555555555555', 'Evening (5pm-9pm)'),
-    ('ffffffff-5555-5555-5555-555555555504', 'ffffffff-5555-5555-5555-555555555555', 'Late night (9pm onward)')
 ON CONFLICT (id) DO NOTHING;
 
 -- Food and drinks options
@@ -180,18 +171,82 @@ VALUES
     ('ffffffff-9999-9999-9999-999999999906', 'ffffffff-9999-9999-9999-999999999999', 'None of the above')
 ON CONFLICT (id) DO NOTHING;
 
+-- Cuisine options (dining vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaa01', 'ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Italian'),
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaa02', 'ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Asian'),
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaa03', 'ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Mediterranean or Middle Eastern'),
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaa04', 'ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'American or burgers'),
+    ('ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaa05', 'ffffffff-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Open to anything')
+ON CONFLICT (id) DO NOTHING;
+
+-- Dining style options (dining vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbb01', 'ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Casual or quick bite'),
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbb02', 'ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Sit-down restaurant'),
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbb03', 'ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Fine dining'),
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbb04', 'ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Street food or market'),
+    ('ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbb05', 'ffffffff-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'No strong preference')
+ON CONFLICT (id) DO NOTHING;
+
+-- Active type options (active vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-cccc-cccc-cccc-cccccccccc01', 'ffffffff-cccc-cccc-cccc-cccccccccccc', 'Sports or games (bowling, escape room)'),
+    ('ffffffff-cccc-cccc-cccc-cccccccccc02', 'ffffffff-cccc-cccc-cccc-cccccccccccc', 'Outdoor adventure (hiking, biking)'),
+    ('ffffffff-cccc-cccc-cccc-cccccccccc03', 'ffffffff-cccc-cccc-cccc-cccccccccccc', 'Fitness or movement (climbing, dance)'),
+    ('ffffffff-cccc-cccc-cccc-cccccccccc04', 'ffffffff-cccc-cccc-cccc-cccccccccccc', 'Water activities'),
+    ('ffffffff-cccc-cccc-cccc-cccccccccc05', 'ffffffff-cccc-cccc-cccc-cccccccccccc', 'Open to anything')
+ON CONFLICT (id) DO NOTHING;
+
+-- Difficulty options (active vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-dddd-dddd-dddd-dddddddddd01', 'ffffffff-dddd-dddd-dddd-dddddddddddd', 'Very light — mostly relaxed'),
+    ('ffffffff-dddd-dddd-dddd-dddddddddd02', 'ffffffff-dddd-dddd-dddd-dddddddddddd', 'Moderate — some movement'),
+    ('ffffffff-dddd-dddd-dddd-dddddddddd03', 'ffffffff-dddd-dddd-dddd-dddddddddddd', 'Challenging — a real workout'),
+    ('ffffffff-dddd-dddd-dddd-dddddddddd04', 'ffffffff-dddd-dddd-dddd-dddddddddddd', 'No preference')
+ON CONFLICT (id) DO NOTHING;
+
+-- Culture type options (cultural/sightseeing vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeee01', 'ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'Museums and galleries'),
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeee02', 'ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'Historical sites and landmarks'),
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeee03', 'ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'Live performance (theater, music)'),
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeee04', 'ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'Local markets and neighborhoods'),
+    ('ffffffff-eeee-eeee-eeee-eeeeeeeeee05', 'ffffffff-eeee-eeee-eeee-eeeeeeeeeeee', 'Architecture and scenic views')
+ON CONFLICT (id) DO NOTHING;
+
+-- Socialization options (cultural/clubbing/casual vibe follow-up)
+INSERT INTO question_options (id, question_id, value)
+VALUES
+    ('ffffffff-1234-1234-1234-123412341201', 'ffffffff-1234-1234-1234-123412341234', 'Intimate — just us'),
+    ('ffffffff-1234-1234-1234-123412341202', 'ffffffff-1234-1234-1234-123412341234', 'Social — mingling welcome'),
+    ('ffffffff-1234-1234-1234-123412341203', 'ffffffff-1234-1234-1234-123412341234', 'Lively — meeting new people'),
+    ('ffffffff-1234-1234-1234-123412341204', 'ffffffff-1234-1234-1234-123412341234', 'Open to anything')
+ON CONFLICT (id) DO NOTHING;
+
 -- QUESTION TAGS
 -- Assign tags to questions so getSlides() can filter tag-based follow-up questions.
 -- Tags align with the vibe taxonomy: initial, preference, dining, sightseeing, active,
 -- clubbing, casual, cultural.
 -- These UPDATE statements are idempotent — safe to re-run on existing databases.
 UPDATE slider_questions SET tags = ARRAY['initial','preference']     WHERE code = 'occasion';
-UPDATE slider_questions SET tags = ARRAY['initial']                  WHERE code = 'vibe';
-UPDATE slider_questions SET tags = ARRAY['dining','active','cultural','casual'] WHERE code = 'activity';
 UPDATE slider_questions SET tags = ARRAY['preference','budget']      WHERE code = 'budget';
 UPDATE slider_questions SET tags = ARRAY['active','casual']          WHERE code = 'energy-level';
 UPDATE slider_questions SET tags = ARRAY['dining','casual']          WHERE code = 'food-drinks';
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'group-dynamic';
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'must-have';
 UPDATE slider_questions SET tags = ARRAY['active','casual','sightseeing'] WHERE code = 'setting';
-UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'time-of-day';
+
+-- Activity-specific follow-up tags — align with the vibe-select options
+-- (dining, sightseeing, active, clubbing, casual, cultural).
+UPDATE slider_questions SET tags = ARRAY['dining']                   WHERE code = 'cuisine';
+UPDATE slider_questions SET tags = ARRAY['dining']                   WHERE code = 'dining-style';
+UPDATE slider_questions SET tags = ARRAY['active']                   WHERE code = 'active-type';
+UPDATE slider_questions SET tags = ARRAY['active']                   WHERE code = 'difficulty';
+UPDATE slider_questions SET tags = ARRAY['cultural','sightseeing']   WHERE code = 'culture-type';
+UPDATE slider_questions SET tags = ARRAY['cultural','clubbing','casual'] WHERE code = 'socialization';

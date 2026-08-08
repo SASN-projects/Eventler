@@ -98,6 +98,9 @@ export class Event {
   @JoinColumn({ name: 'recommendation_id' })
     recommendation: Recommendation;
 
+  @OneToMany(() => Recommendation, (rec) => rec.event)
+    generatedRecommendations: Recommendation[];
+
   // @ManyToOne(() => EventType)
   // @JoinColumn({ name: 'event_type_id' })
   //   eventType: EventType;

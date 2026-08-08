@@ -24,3 +24,6 @@ export const LOADING_SUBTITLE = "This may take a moment.";
 export const SLIDING_COMPLETED_TITLE = "Sliding Completed";
 export const GOOD_MATCH_SUBTITLE = "Looks like this can be a good match!";
 export const START_NEW_EVENT_BTN = "Start New Event";
+
+export const VIBE_QUESTION_LABEL = "What's your vibe?";
+export const VIBE_OPTIONS = ["dining", "sightseeing", "active", "clubbing", "casual", "cultural"];

@@ -25,7 +25,16 @@ export interface Question {
 
 export type Answers = Record<string, string>;
 
-export type DecisionStep = 'base' | 'preferences-confirm' | 'vibe-select' | 'sliding' | 'recommendation' | 'thankYou';
+export type DecisionStep =
+  | 'base'
+  | 'preferences-confirm'
+  | 'vibe-select'
+  | 'group-deadline'
+  | 'sliding'
+  | 'creator-decision'
+  | 'generating'
+  | 'recommendation'
+  | 'thankYou';
 
 export interface Recommendation {
     id: string;

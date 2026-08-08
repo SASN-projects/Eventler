@@ -21,12 +21,14 @@ import type { Recommendation } from "./types";
 interface RecommendationsProps {
   eventId: string;
   onRestart: () => void;
+  onFinalSelectionComplete?: () => void;
   recommendations: Recommendation[];
 }
 
 export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({
   recommendations,
   onRestart,
+  onFinalSelectionComplete,
   eventId,
 }) => {
   const auth = useContext(AuthContext);
@@ -68,7 +70,11 @@ export const RecommendationsPage: FunctionComponent<RecommendationsProps> = ({
       setIsSubmitting(false);
       setIsSuccess(true);
       setTimeout(() => {
-        onRestart();
+        if (onFinalSelectionComplete) {
+          onFinalSelectionComplete();
+        } else {
+          onRestart();
+        }
       }, 2000);
     } catch (error) {
       console.error(error);

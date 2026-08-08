@@ -32,6 +32,16 @@ export class EventsController {
     return await this.eventsService.create(req.user.sub, createEventDto);
   }
 
+  @Get('pending-questionnaires')
+  async getPendingQuestionnaires(@Request() req: AuthRequest) {
+    return await this.eventsService.getPendingQuestionnaires(req.user.sub);
+  }
+
+  @Get('group/pending-questionnaires')
+  async getGroupPendingQuestionnaires(@Request() req: AuthRequest) {
+    return await this.eventsService.getPendingQuestionnaires(req.user.sub);
+  }
+
   @Get(':id')
   async findOne(@Request() req: AuthRequest, @Param('id') id: string) {
     return await this.eventsService.findOne(id, req.user.sub);
@@ -51,12 +61,43 @@ export class EventsController {
     return await this.eventsService.remove(id, req.user.sub);
   }
 
+  /**
+   * Owner-triggered manual close of a group questionnaire.
+   * Transitions: OPEN → CLOSED → GENERATING_RECOMMENDATIONS → RECOMMENDATIONS_READY
+   */
+  @Post(':id/close')
+  async closeQuestionnaire(@Request() req: AuthRequest, @Param('id') id: string) {
+    return await this.eventsService.closeQuestionnaire(id, req.user.sub);
+  }
+
+  /**
+   * Owner-triggered final recommendation selection.
+   * Validates RECOMMENDATIONS_READY status and rec-to-event ownership.
+   * Transitions: RECOMMENDATIONS_READY → FINAL_SELECTION_MADE
+   */
+  @Post(':id/select-recommendation/:recommendationId')
+  async selectFinalRecommendation(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+    @Param('recommendationId') recommendationId: string,
+  ) {
+    return await this.eventsService.selectFinalRecommendation(id, recommendationId, req.user.sub);
+  }
+
   @Post('recommendations/:id')
   async createRecommendations(
     @Request() req: AuthRequest,
     @Param('id') id: string,
   ) {
     return await this.eventsService.createRecommendations(id, req.user.sub);
+  }
+
+  @Get(':id/recommendations')
+  async getEventRecommendations(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return await this.eventsService.getRecommendations(id, req.user.sub);
   }
 
   @Get('recommendations/:id')

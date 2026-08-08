@@ -1,0 +1,213 @@
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Event } from './entities/event.entity';
+import { EventStatus } from './enums/event-status.enum';
+import { EventType } from './enums/event.enums';
+import { RecommendationsService } from '../recommendations/recommendations.service';
+
+@Injectable()
+export class GroupLifecycleService {
+  private readonly logger = new Logger(GroupLifecycleService.name);
+
+  constructor(
+    @InjectRepository(Event)
+    private readonly eventRepository: Repository<Event>,
+    @Inject(forwardRef(() => RecommendationsService))
+    private readonly recommendationsService: RecommendationsService,
+  ) {}
+
+  /**
+   * Idempotent close of a group questionnaire.
+   * Sets status=CLOSED, then automatically triggers recommendation generation
+   * (→ GENERATING_RECOMMENDATIONS → RECOMMENDATIONS_READY).
+   *
+   * Safe to call multiple times: if event is already CLOSED or beyond, it is a no-op.
+   */
+  async closeQuestionnaire(eventId: string): Promise<Event> {
+    const event = await this.eventRepository.findOne({ where: { id: eventId } });
+    if (!event) {
+      throw new NotFoundException(`Event with id ${eventId} not found`);
+    }
+
+    // Idempotent: already closed or further along → skip
+    const alreadyClosedStatuses: EventStatus[] = [
+      EventStatus.CLOSED,
+      EventStatus.GENERATING_RECOMMENDATIONS,
+      EventStatus.RECOMMENDATIONS_READY,
+      EventStatus.FINAL_SELECTION_MADE,
+      EventStatus.FINALIZED,
+      EventStatus.CANCELLED,
+    ];
+    if (alreadyClosedStatuses.includes(event.status)) {
+      this.logger.debug(`Event ${eventId} is already in status ${event.status}; close is a no-op.`);
+      return event;
+    }
+
+    // Transition to CLOSED only if the event is still OPEN. This prevents
+    // duplicate generation when multiple answer submissions race to close it.
+    const closeResult = await this.eventRepository.update(
+      { id: eventId, status: EventStatus.OPEN },
+      { status: EventStatus.CLOSED },
+    );
+
+    if (!closeResult.affected) {
+      const refreshed = await this.eventRepository.findOne({ where: { id: eventId } });
+      if (!refreshed) {
+        throw new NotFoundException(`Event with id ${eventId} not found`);
+      }
+      this.logger.debug(`Event ${eventId} was already transitioned by another request.`);
+      return refreshed;
+    }
+
+    this.logger.log(`Event ${eventId} closed.`);
+
+    // Auto-trigger recommendation generation (fire-and-forget with status tracking)
+    await this.triggerRecommendationGeneration(eventId);
+
+    const closedEvent = await this.eventRepository.findOne({ where: { id: eventId } });
+    return closedEvent ?? event;
+  }
+
+  /**
+   * Transitions event to GENERATING_RECOMMENDATIONS, calls the recommendations
+   * service, then transitions to RECOMMENDATIONS_READY (or back to CLOSED on failure).
+   */
+  async triggerRecommendationGeneration(eventId: string): Promise<void> {
+    // Transition to GENERATING_RECOMMENDATIONS only once.
+    const generatingResult = await this.eventRepository.update(
+      { id: eventId, status: EventStatus.CLOSED },
+      { status: EventStatus.GENERATING_RECOMMENDATIONS },
+    );
+
+    if (!generatingResult.affected) {
+      this.logger.debug(`Event ${eventId} is not in CLOSED status; skipping generation trigger.`);
+      return;
+    }
+
+    this.logger.log(`Event ${eventId} → GENERATING_RECOMMENDATIONS`);
+
+    try {
+      const result = await this.recommendationsService.generateRecommendation(eventId);
+      if (!result.success) {
+        this.logger.warn(
+          `Recommendation generation for event ${eventId} returned failure: ${result.message}`,
+        );
+        // Revert to CLOSED so the owner can retry
+        await this.eventRepository.update({ id: eventId }, { status: EventStatus.CLOSED });
+        return;
+      }
+      // generateRecommendation() itself sets RECOMMENDATIONS_READY — but we also set it here
+      // as a safety net in case the service doesn't (e.g. Google Places path).
+      await this.eventRepository.update(
+        { id: eventId },
+        { status: EventStatus.RECOMMENDATIONS_READY },
+      );
+      this.logger.log(`Event ${eventId} → RECOMMENDATIONS_READY`);
+    } catch (err: any) {
+      this.logger.error(`Recommendation generation failed for event ${eventId}: ${err.message}`);
+      // Revert to CLOSED so the owner can retry
+      await this.eventRepository.update({ id: eventId }, { status: EventStatus.CLOSED });
+    }
+  }
+
+  /**
+   * Lazy deadline check — called by submitAnswers() before processing the answer.
+   * If the event's deadlineAt is in the past and it is still OPEN, close it automatically.
+   * Returns true if the event was closed by this check.
+   */
+  async checkAndCloseIfDeadlinePassed(event: Event): Promise<boolean> {
+    if (
+      event.eventType === EventType.GROUP &&
+      event.status === EventStatus.OPEN &&
+      event.deadlineAt &&
+      event.deadlineAt <= new Date()
+    ) {
+      this.logger.log(`Event ${event.id} deadline passed; auto-closing.`);
+      await this.closeQuestionnaire(event.id);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Checks whether all group members have answered and, if so, closes the questionnaire.
+   * Returns true if the event was closed by this check.
+   */
+  async checkAndCloseIfAllMembersAnswered(
+    eventId: string,
+    answeredUserIds: Set<string>,
+    groupMemberIds: string[],
+  ): Promise<boolean> {
+    const allAnswered = groupMemberIds.every((id) => answeredUserIds.has(id));
+    if (allAnswered) {
+      this.logger.log(`All members answered for event ${eventId}; auto-closing.`);
+      await this.closeQuestionnaire(eventId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Owner-triggered manual close.
+   * Validates ownership and OPEN status, then delegates to closeQuestionnaire().
+   */
+  async ownerCloseQuestionnaire(eventId: string, userId: string): Promise<Event> {
+    const event = await this.eventRepository.findOne({
+      where: { id: eventId },
+      relations: ['creator'],
+    });
+
+    if (!event) {
+      throw new NotFoundException(`Event with id ${eventId} not found`);
+    }
+
+    if (event.eventType !== EventType.GROUP) {
+      throw new BadRequestException('Only group questionnaires can be manually closed.');
+    }
+
+    if (event.creator.id !== userId) {
+      throw new ForbiddenException('Only the event creator can close this questionnaire.');
+    }
+
+    // Idempotent: if the deadline already closed the questionnaire (or it was
+    // otherwise progressed beyond OPEN), route to the correct next step instead
+    // of throwing a 400 that blocks the creator's flow.
+    if (event.status === EventStatus.CLOSED) {
+      // Already CLOSED (e.g. deadline auto-closed it) — ensure generation is triggered.
+      this.logger.debug(
+        `Event ${eventId} already CLOSED (deadline may have closed it); ensuring generation is triggered.`,
+      );
+      await this.triggerRecommendationGeneration(eventId);
+      const refreshed = await this.eventRepository.findOne({ where: { id: eventId } });
+      return refreshed ?? event;
+    }
+
+    if (
+      event.status === EventStatus.GENERATING_RECOMMENDATIONS ||
+      event.status === EventStatus.RECOMMENDATIONS_READY ||
+      event.status === EventStatus.FINAL_SELECTION_MADE ||
+      event.status === EventStatus.FINALIZED
+    ) {
+      this.logger.debug(
+        `Event ${eventId} is already in status ${event.status}; owner close is a no-op.`,
+      );
+      return event;
+    }
+
+    if (event.status === EventStatus.CANCELLED) {
+      throw new BadRequestException(`Event ${eventId} has been cancelled and cannot be closed.`);
+    }
+
+    // OPEN → proceed with the shared idempotent close + generation trigger.
+    return this.closeQuestionnaire(eventId);
+  }
+}

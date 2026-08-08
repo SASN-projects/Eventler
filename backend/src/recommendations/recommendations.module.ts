@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RecommendationsController } from './recommendations.controller';
 import { RecommendationsService } from './recommendations.service';
@@ -18,6 +18,7 @@ import { SlideAnswer } from 'src/slides/entities/slide-answer.entity';
 import { SlidesModule } from 'src/slides/slides.module';
 import { GeminiModule } from '../gemini/gemini.module';
 import { VenuesModule } from '../venues/venues.module';
+import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { VenuesModule } from '../venues/venues.module';
     SlidesModule,
     GeminiModule,
     VenuesModule,
+    forwardRef(() => EventsModule),
   ],
   controllers: [RecommendationsController],
   providers: [

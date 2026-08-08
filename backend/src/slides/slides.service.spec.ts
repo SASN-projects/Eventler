@@ -1,5 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { BadRequestException } from '@nestjs/common';
+
+// Langfuse uses ESM dynamic imports that crash Jest without --experimental-vm-modules.
+// Mocking it prevents the crash while keeping all service logic testable.
+jest.mock('langfuse', () => ({
+  Langfuse: jest.fn().mockImplementation(() => ({
+    trace: jest.fn(),
+    shutdownAsync: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 import { SlidesService } from './slides.service';
 import { SlideAnswer } from './entities/slide-answer.entity';
 import { EventResponse } from '../events/entities/event-response.entity';
@@ -8,6 +19,8 @@ import { User } from '../auth/entities/user.entity';
 import { Event } from '../events/entities/event.entity';
 import { Group } from '../groups/entities/group.entity';
 import { EventType } from '../events/enums/event.enums';
+import { EventStatus } from '../events/enums/event-status.enum';
+import { GroupLifecycleService } from '../events/group-lifecycle.service';
 
 describe('SlidesService', () => {
   let service: SlidesService;
@@ -15,6 +28,7 @@ describe('SlidesService', () => {
   let eventRepositoryMock: any;
   let userRepositoryMock: any;
   let groupRepositoryMock: any;
+  let groupLifecycleServiceMock: any;
 
   beforeEach(async () => {
     eventResponseRepositoryMock = {
@@ -24,7 +38,7 @@ describe('SlidesService', () => {
     };
 
     eventRepositoryMock = {
-      findOne: jest.fn().mockResolvedValue({ id: 'event-1', status: 'collecting_responses', eventType: EventType.INDIVIDUAL }),
+      findOne: jest.fn().mockResolvedValue({ id: 'event-1', status: EventStatus.OPEN, eventType: EventType.INDIVIDUAL }),
       save: jest.fn(),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
@@ -37,6 +51,11 @@ describe('SlidesService', () => {
       findOne: jest.fn().mockResolvedValue(null),
     };
 
+    groupLifecycleServiceMock = {
+      checkAndCloseIfDeadlinePassed: jest.fn().mockResolvedValue(false),
+      checkAndCloseIfAllMembersAnswered: jest.fn().mockResolvedValue(true),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SlidesService,
@@ -46,20 +65,21 @@ describe('SlidesService', () => {
         { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
         { provide: getRepositoryToken(User), useValue: userRepositoryMock },
         { provide: getRepositoryToken(Group), useValue: groupRepositoryMock },
+        { provide: GroupLifecycleService, useValue: groupLifecycleServiceMock },
       ],
     }).compile();
 
     service = module.get<SlidesService>(SlidesService);
   });
 
-  it('marks the event as recommended after slide answers are submitted for individual events', async () => {
+  it('marks individual event as recommendations_ready after slide answers are submitted', async () => {
     await service.submitAnswers('event-1', 'user-1', {
       answers: [{ question: 'mood', answerValue: 'lively' }],
     } as any);
 
     expect(eventRepositoryMock.update).toHaveBeenCalledWith(
       { id: 'event-1' },
-      { status: 'recommended' },
+      { status: EventStatus.RECOMMENDATIONS_READY },
     );
   });
 
@@ -75,32 +95,24 @@ describe('SlidesService', () => {
     expect(eventResponseRepositoryMock.save).not.toHaveBeenCalled();
   });
 
-  it('does not mark group event as recommended until all members have answered', async () => {
-    const groupEvent = { id: 'event-1', status: 'collecting_responses', eventType: EventType.GROUP, groupId: 'group-1' };
-    eventRepositoryMock.findOne.mockResolvedValue(groupEvent);
+  it('rejects slide answers if group questionnaire is closed', async () => {
+    const closedGroupEvent = {
+      id: 'event-1',
+      status: EventStatus.CLOSED,
+      eventType: EventType.GROUP,
+      groupId: 'group-1',
+    };
+    eventRepositoryMock.findOne.mockResolvedValue(closedGroupEvent);
 
-    groupRepositoryMock.findOne.mockResolvedValue({
-      id: 'group-1',
-      members: [
-        { userId: 'user-1' },
-        { userId: 'user-2' },
-      ],
-    });
-
-    // Only user-1 has answered so far
-    eventResponseRepositoryMock.find.mockResolvedValueOnce([]) // First call for existing responses check
-      .mockResolvedValueOnce([{ userId: 'user-1', eventId: 'event-1' }]); // Second call to count answered members
-
-    await service.submitAnswers('event-1', 'user-1', {
-      answers: [{ question: 'mood', answerValue: 'lively' }],
-    } as any);
-
-    // Should NOT transition to recommended yet
-    expect(eventRepositoryMock.update).not.toHaveBeenCalled();
+    await expect(
+      service.submitAnswers('event-1', 'user-1', {
+        answers: [{ question: 'mood', answerValue: 'lively' }],
+      } as any),
+    ).rejects.toThrow('Questionnaire is closed. No new answers are accepted.');
   });
 
-  it('marks group event as recommended once all members have answered', async () => {
-    const groupEvent = { id: 'event-1', status: 'collecting_responses', eventType: EventType.GROUP, groupId: 'group-1' };
+  it('delegates to GroupLifecycleService when all group members have answered', async () => {
+    const groupEvent = { id: 'event-1', status: EventStatus.OPEN, eventType: EventType.GROUP, groupId: 'group-1' };
     eventRepositoryMock.findOne.mockResolvedValue(groupEvent);
 
     groupRepositoryMock.findOne.mockResolvedValue({
@@ -111,25 +123,54 @@ describe('SlidesService', () => {
       ],
     });
 
-    // Both users have answered
-    eventResponseRepositoryMock.find.mockResolvedValueOnce([]) // First call for existing responses check
+    eventResponseRepositoryMock.find
+      .mockResolvedValueOnce([]) // First call: existing responses check
       .mockResolvedValueOnce([
         { userId: 'user-1', eventId: 'event-1' },
         { userId: 'user-2', eventId: 'event-1' },
-      ]); // Second call to count answered members
+      ]); // Second call: counted answered members
 
     await service.submitAnswers('event-1', 'user-2', {
       answers: [{ question: 'mood', answerValue: 'quiet' }],
     } as any);
 
-    expect(eventRepositoryMock.update).toHaveBeenCalledWith(
-      { id: 'event-1' },
-      { status: 'recommended' },
+    expect(groupLifecycleServiceMock.checkAndCloseIfAllMembersAnswered).toHaveBeenCalledWith(
+      'event-1',
+      expect.any(Set),
+      ['user-1', 'user-2'],
     );
   });
 
+  it('returns closed status and allMembersAnswered when the last group member submits answers', async () => {
+    const groupEvent = { id: 'event-1', status: EventStatus.OPEN, eventType: EventType.GROUP, groupId: 'group-1' };
+    eventRepositoryMock.findOne
+      .mockResolvedValueOnce(groupEvent)
+      .mockResolvedValueOnce({ ...groupEvent, status: EventStatus.CLOSED });
+
+    groupRepositoryMock.findOne.mockResolvedValue({
+      id: 'group-1',
+      members: [
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+      ],
+    });
+
+    eventResponseRepositoryMock.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { userId: 'user-1', eventId: 'event-1' },
+        { userId: 'user-2', eventId: 'event-1' },
+      ]);
+
+    const result = await service.submitAnswers('event-1', 'user-2', {
+      answers: [{ question: 'mood', answerValue: 'quiet' }],
+    } as any);
+
+    expect(result.allMembersAnswered).toBe(true);
+    expect(result.eventStatus).toBe(EventStatus.CLOSED);
+  });
+
   it('getSlides assembles up to 7 questions when 10 questions are available', async () => {
-    // Build a mock set of 10 slider questions mirroring the improved question bank.
     const makeQuestion = (code: string) => ({
       id: `id-${code}`,
       code,
@@ -166,13 +207,13 @@ describe('SlidesService', () => {
         { provide: getRepositoryToken(Event), useValue: eventRepositoryMock },
         { provide: getRepositoryToken(User), useValue: userRepositoryMock },
         { provide: getRepositoryToken(Group), useValue: groupRepositoryMock },
+        { provide: GroupLifecycleService, useValue: groupLifecycleServiceMock },
       ],
     }).compile();
 
     const localService = module.get<SlidesService>(SlidesService);
     const result = await localService.getSlides('user-1');
 
-    // With 10 questions in the bank and no preferred codes, exactly 7 should be returned.
     expect(result.length).toBeLessThanOrEqual(7);
     expect(result.length).toBeGreaterThanOrEqual(1);
   });
