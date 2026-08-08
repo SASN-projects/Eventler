@@ -98,8 +98,12 @@ describe('EventsService', () => {
   });
 
   describe('getPendingQuestionnaires', () => {
-    it('returns empty list if user belongs to no groups', async () => {
+    it('returns empty list if user belongs to no groups and has no individual events', async () => {
       groupMemberRepository.find.mockResolvedValue([]);
+      // individual open + individual recommendations_ready queries also return empty
+      eventRepository.find
+        .mockResolvedValueOnce([]) // open individual events
+        .mockResolvedValueOnce([]); // individual RECOMMENDATIONS_READY events
 
       const result = await service.getPendingQuestionnaires('user-1');
 
@@ -121,7 +125,17 @@ describe('EventsService', () => {
         group: { name: 'Dev Team', members: [{ userId: 'user-1' }, { userId: 'creator-1' }] } as any,
       });
 
-      eventRepository.find.mockResolvedValue([mockEvent]);
+      // 4 eventRepository.find calls:
+      // 1. open group events → [mockEvent]
+      // 2. group RECOMMENDATIONS_READY events → []
+      // 3. open individual events → []
+      // 4. individual RECOMMENDATIONS_READY events → []
+      eventRepository.find
+        .mockResolvedValueOnce([mockEvent])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
       eventResponseRepository.count.mockResolvedValue(0); // user-1 has not answered
       eventResponseRepository.find.mockResolvedValue([{ userId: 'creator-1' }] as any);
 
@@ -138,6 +152,7 @@ describe('EventsService', () => {
         answeredMembersCount: 1,
         expectedMembersCount: 2,
         isCreator: false,
+        itemType: 'GROUP_QUESTIONNAIRE_ANSWER_PENDING',
       });
     });
 
@@ -151,7 +166,16 @@ describe('EventsService', () => {
         deadlineAt: new Date(Date.now() + 3600 * 1000),
       });
 
-      eventRepository.find.mockResolvedValue([mockEvent]);
+      // 1. open group events → [mockEvent] (will be excluded because user answered)
+      // 2. group RECOMMENDATIONS_READY → []
+      // 3. open individual events → []
+      // 4. individual RECOMMENDATIONS_READY → []
+      eventRepository.find
+        .mockResolvedValueOnce([mockEvent])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
       eventResponseRepository.count.mockResolvedValue(3); // user-1 HAS answered
 
       const result = await service.getPendingQuestionnaires('user-1');
@@ -171,7 +195,16 @@ describe('EventsService', () => {
         deadlineAt: pastDate,
       });
 
-      eventRepository.find.mockResolvedValue([mockEvent]);
+      // 1. open group events → [mockEvent] (will be excluded by deadline check)
+      // 2. group RECOMMENDATIONS_READY → []
+      // 3. open individual events → []
+      // 4. individual RECOMMENDATIONS_READY → []
+      eventRepository.find
+        .mockResolvedValueOnce([mockEvent])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
       groupLifecycleService.checkAndCloseIfDeadlinePassed.mockResolvedValue(true);
 
       const result = await service.getPendingQuestionnaires('user-1');
@@ -179,5 +212,62 @@ describe('EventsService', () => {
       expect(result.count).toBe(0);
       expect(result.items).toEqual([]);
     });
+
+    it('includes group RECOMMENDATIONS_READY items for the event creator', async () => {
+      groupMemberRepository.find.mockResolvedValue([{ groupId: 'group-1', userId: 'creator-1' }] as any);
+
+      const readyEvent = createMockEvent({
+        id: 'event-2',
+        groupId: 'group-1',
+        title: 'Group Outing',
+        status: EventStatus.RECOMMENDATIONS_READY,
+        createdById: 'creator-1',
+        deadlineAt: new Date(Date.now() - 3600 * 1000),
+        group: { name: 'Dev Team', members: [] } as any,
+      });
+
+      // 1. open group events → []
+      // 2. group RECOMMENDATIONS_READY → [readyEvent]
+      // 3. open individual events → []
+      // 4. individual RECOMMENDATIONS_READY → []
+      eventRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([readyEvent])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.getPendingQuestionnaires('creator-1');
+
+      expect(result.count).toBe(1);
+      expect(result.items[0].itemType).toBe('GROUP_FINAL_SELECTION_PENDING');
+      expect(result.items[0].eventId).toBe('event-2');
+      expect(result.items[0].isCreator).toBe(true);
+    });
+
+    it('includes individual RECOMMENDATIONS_READY items for the event creator', async () => {
+      groupMemberRepository.find.mockResolvedValue([]);
+
+      const readyIndividualEvent = createMockEvent({
+        id: 'event-3',
+        groupId: null as any,
+        title: 'Solo Adventure',
+        status: EventStatus.RECOMMENDATIONS_READY,
+        eventType: EventType.INDIVIDUAL,
+        createdById: 'user-1',
+      });
+
+      // 1. open individual events → []
+      // 2. individual RECOMMENDATIONS_READY → [readyIndividualEvent]
+      eventRepository.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([readyIndividualEvent]);
+
+      const result = await service.getPendingQuestionnaires('user-1');
+
+      expect(result.count).toBe(1);
+      expect(result.items[0].itemType).toBe('INDIVIDUAL_FINAL_SELECTION_PENDING');
+      expect(result.items[0].eventId).toBe('event-3');
+      expect(result.items[0].groupId).toBeNull();
+    });
   });
-});
+});

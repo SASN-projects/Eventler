@@ -1,6 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException } from '@nestjs/common';
+
+// Langfuse uses ESM dynamic imports that crash Jest without --experimental-vm-modules.
+// Mocking it prevents the crash while keeping all service logic testable.
+jest.mock('langfuse', () => ({
+  Langfuse: jest.fn().mockImplementation(() => ({
+    trace: jest.fn(),
+    shutdownAsync: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 import { SlidesService } from './slides.service';
 import { SlideAnswer } from './entities/slide-answer.entity';
 import { EventResponse } from '../events/entities/event-response.entity';

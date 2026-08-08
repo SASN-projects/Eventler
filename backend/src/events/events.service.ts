@@ -275,47 +275,110 @@ export class EventsService {
    * - Events for groups the user is not a member of
    */
   async getPendingQuestionnaires(userId: string) {
-    // 1. Find all groups the current user belongs to
+    const items: any[] = [];
+
+    // ── 1. Group questionnaires waiting for the current user's answer ──────────
     const memberRecords = await this.groupMemberRepository.find({
       where: { userId },
       select: ['groupId'],
     });
 
-    if (!memberRecords.length) {
-      return { items: [], count: 0 };
+    if (memberRecords.length) {
+      const groupIds = memberRecords.map((m) => m.groupId);
+
+      const openGroupEvents = await this.eventRepository.find({
+        where: {
+          groupId: In(groupIds),
+          eventType: EventTypeEnum.GROUP,
+          status: EventStatus.OPEN,
+        },
+        relations: ['group', 'group.members', 'creator'],
+        order: { deadlineAt: 'ASC' },
+      });
+
+      for (const event of openGroupEvents) {
+        // Lazy deadline check: auto-close expired questionnaires
+        const closedByDeadline = await this.groupLifecycleService.checkAndCloseIfDeadlinePassed(event);
+        if (closedByDeadline) {
+          continue;
+        }
+
+        if (event.deadlineAt && new Date(event.deadlineAt) <= new Date()) {
+          continue;
+        }
+
+        // Check if current user has already answered this event
+        const userAnswersCount = await this.eventResponseRepository.count({
+          where: { eventId: event.id, userId },
+        });
+
+        if (userAnswersCount > 0) {
+          continue;
+        }
+
+        const expectedMembersCount = event.group?.members?.length || 0;
+        const allResponses = await this.eventResponseRepository.find({
+          where: { eventId: event.id },
+          select: ['userId'],
+        });
+        const answeredUserIds = new Set(allResponses.map((r) => r.userId));
+        const answeredMembersCount = answeredUserIds.size;
+
+        const isCreator = event.createdById === userId || event.creator?.id === userId;
+
+        items.push({
+          eventId: event.id,
+          groupId: event.groupId,
+          title: event.title || 'Group Event',
+          groupName: event.group?.name || 'Group',
+          status: event.status,
+          deadlineAt: event.deadlineAt ? event.deadlineAt.toISOString() : null,
+          answeredMembersCount,
+          expectedMembersCount,
+          isCreator,
+          itemType: 'GROUP_QUESTIONNAIRE_ANSWER_PENDING',
+        });
+      }
+
+      // ── 2. Group events in RECOMMENDATIONS_READY where current user is creator ──
+      const readyGroupEvents = await this.eventRepository.find({
+        where: {
+          groupId: In(groupIds),
+          eventType: EventTypeEnum.GROUP,
+          status: EventStatus.RECOMMENDATIONS_READY,
+          createdById: userId,
+        },
+        relations: ['group', 'creator'],
+        order: { updatedAt: 'ASC' },
+      });
+
+      for (const event of readyGroupEvents) {
+        items.push({
+          eventId: event.id,
+          groupId: event.groupId,
+          title: event.title || 'Group Event',
+          groupName: event.group?.name || 'Group',
+          status: event.status,
+          deadlineAt: event.deadlineAt ? event.deadlineAt.toISOString() : null,
+          answeredMembersCount: null,
+          expectedMembersCount: null,
+          isCreator: true,
+          itemType: 'GROUP_FINAL_SELECTION_PENDING',
+        });
+      }
     }
 
-    const groupIds = memberRecords.map((m) => m.groupId);
-
-    // 2. Query open group events for these groups
-    const openEvents = await this.eventRepository.find({
+    // ── 3. Individual events in OPEN where current user is creator and hasn't answered ──
+    const openIndividualEvents = await this.eventRepository.find({
       where: {
-        groupId: In(groupIds),
-        eventType: EventTypeEnum.GROUP,
+        eventType: EventTypeEnum.INDIVIDUAL,
         status: EventStatus.OPEN,
+        createdById: userId,
       },
-      relations: ['group', 'group.members', 'creator'],
-      order: { deadlineAt: 'ASC' },
+      order: { createdAt: 'ASC' },
     });
 
-    if (!openEvents.length) {
-      return { items: [], count: 0 };
-    }
-
-    const items: any[] = [];
-
-    for (const event of openEvents) {
-      // 3. Lazy deadline check: auto-close expired questionnaires
-      const closedByDeadline = await this.groupLifecycleService.checkAndCloseIfDeadlinePassed(event);
-      if (closedByDeadline) {
-        continue;
-      }
-
-      if (event.deadlineAt && new Date(event.deadlineAt) <= new Date()) {
-        continue;
-      }
-
-      // 4. Check if current user has already answered this event
+    for (const event of openIndividualEvents) {
       const userAnswersCount = await this.eventResponseRepository.count({
         where: { eventId: event.id, userId },
       });
@@ -324,27 +387,42 @@ export class EventsService {
         continue;
       }
 
-      // 5. Calculate answered vs expected members count
-      const expectedMembersCount = event.group?.members?.length || 0;
-      const allResponses = await this.eventResponseRepository.find({
-        where: { eventId: event.id },
-        select: ['userId'],
-      });
-      const answeredUserIds = new Set(allResponses.map((r) => r.userId));
-      const answeredMembersCount = answeredUserIds.size;
-
-      const isCreator = event.createdById === userId || event.creator?.id === userId;
-
       items.push({
         eventId: event.id,
-        groupId: event.groupId,
-        title: event.title || 'Group Event',
-        groupName: event.group?.name || 'Group',
+        groupId: null,
+        title: event.title || 'Individual Event',
+        groupName: null,
         status: event.status,
-        deadlineAt: event.deadlineAt ? event.deadlineAt.toISOString() : null,
-        answeredMembersCount,
-        expectedMembersCount,
-        isCreator,
+        deadlineAt: null,
+        answeredMembersCount: null,
+        expectedMembersCount: null,
+        isCreator: true,
+        itemType: 'INDIVIDUAL_QUESTIONNAIRE_ANSWER_PENDING',
+      });
+    }
+
+    // ── 4. Individual events in RECOMMENDATIONS_READY where current user is creator ──
+    const readyIndividualEvents = await this.eventRepository.find({
+      where: {
+        eventType: EventTypeEnum.INDIVIDUAL,
+        status: EventStatus.RECOMMENDATIONS_READY,
+        createdById: userId,
+      },
+      order: { updatedAt: 'ASC' },
+    });
+
+    for (const event of readyIndividualEvents) {
+      items.push({
+        eventId: event.id,
+        groupId: null,
+        title: event.title || 'Individual Event',
+        groupName: null,
+        status: event.status,
+        deadlineAt: null,
+        answeredMembersCount: null,
+        expectedMembersCount: null,
+        isCreator: true,
+        itemType: 'INDIVIDUAL_FINAL_SELECTION_PENDING',
       });
     }
 

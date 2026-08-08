@@ -195,14 +195,26 @@ export const pollUntilRecommendationsReady = async (
 
 export interface PendingQuestionnaireItem {
   eventId: string;
-  groupId: string;
+  groupId: string | null;
   title: string;
-  groupName: string;
+  groupName: string | null;
   status: string;
   deadlineAt: string | null;
-  answeredMembersCount: number;
-  expectedMembersCount: number;
+  answeredMembersCount: number | null;
+  expectedMembersCount: number | null;
   isCreator: boolean;
+  /**
+   * Discriminator for UI routing and labelling.
+   * GROUP_QUESTIONNAIRE_ANSWER_PENDING   – open group questionnaire, user hasn't answered
+   * GROUP_FINAL_SELECTION_PENDING        – group recommendations ready, creator must choose
+   * INDIVIDUAL_QUESTIONNAIRE_ANSWER_PENDING – open individual event, creator hasn't answered
+   * INDIVIDUAL_FINAL_SELECTION_PENDING   – individual recommendations ready, creator must choose
+   */
+  itemType?:
+    | 'GROUP_QUESTIONNAIRE_ANSWER_PENDING'
+    | 'GROUP_FINAL_SELECTION_PENDING'
+    | 'INDIVIDUAL_QUESTIONNAIRE_ANSWER_PENDING'
+    | 'INDIVIDUAL_FINAL_SELECTION_PENDING';
 }
 
 export interface PendingQuestionnairesResponse {

@@ -81,6 +81,10 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [selectedVibe, setSelectedVibe] = useState("");
   const [thankYouVariant, setThankYouVariant] = useState<"waiting" | "creator-success">("waiting");
 
+  const dispatchStatusChanged = () => {
+    window.dispatchEvent(new CustomEvent("eventler:event-status-changed"));
+  };
+
   const fetchQuestions = async () => {
     setIsLoadingQuestions(true);
     try {
@@ -108,6 +112,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setDecisionStep("sliding");
     setEventId(id);
     await loadEventDetails(id);
+    // Notify mailbox: new event created, may appear as pending action
+    dispatchStatusChanged();
   };
 
   const loadRecommendations = async (id: string) => {
@@ -156,6 +162,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
       setRecommendations(nextRecommendations);
       setDecisionStep("recommendation");
+      // Notify mailbox: recommendations are ready — badge should update to show final-selection item
+      dispatchStatusChanged();
     } catch (error) {
       setGenerationError(getErrorMessage(error));
       setDecisionStep("generating");
@@ -213,6 +221,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       );
 
       const submitResult = await submitAnswers(eventId, sanitizedAnswers);
+      // Notify mailbox to refetch so the answered questionnaire is removed
+      dispatchStatusChanged();
 
       const { creatorId, isGroup, eventDetails } = await loadEventDetails(eventId);
       const isCreator = auth?.user?.id === (creatorId ?? eventCreatedById);
@@ -287,6 +297,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       // already closed the questionnaire it will trigger generation and return current state
       // rather than throwing 400. So we can safely call it here regardless.
       await closeQuestionnaire(eventId);
+      // Notify mailbox: questionnaire is now closed
+      dispatchStatusChanged();
       const finalStatus = await pollUntilRecommendationsReady(eventId);
 
       if (finalStatus === "recommendations_ready") {
@@ -329,6 +341,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   };
 
   const handleFinalSelectionSuccess = () => {
+    // Notify mailbox: final selection made — remove RECOMMENDATIONS_READY item
+    dispatchStatusChanged();
     setThankYouVariant("creator-success");
     setDecisionStep("thankYou");
     if (onFinalSelectionComplete) {
