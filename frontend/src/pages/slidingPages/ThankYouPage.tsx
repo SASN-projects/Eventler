@@ -2,7 +2,19 @@ import { Box, Typography } from "@mui/material";
 import type { FunctionComponent } from "react";
 import { FullSizeContainer } from "../../components/layouts";
 
-const ThankYouPage: FunctionComponent = () => {
+interface ThankYouPageProps {
+  /**
+   * "waiting"        — Non-creator member submitted answers; waiting for creator to choose.
+   * "creator-success" — Creator just selected the final recommendation; event is created.
+   */
+  variant?: "waiting" | "creator-success";
+}
+
+const ThankYouPage: FunctionComponent<ThankYouPageProps> = ({
+  variant = "waiting",
+}) => {
+  const isSuccess = variant === "creator-success";
+
   return (
     <FullSizeContainer
       sx={{
@@ -20,11 +32,11 @@ const ThankYouPage: FunctionComponent = () => {
         sx={{
           fontWeight: 800,
           fontSize: "32px",
-          color: "#2d3748",
+          color: isSuccess ? "#276749" : "#2d3748",
           mb: 2,
         }}
       >
-        Thank You! 🎉
+        {isSuccess ? "Your event is set! 🎉" : "Thank You! 🎉"}
       </Typography>
 
       <Typography
@@ -36,34 +48,60 @@ const ThankYouPage: FunctionComponent = () => {
           maxWidth: "400px",
         }}
       >
-        Your answers were submitted successfully. You can answer slides only once for this event.
+        {isSuccess
+          ? "The event has been planned and saved. Your group will see the final choice."
+          : "Your answers were submitted successfully. You can answer slides only once for this event."}
       </Typography>
 
-      <Typography
-        variant="body2"
-        sx={{
-          color: "#718096",
-          fontSize: "14px",
-          mt: 2,
-        }}
-      >
-        Please wait for the event creator to review and choose the final recommendation.
-      </Typography>
+      {!isSuccess && (
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#718096",
+            fontSize: "14px",
+            mt: 2,
+          }}
+        >
+          Please wait for the event creator to review and choose the final
+          recommendation.
+        </Typography>
+      )}
 
+      {/* Spinner for waiting variant; checkmark-style pulse for success */}
       <Box
-        sx={{
-          mt: 3,
-          width: "40px",
-          height: "40px",
-          border: "3px solid rgba(237, 181, 60, 0.3)",
-          borderRadius: "50%",
-          borderTop: "3px solid #edb53c",
-          animation: "spin 1s linear infinite",
-          "@keyframes spin": {
-            to: { transform: "rotate(360deg)" },
-          },
-        }}
-      />
+        sx={
+          isSuccess
+            ? {
+                mt: 3,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                backgroundColor: "#276749",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                "& svg": { color: "#fff", fontSize: "28px" },
+              }
+            : {
+                mt: 3,
+                width: "40px",
+                height: "40px",
+                border: "3px solid rgba(237, 181, 60, 0.3)",
+                borderRadius: "50%",
+                borderTop: "3px solid #edb53c",
+                animation: "spin 1s linear infinite",
+                "@keyframes spin": {
+                  to: { transform: "rotate(360deg)" },
+                },
+              }
+        }
+      >
+        {isSuccess && (
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" strokeWidth="3">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        )}
+      </Box>
     </FullSizeContainer>
   );
 };

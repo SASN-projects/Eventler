@@ -68,7 +68,7 @@ const HALLUCINATION_MAP: Record<string, number> = {
   high: 0,
 };
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.6-flash';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_SAMPLE_RATE = 1;
 const DEFAULT_MAX_INPUT_LENGTH = 4_000;

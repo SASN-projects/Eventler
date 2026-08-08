@@ -22,6 +22,8 @@ import {
   ProfileIconButton,
 } from "./pages/slidingPages/profile.styles";
 
+import NotificationInbox from "./components/NotificationInbox";
+
 const AppContent: FunctionComponent = () => {
   const { isAuthenticated, loading, user } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
@@ -62,13 +64,14 @@ const AppContent: FunctionComponent = () => {
       currentUserId && creatorId && creatorId === currentUserId,
     );
 
+    const isRecommendationsMode =
+      (normalizedStatus === "recommendations_ready" || normalizedStatus === "recommended") &&
+      isEventCreator;
+
     setShowProfile(false);
     setResumeEvent({
       eventId: event.id,
-      mode:
-        normalizedStatus === "recommended" && isEventCreator
-          ? "recommendations"
-          : "slides",
+      mode: isRecommendationsMode ? "recommendations" : "slides",
     });
     setResetKey((prev) => prev + 1);
   };
@@ -90,6 +93,21 @@ const AppContent: FunctionComponent = () => {
         element={
           <ProtectedRoute>
             <AppContainer>
+              {/* Top-screen Questionnaire Inbox Indicator */}
+              <div
+                style={{
+                  position: "fixed",
+                  top: 16,
+                  right: 16,
+                  zIndex: 1200,
+                }}
+              >
+                <NotificationInbox
+                  onSelectEvent={(eventId) => handleContinueEvent({ id: eventId })}
+                  refreshTrigger={resetKey}
+                />
+              </div>
+
               <MainContentArea>
                 {showProfile ? (
                   <ProfilePage
@@ -100,6 +118,7 @@ const AppContent: FunctionComponent = () => {
                   <DecisionPage
                     key={resetKey}
                     resumeEvent={resumeEvent}
+                    onFinalSelectionComplete={() => setResumeEvent(null)}
                     onResumeConsumed={() => setResumeEvent(null)}
                   />
                 )}

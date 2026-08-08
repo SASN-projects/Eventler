@@ -1,6 +1,7 @@
 import { Box, Stack, Typography, Chip, Button } from "@mui/material";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import TimerIcon from "@mui/icons-material/Timer";
 import PersonIcon from "@mui/icons-material/Person";
 import { formatDate, formatTimeRange } from "./slidingPages/profile.utils";
 import {
@@ -27,7 +28,7 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const currentUserId = auth?.user?.id;
   const isEventCreator = Boolean(
     currentUserId &&
-      (event.createdById === currentUserId || event.creator?.id === currentUserId),
+    (event.createdById === currentUserId || event.creator?.id === currentUserId),
   );
   const title = hasRecommendation
     ? event.recommendation.title
@@ -44,23 +45,26 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const remainingParticipants = participantCount > 3 ? participantCount - 3 : 0;
   const canContinue =
     ["draft", "collecting_responses"].includes(normalizedStatus) ||
-    normalizedStatus === "recommended";
-  const hasAnsweredCurrentUser = Boolean(event.hasAnsweredCurrentUser);
+    normalizedStatus === "recommended" ||
+    normalizedStatus === "recommendations_ready";
   const isSlidingState = ["draft", "collecting_responses"].includes(
     normalizedStatus,
   );
   const isCreatorDecisionState =
     normalizedStatus === "recommended" && isEventCreator;
+  const isRecommendationReadyState = normalizedStatus === "recommendations_ready";
   const isWaitingForHostDecisionState =
-    normalizedStatus === "recommended" &&
-    !isEventCreator &&
-    hasAnsweredCurrentUser;
-  const showContinueButton = canContinue && !isWaitingForHostDecisionState;
+    isRecommendationReadyState && !isEventCreator;
+  const showContinueButton = canContinue;
   const continueButtonText = isSlidingState
     ? "Continue Sliding"
     : isCreatorDecisionState
       ? "Ready to Decide?"
-      : "Continue";
+      : isWaitingForHostDecisionState
+        ? "View Status"
+        : isRecommendationReadyState
+          ? "View Recommendations"
+          : "Continue";
   const showStatusChip =
     isWaitingForHostDecisionState ||
     !(isSlidingState || isCreatorDecisionState);
@@ -124,6 +128,33 @@ const EventCard: FunctionComponent<EventCardProps> = ({
               {dateStr} {timeStr && `| ${timeStr}`}
             </Typography>
           </Stack>
+
+          {/* Bug 3 fix: Show questionnaire deadline for open group events */}
+          {(event.eventType === "group" || (event.group && !event.recommendation)) &&
+            normalizedStatus === "collecting_responses" &&
+            event.deadlineAt && (
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{ color: "#718096", mt: 0.5 }}
+              >
+                <TimerIcon sx={{ fontSize: "15px", color: "#e8973a" }} />
+                <Typography
+                  variant="body2"
+                  sx={{ fontSize: "12px", fontWeight: 500, color: "#e8973a" }}
+                >
+                  Open until:{" "}
+                  {new Date(event.deadlineAt).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Typography>
+              </Stack>
+            )}
+
         </Box>
 
         <Stack
@@ -179,16 +210,20 @@ const EventCard: FunctionComponent<EventCardProps> = ({
               <Chip
                 label={
                   isWaitingForHostDecisionState
-                    ? "Waiting for host decision"
+                    ? "Waiting for the event creator to choose the final option."
                     : canContinue
-                    ? normalizedStatus === "recommended"
-                      ? "Ready to Answer"
-                      : "In Progress"
-                    : hasRecommendation
-                      ? "Recommendation Selected"
-                      : normalizedStatus === "recommended"
-                        ? "Shared Event"
-                        : "Created Event"
+                      ? normalizedStatus === "recommended"
+                        ? "Ready to Answer"
+                        : normalizedStatus === "recommendations_ready"
+                          ? isEventCreator
+                            ? "Recommendations Ready"
+                            : "Waiting for host decision"
+                          : "In Progress"
+                      : hasRecommendation
+                        ? "Recommendation Selected"
+                        : normalizedStatus === "recommended"
+                          ? "Shared Event"
+                          : "Created Event"
                 }
                 size="small"
                 sx={{

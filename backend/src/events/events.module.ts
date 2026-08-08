@@ -1,16 +1,26 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
+import { GroupLifecycleService } from './group-lifecycle.service';
 import { Event } from './entities/event.entity';
 import { EventType } from './entities/event-type.entity';
 import { GroupMember } from '../groups/entities/group-member.entity';
+import { Recommendation } from '../recommendations/entities/recommendation.entity';
 import { SlidesModule } from 'src/slides/slides.module';
+import { RecommendationsModule } from '../recommendations/recommendations.module';
+
+import { EventResponse } from './entities/event-response.entity';
+import { Group } from '../groups/entities/group.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Event, EventType, GroupMember]), SlidesModule],
+  imports: [
+    TypeOrmModule.forFeature([Event, EventType, GroupMember, Recommendation, EventResponse, Group]),
+    SlidesModule,
+    forwardRef(() => RecommendationsModule),
+  ],
   controllers: [EventsController],
-  providers: [EventsService],
-  exports: [EventsService],
+  providers: [EventsService, GroupLifecycleService],
+  exports: [EventsService, GroupLifecycleService],
 })
-export class EventsModule { }
+export class EventsModule {}

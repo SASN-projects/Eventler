@@ -19,9 +19,18 @@ export class RecommendationsController {
     return this.recommendationsService.getFeed();
   }
 
+  /**
+   * Manually trigger recommendation generation for an event.
+   * Only the event creator (owner) may call this.
+   * For group events, the questionnaire must already be CLOSED (or the
+   * GroupLifecycleService is coordinating the call internally).
+   */
   @Post('events/:eventId/generate')
-  async generateRecommendation(@Param('eventId') eventId: string) {
-    return await this.recommendationsService.generateRecommendation(eventId);
+  async generateRecommendation(
+    @Request() req: AuthRequest,
+    @Param('eventId') eventId: string,
+  ) {
+    return await this.recommendationsService.generateRecommendation(eventId, req.user.sub);
   }
 
   @Post('events/:eventId/select/:recommendationId')

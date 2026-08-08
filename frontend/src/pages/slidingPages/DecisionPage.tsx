@@ -1,21 +1,25 @@
 import { CircularProgress } from "@mui/material";
 import axios from "axios";
 import type { FunctionComponent, ReactElement } from "react";
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { PrimeButton } from "../../components/buttons";
 import { FullSizeContainer } from "../../components/layouts";
 import { AuthContext } from "../../contexts/AuthContext";
 import BaseQuestions from "./BaseQuestions";
+import CreatorDecisionPage from "./CreatorDecisionPage";
 import RecommendationsPage from "./RecommendationsPage";
 import Slider from "./SliderPage";
 import Slide from "./Slide";
 import { PreferencesConfirm } from "./PreferencesConfirm";
 import ThankYouPage from "./ThankYouPage";
 import {
+  closeQuestionnaire,
   fetchSlidesQuestions,
   getEventAnswers,
   getEventDetails,
+  getEventRecommendationsById,
   getRecomendationsById,
+  pollUntilRecommendationsReady,
   submitAnswers,
 } from "./api";
 import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
@@ -38,13 +42,25 @@ type EventAnswer = {
   answerValue?: string;
 };
 
+const getErrorMessage = (error: unknown) => {
+  if (axios.isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message || error.message;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Could not generate recommendations. Please try again.";
+};
+
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
+  onFinalSelectionComplete?: () => void;
   onResumeConsumed?: () => void;
 }
 
 const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   resumeEvent,
+  onFinalSelectionComplete,
   onResumeConsumed,
 }) => {
   const auth = useContext(AuthContext);
@@ -54,6 +70,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
+  const [isClosingQuestionnaire, setIsClosingQuestionnaire] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [existingAnswers, setExistingAnswers] = useState<Answers>({});
   const [hasLoadedResume, setHasLoadedResume] = useState(false);
@@ -62,6 +79,11 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   const [generationError, setGenerationError] = useState("");
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<Answers | null>(null);
   const [selectedVibe, setSelectedVibe] = useState("");
+  const [thankYouVariant, setThankYouVariant] = useState<"waiting" | "creator-success">("waiting");
+
+  const dispatchStatusChanged = () => {
+    window.dispatchEvent(new CustomEvent("eventler:event-status-changed"));
+  };
 
   const fetchQuestions = async () => {
     setIsLoadingQuestions(true);
@@ -73,21 +95,12 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     }
   };
 
-  const getErrorMessage = (error: unknown) => {
-    if (axios.isAxiosError<{ message?: string }>(error)) {
-      return error.response?.data?.message || error.message;
-    }
-
-    return error instanceof Error
-      ? error.message
-      : "Could not generate recommendations. Please try again.";
-  };
-
-  const loadEventCreator = async (id: string) => {
+  const loadEventDetails = async (id: string) => {
     const eventDetails = await getEventDetails(id);
     const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
+    const isGroup = (eventDetails?.eventType ?? "").toLowerCase() === "group";
     setEventCreatedById(creatorId);
-    return creatorId;
+    return { creatorId, isGroup, eventDetails };
   };
 
   const onBaseComplete = async (id: string) => {
@@ -98,23 +111,66 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setSelectedVibe("");
     setDecisionStep("sliding");
     setEventId(id);
-    await loadEventCreator(id);
+    await loadEventDetails(id);
+    // Notify mailbox: new event created, may appear as pending action
+    dispatchStatusChanged();
   };
 
   const loadRecommendations = async (id: string) => {
-    const response = await getRecomendationsById(id);
-    if (!response.success) {
-      throw new Error(response.message || "Could not generate recommendations. Please try again.");
-    }
+    setIsGeneratingRecommendation(true);
+    try {
+      const response = await getRecomendationsById(id);
+      if (!response.success) {
+        throw new Error(response.message || "Could not generate recommendations. Please try again.");
+      }
 
-    const nextRecommendations = Array.isArray(response.data) ? response.data : [];
-    if (nextRecommendations.length !== 3) {
-      throw new Error(`Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`);
-    }
+      const nextRecommendations = Array.isArray(response.data) ? response.data : [];
+      if (nextRecommendations.length !== 3) {
+        throw new Error(`Expected 3 recommendations, but got ${nextRecommendations.length}. Please try again.`);
+      }
 
-    setRecommendations(nextRecommendations);
-    setDecisionStep("recommendation");
+      setRecommendations(nextRecommendations);
+      setDecisionStep("recommendation");
+    } finally {
+      setIsGeneratingRecommendation(false);
+    }
   };
+
+  const loadPersistedRecommendations = useCallback(async (id: string) => {
+    setIsGeneratingRecommendation(true);
+    try {
+      const eventDetails = await getEventDetails(id);
+      const isGroupEvent = (eventDetails?.eventType ?? "").toLowerCase() === "group";
+      const normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+
+      if (isGroupEvent && !["recommendations_ready", "final_selection_made", "finalized"].includes(normalizedStatus)) {
+        throw new Error("Recommendation options are not ready yet. Please try again.");
+      }
+
+      const res = await getEventRecommendationsById(id);
+      const nextRecommendations = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.recommendations)
+        ? res.recommendations
+        : [];
+
+      if (nextRecommendations.length !== 3) {
+        setGenerationError("Recommendation options are being prepared. Click retry to refresh options.");
+        setDecisionStep("generating");
+        return;
+      }
+
+      setRecommendations(nextRecommendations);
+      setDecisionStep("recommendation");
+      // Notify mailbox: recommendations are ready — badge should update to show final-selection item
+      dispatchStatusChanged();
+    } catch (error) {
+      setGenerationError(getErrorMessage(error));
+      setDecisionStep("generating");
+    } finally {
+      setIsGeneratingRecommendation(false);
+    }
+  }, []);
 
   const onPreferencesConfirm = async () => {
     setDecisionStep("vibe-select");
@@ -122,7 +178,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
   const onVibeConfirm = async (vibe: string) => {
     setSelectedVibe(vibe);
-    // Fetch questions matching the selected vibe
     const questions = await fetchSlidesQuestions(vibe);
     setSlidersQuestions(questions);
     setDecisionStep("sliding");
@@ -156,7 +211,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setGenerationError("");
 
     try {
-      // Merge the vibe answer into final submitted answers
       const finalAnswers = {
         [vibeQuestionLabel]: vibe,
         ...answers,
@@ -166,26 +220,133 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         Object.entries(finalAnswers).filter(([, answerValue]) => typeof answerValue === "string" && answerValue.trim().length > 0),
       );
 
-      await submitAnswers(eventId, sanitizedAnswers);
+      const submitResult = await submitAnswers(eventId, sanitizedAnswers);
+      // Notify mailbox to refetch so the answered questionnaire is removed
+      dispatchStatusChanged();
 
-      const creatorId = eventCreatedById ?? (await loadEventCreator(eventId));
-      const isCreator = auth?.user?.id === creatorId;
+      const { creatorId, isGroup, eventDetails } = await loadEventDetails(eventId);
+      const isCreator = auth?.user?.id === (creatorId ?? eventCreatedById);
+      const currentStatus = (eventDetails?.status ?? submitResult?.eventStatus ?? "").toLowerCase();
 
       if (!isCreator) {
+        setThankYouVariant("waiting");
         setDecisionStep("thankYou");
-        setTimeout(() => {
-          onRestart();
-        }, 2000);
         return;
       }
 
-      await loadRecommendations(eventId);
+      if (isGroup) {
+        // Bug 1 fix: also treat expired deadline as "closed" so the creator
+        // never sees the "finish now or keep waiting" decision screen after deadline.
+        const deadlineHasPassed = Boolean(
+          eventDetails?.deadlineAt && new Date(eventDetails.deadlineAt) <= new Date(),
+        );
+        const isClosedOrGenerating =
+          Boolean(submitResult?.allMembersAnswered) ||
+          deadlineHasPassed ||
+          currentStatus === "closed" ||
+          currentStatus === "generating_recommendations" ||
+          currentStatus === "recommendations_ready";
+
+        if (isClosedOrGenerating) {
+          // Route directly to generating → recommendation. Do not show decision screen.
+          setDecisionStep("generating");
+
+          // If deadline passed but DB still shows OPEN, trigger close idempotently.
+          if (deadlineHasPassed && currentStatus === "collecting_responses") {
+            try {
+              await closeQuestionnaire(eventId);
+            } catch {
+              // Ignore — idempotent on backend; polling will detect actual status.
+            }
+          }
+
+          const finalStatus =
+            currentStatus === "recommendations_ready"
+              ? "recommendations_ready"
+              : await pollUntilRecommendationsReady(eventId);
+
+          if (finalStatus === "recommendations_ready") {
+            await loadPersistedRecommendations(eventId);
+          } else {
+            setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
+          }
+        } else {
+          // Questionnaire still OPEN and deadline has not passed
+          setDecisionStep("creator-decision");
+        }
+      } else {
+        await loadRecommendations(eventId);
+      }
     } catch (error) {
       setRecommendations([]);
       setGenerationError(getErrorMessage(error));
       setDecisionStep("sliding");
     } finally {
       setIsGeneratingRecommendation(false);
+    }
+  };
+
+  const handleCreatorFinishNow = async () => {
+    if (!eventId) return;
+    setIsClosingQuestionnaire(true);
+    setGenerationError("");
+    setDecisionStep("generating");
+
+    try {
+      // Bug 2 fix: closeQuestionnaire is now idempotent on the backend — if the deadline
+      // already closed the questionnaire it will trigger generation and return current state
+      // rather than throwing 400. So we can safely call it here regardless.
+      await closeQuestionnaire(eventId);
+      // Notify mailbox: questionnaire is now closed
+      dispatchStatusChanged();
+      const finalStatus = await pollUntilRecommendationsReady(eventId);
+
+      if (finalStatus === "recommendations_ready") {
+        await loadPersistedRecommendations(eventId);
+      } else if (finalStatus === "closed") {
+        setGenerationError("Recommendation generation failed. Click retry to try again.");
+      } else {
+        setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
+      }
+    } catch (err) {
+      // If close still fails for an unexpected reason, re-read current status and route
+      // rather than showing a terminal error that blocks the creator.
+      try {
+        const currentDetails = await getEventDetails(eventId);
+        const currentStatus = (currentDetails?.status ?? "").toLowerCase();
+        if (currentStatus === "recommendations_ready") {
+          await loadPersistedRecommendations(eventId);
+          return;
+        } else if (currentStatus !== "collecting_responses" && currentStatus !== "") {
+          const finalStatus = await pollUntilRecommendationsReady(eventId);
+          if (finalStatus === "recommendations_ready") {
+            await loadPersistedRecommendations(eventId);
+          } else {
+            setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
+          }
+          return;
+        }
+      } catch {
+        // Fall through to show original error
+      }
+      setGenerationError(getErrorMessage(err));
+    } finally {
+      setIsClosingQuestionnaire(false);
+    }
+  };
+
+  const handleCreatorKeepOpen = () => {
+    setThankYouVariant("waiting");
+    setDecisionStep("thankYou");
+  };
+
+  const handleFinalSelectionSuccess = () => {
+    // Notify mailbox: final selection made — remove RECOMMENDATIONS_READY item
+    dispatchStatusChanged();
+    setThankYouVariant("creator-success");
+    setDecisionStep("thankYou");
+    if (onFinalSelectionComplete) {
+      onFinalSelectionComplete();
     }
   };
 
@@ -197,11 +358,13 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setHasLoadedResume(false);
     setResumeRequestKey(null);
     setIsGeneratingRecommendation(false);
+    setIsClosingQuestionnaire(false);
     setIsResuming(false);
     setEventCreatedById(null);
     setGenerationError("");
     setLastSubmittedAnswers(null);
     setSelectedVibe("");
+    setThankYouVariant("waiting");
     onResumeConsumed?.();
   };
 
@@ -219,6 +382,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         setGenerationError("");
         setLastSubmittedAnswers(null);
         setSelectedVibe("");
+        setThankYouVariant("waiting");
         return;
       }
 
@@ -236,36 +400,103 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setGenerationError("");
       setLastSubmittedAnswers(null);
       setEventId(resumeEvent.eventId);
-      setDecisionStep(resumeEvent.mode === "recommendations" ? "recommendation" : "sliding");
 
       try {
-        if (resumeEvent.mode === "recommendations") {
-          await loadEventCreator(resumeEvent.eventId);
-          await loadRecommendations(resumeEvent.eventId);
+        const { creatorId, isGroup, eventDetails } = await loadEventDetails(resumeEvent.eventId);
+        const currentUserId = auth?.user?.id ?? null;
+        const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
+        let normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+
+        // Bug 1 fix: if OPEN but deadline has passed, close idempotently and re-read status.
+        // The backend lazy close only fires during submitAnswers; we need the same logic
+        // when the creator resumes after the deadline without anyone submitting post-deadline.
+        if (isGroup && normalizedStatus === "collecting_responses" && eventDetails?.deadlineAt) {
+          const deadlineDate = new Date(eventDetails.deadlineAt);
+          if (!isNaN(deadlineDate.getTime()) && deadlineDate <= new Date()) {
+            try {
+              await closeQuestionnaire(resumeEvent.eventId);
+            } catch {
+              // Ignore errors — may already be closed; status re-read below determines routing.
+            }
+            const refreshed = await getEventDetails(resumeEvent.eventId);
+            if (refreshed?.status) {
+              normalizedStatus = refreshed.status.toLowerCase();
+            }
+          }
+        }
+
+        if (normalizedStatus === "final_selection_made" || normalizedStatus === "finalized") {
+          setThankYouVariant(isCreator ? "creator-success" : "waiting");
+          setDecisionStep("thankYou");
           return;
         }
 
-        const [questions, answers, eventDetails] = await Promise.all([
+        if (normalizedStatus === "recommendations_ready") {
+          if (isCreator) {
+            await loadPersistedRecommendations(resumeEvent.eventId);
+          } else {
+            setThankYouVariant("waiting");
+            setDecisionStep("thankYou");
+          }
+          return;
+        }
+
+        if (normalizedStatus === "closed" || normalizedStatus === "generating_recommendations") {
+          if (isCreator) {
+            setDecisionStep("generating");
+            const finalStatus = await pollUntilRecommendationsReady(resumeEvent.eventId);
+            if (finalStatus === "recommendations_ready") {
+              await loadPersistedRecommendations(resumeEvent.eventId);
+            } else {
+              setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
+              // Stay on generating step (Bug 4 fix)
+            }
+          } else {
+            setThankYouVariant("waiting");
+            setDecisionStep("thankYou");
+          }
+          return;
+        }
+
+        // Status is OPEN / DRAFT — check member answers
+        const [questions, answers] = await Promise.all([
           fetchSlidesQuestions(),
           getEventAnswers(resumeEvent.eventId),
-          getEventDetails(resumeEvent.eventId),
         ]);
 
-        const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
-        const currentUserId = auth?.user?.id ?? null;
         const eventAnswers = (answers || []) as EventAnswer[];
         const hasCurrentUserAnswered = Boolean(
           currentUserId &&
           eventAnswers.some((item) => item.userId === currentUserId),
         );
 
-        setEventCreatedById(creatorId);
         setSlidersQuestions(questions);
 
         if (hasCurrentUserAnswered) {
-          if (creatorId && creatorId === currentUserId) {
+          if (isCreator && isGroup) {
+            // Re-verify event details in case all members just finished answering
+            const latestDetails = await getEventDetails(resumeEvent.eventId);
+            const latestStatus = (latestDetails?.status ?? "").toLowerCase();
+
+            if (latestStatus === "closed" || latestStatus === "generating_recommendations" || latestStatus === "recommendations_ready") {
+              setDecisionStep("generating");
+              const finalStatus = latestStatus === "recommendations_ready"
+                ? "recommendations_ready"
+                : await pollUntilRecommendationsReady(resumeEvent.eventId);
+
+              if (finalStatus === "recommendations_ready") {
+                await loadPersistedRecommendations(resumeEvent.eventId);
+              } else {
+                setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
+              }
+            } else {
+              // Questionnaire is still OPEN and not all members answered
+              setDecisionStep("creator-decision");
+            }
+          } else if (isCreator && !isGroup) {
             await loadRecommendations(resumeEvent.eventId);
           } else {
+            setThankYouVariant("waiting");
             setDecisionStep("thankYou");
           }
           return;
@@ -292,7 +523,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
     fetchQuestions();
     void loadResumeState();
-  }, [resumeEvent, hasLoadedResume, resumeRequestKey, auth?.user?.id]);
+  }, [resumeEvent, hasLoadedResume, resumeRequestKey, auth?.user?.id, loadPersistedRecommendations]);
 
   const loadingScreen = (
     <LoadingContainer>
@@ -387,7 +618,47 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         />
       </FullSizeContainer>
     ),
+    "group-deadline": loadingScreen, // Handled inside BaseQuestions dialog
     sliding: slidingStep,
+    "creator-decision": (
+      <CreatorDecisionPage
+        onFinishNow={handleCreatorFinishNow}
+        onKeepOpen={handleCreatorKeepOpen}
+        isClosing={isClosingQuestionnaire}
+      />
+    ),
+    generating: (
+      <LoadingContainer>
+        {generationError ? (
+          <>
+            <LoadingTextContainer>
+              <LoadingTitle>Recommendation generation paused</LoadingTitle>
+              <LoadingSubtitle sx={{ color: "error.main", maxWidth: 520, mb: 2 }}>
+                {generationError}
+              </LoadingSubtitle>
+            </LoadingTextContainer>
+            <PrimeButton
+              onClick={() => {
+                setGenerationError("");
+                handleCreatorFinishNow();
+              }}
+            >
+              Retry generation
+            </PrimeButton>
+          </>
+        ) : (
+          <>
+            <CircularProgress size={50} sx={{ color: "#edb53c", mb: 2 }} />
+            <LoadingTextContainer>
+              <LoadingTitle>Closing questionnaire & generating recommendations…</LoadingTitle>
+              <LoadingSubtitle>
+                Analyzing group preferences to find top 3 matching venues. Please wait a moment.
+              </LoadingSubtitle>
+            </LoadingTextContainer>
+          </>
+        )}
+      </LoadingContainer>
+    ),
     recommendation:
       isResuming || isGeneratingRecommendation ? (
         loadingScreen
@@ -395,10 +666,11 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         <RecommendationsPage
           eventId={eventId}
           onRestart={onRestart}
+          onFinalSelectionComplete={handleFinalSelectionSuccess}
           recommendations={recommendations}
         />
       ),
-    thankYou: <ThankYouPage />,
+    thankYou: <ThankYouPage variant={thankYouVariant} />,
   };
 
   return <FullSizeContainer>{steps[decisionStep]}</FullSizeContainer>;

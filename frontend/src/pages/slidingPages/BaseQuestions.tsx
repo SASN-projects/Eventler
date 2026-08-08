@@ -1,4 +1,4 @@
-import { AccessTime, Group, PlaceOutlined } from "@mui/icons-material";
+import { AccessTime, Group, PlaceOutlined, EventAvailable } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -39,8 +39,20 @@ import type { SelectionBaseParams } from "./types";
 import { formatTimeAsText } from "./utils";
 
 interface BaseQuestionsProps {
-  onBaseComplete: (eventId: string) => void;
+  onBaseComplete: (eventId: string, isGroupEvent?: boolean) => void;
 }
+
+/**
+ * Returns a datetime-local string representing the current time + offsetMinutes,
+ * suitable for use as the `min` and `value` attributes of a datetime-local input.
+ */
+const toDatetimeLocalValue = (date: Date) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+};
 
 export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   onBaseComplete: onComplete,
@@ -51,11 +63,18 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
   const [createEventError, setCreateEventError] = useState("");
   const [decisionModeDialogOpen, setDecisionModeDialogOpen] = useState(false);
   const [groupSelectionOpen, setGroupSelectionOpen] = useState(false);
+  const [deadlinePickerOpen, setDeadlinePickerOpen] = useState(false);
   const [groups, setGroups] = useState<
     Array<{ id: string; name: string; members?: any[] }>
   >([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
+  // Deadline state — defaults to current time + 10 minutes
+  const [groupDeadline, setGroupDeadline] = useState<Date>(
+    new Date(Date.now() + 10 * 60 * 1000),
+  );
+  const [deadlineError, setDeadlineError] = useState("");
 
   const now = new Date();
   now.setSeconds(0, 0);
@@ -67,7 +86,6 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
 
   const loadGroups = async () => {
     setGroupsLoading(true);
-
     try {
       const { data } = await api.get("/groups");
       setGroups(data ?? []);
@@ -83,10 +101,13 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
     loadGroups();
   }, []);
 
-  const createEvent = async (eventType: string, groupId?: string) => {
+  const createEvent = async (
+    eventType: string,
+    groupId?: string,
+    deadlineAt?: Date,
+  ) => {
     setIsCreatingEvent(true);
     setCreateEventError("");
-
     try {
       const id = await postNewEvent(
         baseParams.time,
@@ -94,8 +115,9 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
         baseParams.participantsAmount,
         eventType,
         groupId,
+        deadlineAt,
       );
-      onComplete(id);
+      onComplete(id, eventType === "group");
     } catch (error) {
       setCreateEventError(
         error instanceof Error ? error.message : "Could not create the event.",
@@ -114,21 +136,39 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
 
   const handleDecisionModeSelect = async (mode: "solo" | "group") => {
     setDecisionModeDialogOpen(false);
-
     if (mode === "group") {
       setSelectedGroupId(null);
       setGroupSelectionOpen(true);
       return;
     }
-
     await createEvent("individual");
   };
 
-  const handleGroupContinue = async () => {
+  const handleGroupContinue = () => {
     if (!selectedGroupId) return;
-
     setGroupSelectionOpen(false);
-    await createEvent("group", selectedGroupId);
+    // Reset deadline to default (current time + 10 minutes) and open picker
+    setGroupDeadline(new Date(Date.now() + 10 * 60 * 1000));
+    setDeadlineError("");
+    setDeadlinePickerOpen(true);
+  };
+
+  const handleDeadlineChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!val) return;
+    const date = new Date(val);
+    setGroupDeadline(date);
+    setDeadlineError(date <= new Date() ? "Deadline must be in the future." : "");
+  };
+
+  const handleDeadlineConfirm = async () => {
+    if (!selectedGroupId) return;
+    if (groupDeadline <= new Date()) {
+      setDeadlineError("Deadline must be in the future.");
+      return;
+    }
+    setDeadlinePickerOpen(false);
+    await createEvent("group", selectedGroupId, groupDeadline);
   };
 
   const setParam = <K extends keyof SelectionBaseParams>(
@@ -148,6 +188,8 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
     target: { value },
   }: ChangeEvent<HTMLInputElement>) =>
     setParam("participantsAmount", Number(value));
+
+  const nowMinStr = toDatetimeLocalValue(new Date());
 
   return (
     <BaseQuestionsContainer>
@@ -199,6 +241,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
         {isCreatingEvent ? "Creating..." : START_SLIDING_BTN}
       </PrimeButton>
 
+      {/* ── Solo / Group Mode Dialog ───────────────────────────────────────── */}
       <Dialog
         open={decisionModeDialogOpen}
         onClose={() => setDecisionModeDialogOpen(false)}
@@ -231,6 +274,7 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
         </DialogContent>
       </Dialog>
 
+      {/* ── Group Selection Dialog ─────────────────────────────────────────── */}
       <Dialog
         open={groupSelectionOpen}
         onClose={() => setGroupSelectionOpen(false)}
@@ -276,6 +320,69 @@ export const BaseQuestions: FunctionComponent<BaseQuestionsProps> = ({
             onClick={handleGroupContinue}
           >
             {isCreatingEvent ? "Creating..." : "Continue with selected group"}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Questionnaire Deadline Picker Dialog ───────────────────────────── */}
+      <Dialog
+        open={deadlinePickerOpen}
+        onClose={() => setDeadlinePickerOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <EventAvailable sx={{ color: "#edb53c" }} />
+          Set questionnaire deadline
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Choose when the group questionnaire should close. After this time,
+            no new answers will be accepted and you can generate the event
+            recommendations.
+          </DialogContentText>
+          <Box
+            component="input"
+            type="datetime-local"
+            min={nowMinStr}
+            value={toDatetimeLocalValue(groupDeadline)}
+            onChange={handleDeadlineChange}
+            sx={{
+              width: "100%",
+              padding: "10px 12px",
+              fontSize: "15px",
+              border: deadlineError
+                ? "2px solid #e53e3e"
+                : "1.5px solid #cbd5e0",
+              borderRadius: "8px",
+              outline: "none",
+              fontFamily: "inherit",
+              "&:focus": { borderColor: "#edb53c" },
+              mb: 1,
+            }}
+          />
+          {deadlineError && (
+            <Typography color="error" fontSize="13px" mb={1}>
+              {deadlineError}
+            </Typography>
+          )}
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Current selection:{" "}
+            <strong>
+              {groupDeadline.toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </strong>
+          </Typography>
+          <Button
+            fullWidth
+            variant="contained"
+            sx={{ textTransform: "none", backgroundColor: "#edb53c", "&:hover": { backgroundColor: "#d4a017" } }}
+            disabled={!!deadlineError || isCreatingEvent}
+            onClick={handleDeadlineConfirm}
+          >
+            {isCreatingEvent ? "Creating event…" : "Confirm & start questionnaire"}
           </Button>
         </DialogContent>
       </Dialog>
