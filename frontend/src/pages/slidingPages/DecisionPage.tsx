@@ -44,11 +44,13 @@ type EventAnswer = {
 interface DecisionPageProps {
   resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
   onFinalSelectionComplete?: () => void;
+  onResumeConsumed?: () => void;
 }
 
 const DecisionPage: FunctionComponent<DecisionPageProps> = ({
   resumeEvent,
   onFinalSelectionComplete,
+  onResumeConsumed,
 }) => {
   const auth = useContext(AuthContext);
   const [eventId, setEventId] = useState("");
@@ -277,6 +279,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setLastSubmittedAnswers(null);
     setSelectedVibe("");
     setThankYouVariant("waiting");
+    onResumeConsumed?.();
   };
 
   useEffect(() => {

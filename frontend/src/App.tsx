@@ -102,6 +102,7 @@ const AppContent: FunctionComponent = () => {
                     key={resetKey}
                     resumeEvent={resumeEvent}
                     onFinalSelectionComplete={() => setResumeEvent(null)}
+                    onResumeConsumed={() => setResumeEvent(null)}
                   />
                 )}
               </MainContentArea>

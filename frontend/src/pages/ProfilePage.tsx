@@ -119,11 +119,12 @@ export default function ProfilePage({
       >
         <Box
           sx={{
-            bgcolor: "white",
-            borderRadius: "20px",
+            bgcolor: "rgba(255,255,255,0.88)",
+            borderRadius: "18px",
             p: 2,
             mb: 2,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+            boxShadow: "var(--eventler-shadow-soft)",
+            border: "1px solid var(--eventler-border)",
           }}
         >
           <Stack
@@ -141,7 +142,7 @@ export default function ProfilePage({
             <IconButton
               size="small"
               onClick={() => setOpenPrefs(true)}
-              sx={{ color: "#9c27b0" }}
+              sx={{ color: "var(--eventler-secondary)" }}
             >
               <EditIcon sx={{ fontSize: "16px" }} />
             </IconButton>
@@ -164,7 +165,13 @@ export default function ProfilePage({
                   label={PREF_MAP[p] || p}
                   size="small"
                   variant="outlined"
-                  sx={{ borderRadius: "8px", fontWeight: 600 }}
+                  sx={{
+                    borderRadius: "10px",
+                    fontWeight: 700,
+                    borderColor: "rgba(109, 114, 232, 0.24)",
+                    color: "var(--eventler-text)",
+                    backgroundColor: "rgba(255,255,255,0.72)",
+                  }}
                 />
               ))
             )}
@@ -208,8 +215,10 @@ export default function ProfilePage({
                 sx={{
                   p: 4,
                   textAlign: "center",
-                  borderRadius: "24px",
-                  border: "1px dashed rgba(0,0,0,0.12)",
+                  borderRadius: "18px",
+                  border: "1px dashed rgba(109, 114, 232, 0.28)",
+                  color: "var(--eventler-muted)",
+                  backgroundColor: "rgba(255,255,255,0.78)",
                 }}
               >
                 No events in history.
@@ -220,7 +229,16 @@ export default function ProfilePage({
               ))
             ))}
           {activeTab === "favorites" && (
-            <Paper sx={{ p: 4, textAlign: "center", borderRadius: "24px" }}>
+            <Paper
+              sx={{
+                p: 4,
+                textAlign: "center",
+                borderRadius: "18px",
+                border: "1px dashed rgba(109, 114, 232, 0.28)",
+                color: "var(--eventler-muted)",
+                backgroundColor: "rgba(255,255,255,0.78)",
+              }}
+            >
               No favorite venues.
             </Paper>
           )}
