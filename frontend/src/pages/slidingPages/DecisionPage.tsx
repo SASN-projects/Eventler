@@ -1,7 +1,7 @@
 import { CircularProgress } from "@mui/material";
 import axios from "axios";
 import type { FunctionComponent, ReactElement } from "react";
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { PrimeButton } from "../../components/buttons";
 import { FullSizeContainer } from "../../components/layouts";
 import { AuthContext } from "../../contexts/AuthContext";
@@ -17,6 +17,7 @@ import {
   fetchSlidesQuestions,
   getEventAnswers,
   getEventDetails,
+  getEventRecommendationsById,
   getRecomendationsById,
   pollUntilRecommendationsReady,
   submitAnswers,
@@ -39,6 +40,16 @@ type EventAnswer = {
   userId?: string;
   question?: string;
   answerValue?: string;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (axios.isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message || error.message;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Could not generate recommendations. Please try again.";
 };
 
 interface DecisionPageProps {
@@ -80,16 +91,6 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     }
   };
 
-  const getErrorMessage = (error: unknown) => {
-    if (axios.isAxiosError<{ message?: string }>(error)) {
-      return error.response?.data?.message || error.message;
-    }
-
-    return error instanceof Error
-      ? error.message
-      : "Could not generate recommendations. Please try again.";
-  };
-
   const loadEventDetails = async (id: string) => {
     const eventDetails = await getEventDetails(id);
     const creatorId = eventDetails?.createdById ?? eventDetails?.creator?.id ?? null;
@@ -128,6 +129,40 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setIsGeneratingRecommendation(false);
     }
   };
+
+  const loadPersistedRecommendations = useCallback(async (id: string) => {
+    setIsGeneratingRecommendation(true);
+    try {
+      const eventDetails = await getEventDetails(id);
+      const isGroupEvent = (eventDetails?.eventType ?? "").toLowerCase() === "group";
+      const normalizedStatus = (eventDetails?.status ?? "").toLowerCase();
+
+      if (isGroupEvent && !["recommendations_ready", "final_selection_made", "finalized"].includes(normalizedStatus)) {
+        throw new Error("Recommendation options are not ready yet. Please try again.");
+      }
+
+      const res = await getEventRecommendationsById(id);
+      const nextRecommendations = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.recommendations)
+        ? res.recommendations
+        : [];
+
+      if (nextRecommendations.length !== 3) {
+        setGenerationError("Recommendation options are being prepared. Click retry to refresh options.");
+        setDecisionStep("generating");
+        return;
+      }
+
+      setRecommendations(nextRecommendations);
+      setDecisionStep("recommendation");
+    } catch (error) {
+      setGenerationError(getErrorMessage(error));
+      setDecisionStep("generating");
+    } finally {
+      setIsGeneratingRecommendation(false);
+    }
+  }, []);
 
   const onPreferencesConfirm = async () => {
     setDecisionStep("vibe-select");
@@ -206,7 +241,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
               : await pollUntilRecommendationsReady(eventId);
 
           if (finalStatus === "recommendations_ready") {
-            await loadRecommendations(eventId);
+            await loadPersistedRecommendations(eventId);
           } else {
             setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
           }
@@ -237,7 +272,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       const finalStatus = await pollUntilRecommendationsReady(eventId);
 
       if (finalStatus === "recommendations_ready") {
-        await loadRecommendations(eventId);
+        await loadPersistedRecommendations(eventId);
       } else if (finalStatus === "closed") {
         throw new Error("Recommendation generation failed. The questionnaire is closed.");
       } else {
@@ -329,7 +364,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
         if (normalizedStatus === "recommendations_ready") {
           if (isCreator) {
-            await loadRecommendations(resumeEvent.eventId);
+            await loadPersistedRecommendations(resumeEvent.eventId);
           } else {
             setThankYouVariant("waiting");
             setDecisionStep("thankYou");
@@ -342,7 +377,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
             setDecisionStep("generating");
             const finalStatus = await pollUntilRecommendationsReady(resumeEvent.eventId);
             if (finalStatus === "recommendations_ready") {
-              await loadRecommendations(resumeEvent.eventId);
+              await loadPersistedRecommendations(resumeEvent.eventId);
             } else {
               setGenerationError(`Recommendation generation ended with status '${finalStatus}'. Click retry to try again.`);
               // Stay on generating step (Bug 4 fix)
@@ -381,7 +416,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
                 : await pollUntilRecommendationsReady(resumeEvent.eventId);
 
               if (finalStatus === "recommendations_ready") {
-                await loadRecommendations(resumeEvent.eventId);
+                await loadPersistedRecommendations(resumeEvent.eventId);
               } else {
                 setGenerationError(`Recommendation generation ended with status '${finalStatus}'.`);
               }
@@ -419,7 +454,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
     fetchQuestions();
     void loadResumeState();
-  }, [resumeEvent, hasLoadedResume, resumeRequestKey, auth?.user?.id]);
+  }, [resumeEvent, hasLoadedResume, resumeRequestKey, auth?.user?.id, loadPersistedRecommendations]);
 
   const loadingScreen = (
     <LoadingContainer>

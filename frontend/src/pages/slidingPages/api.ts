@@ -8,6 +8,14 @@ export interface GenerateRecommendationsResponse {
   message?: string;
 }
 
+export interface EventRecommendationsResponse {
+  success?: boolean;
+  eventId?: string;
+  data?: Recommendation[];
+  recommendations?: Recommendation[];
+  message?: string;
+}
+
 export const fetchSlidesQuestions = async (vibes?: string): Promise<Question[]> => {
   try {
     const url = vibes ? `/slides?vibes=${encodeURIComponent(vibes)}` : '/slides';
@@ -115,6 +123,20 @@ export const getRecomendationsById = async (
   const { data } = await api.post(`/recommendations/events/${eventId}/generate`);
   return data;
 };
+
+export const getEventRecommendationsById = async (
+  eventId: string,
+): Promise<EventRecommendationsResponse> => {
+  try {
+    const { data } = await api.get(`/events/${eventId}/recommendations`);
+    return data;
+  } catch {
+    const { data } = await api.get(`/events/recommendations/${eventId}`);
+    return data;
+  }
+};
+
+export const fetchPersistedRecommendations = getEventRecommendationsById;
 
 export const postSelectedRecommendation = async (
   eventId: string,

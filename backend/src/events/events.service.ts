@@ -30,7 +30,7 @@ export class EventsService {
     private recommendationRepository: Repository<Recommendation>,
     @Inject(forwardRef(() => GroupLifecycleService))
     private groupLifecycleService: GroupLifecycleService,
-  ) {}
+  ) { }
 
   async create(userId: string, createEventDto: CreateEventDto) {
     // ── Group event: validate questionnaire deadline ────────────────────────
@@ -167,10 +167,23 @@ export class EventsService {
   async getRecommendations(id: string, userId: string) {
     const event = await this.findOne(id, userId);
 
-    // This is a stub - actual recommendations will be fetched later
+    const recommendations = await this.recommendationRepository.find({
+      where: { eventId: event.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    const mapped = recommendations.map((recommendation) => ({
+      id: recommendation.id,
+      title: recommendation.title,
+      description: recommendation.description,
+      address: recommendation.address,
+    }));
+
     return {
+      success: true,
       eventId: event.id,
-      recommendations: [],
+      data: mapped,
+      recommendations: mapped,
     };
   }
 

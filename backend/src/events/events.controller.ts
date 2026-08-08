@@ -82,6 +82,14 @@ export class EventsController {
     return await this.eventsService.createRecommendations(id, req.user.sub);
   }
 
+  @Get(':id/recommendations')
+  async getEventRecommendations(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return await this.eventsService.getRecommendations(id, req.user.sub);
+  }
+
   @Get('recommendations/:id')
   async getRecommendations(
     @Request() req: AuthRequest,
