@@ -7,10 +7,12 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Event } from './entities/event.entity';
 import { EventType } from './entities/event-type.entity';
 import { EventStatus } from './enums/event-status.enum';
+import { EventResponse } from './entities/event-response.entity';
+import { EventType as EventTypeEnum } from './enums/event.enums';
 import { GroupMember } from '../groups/entities/group-member.entity';
 import { Recommendation } from '../recommendations/entities/recommendation.entity';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -28,6 +30,8 @@ export class EventsService {
     private groupMemberRepository: Repository<GroupMember>,
     @InjectRepository(Recommendation)
     private recommendationRepository: Repository<Recommendation>,
+    @InjectRepository(EventResponse)
+    private eventResponseRepository: Repository<EventResponse>,
     @Inject(forwardRef(() => GroupLifecycleService))
     private groupLifecycleService: GroupLifecycleService,
   ) { }
@@ -259,5 +263,94 @@ export class EventsService {
     await this.eventRepository.save(event);
 
     return event;
+  }
+
+  /**
+   * Returns open group questionnaires/events waiting for the current authenticated user's answer.
+   * Excludes:
+   * - Events where the user has already submitted answers
+   * - Events that are closed, generating, ready, finalized, or cancelled
+   * - Events where deadlineAt <= NOW()
+   * - Individual events
+   * - Events for groups the user is not a member of
+   */
+  async getPendingQuestionnaires(userId: string) {
+    // 1. Find all groups the current user belongs to
+    const memberRecords = await this.groupMemberRepository.find({
+      where: { userId },
+      select: ['groupId'],
+    });
+
+    if (!memberRecords.length) {
+      return { items: [], count: 0 };
+    }
+
+    const groupIds = memberRecords.map((m) => m.groupId);
+
+    // 2. Query open group events for these groups
+    const openEvents = await this.eventRepository.find({
+      where: {
+        groupId: In(groupIds),
+        eventType: EventTypeEnum.GROUP,
+        status: EventStatus.OPEN,
+      },
+      relations: ['group', 'group.members', 'creator'],
+      order: { deadlineAt: 'ASC' },
+    });
+
+    if (!openEvents.length) {
+      return { items: [], count: 0 };
+    }
+
+    const items: any[] = [];
+
+    for (const event of openEvents) {
+      // 3. Lazy deadline check: auto-close expired questionnaires
+      const closedByDeadline = await this.groupLifecycleService.checkAndCloseIfDeadlinePassed(event);
+      if (closedByDeadline) {
+        continue;
+      }
+
+      if (event.deadlineAt && new Date(event.deadlineAt) <= new Date()) {
+        continue;
+      }
+
+      // 4. Check if current user has already answered this event
+      const userAnswersCount = await this.eventResponseRepository.count({
+        where: { eventId: event.id, userId },
+      });
+
+      if (userAnswersCount > 0) {
+        continue;
+      }
+
+      // 5. Calculate answered vs expected members count
+      const expectedMembersCount = event.group?.members?.length || 0;
+      const allResponses = await this.eventResponseRepository.find({
+        where: { eventId: event.id },
+        select: ['userId'],
+      });
+      const answeredUserIds = new Set(allResponses.map((r) => r.userId));
+      const answeredMembersCount = answeredUserIds.size;
+
+      const isCreator = event.createdById === userId || event.creator?.id === userId;
+
+      items.push({
+        eventId: event.id,
+        groupId: event.groupId,
+        title: event.title || 'Group Event',
+        groupName: event.group?.name || 'Group',
+        status: event.status,
+        deadlineAt: event.deadlineAt ? event.deadlineAt.toISOString() : null,
+        answeredMembersCount,
+        expectedMembersCount,
+        isCreator,
+      });
+    }
+
+    return {
+      items,
+      count: items.length,
+    };
   }
 }

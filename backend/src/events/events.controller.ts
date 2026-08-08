@@ -32,6 +32,16 @@ export class EventsController {
     return await this.eventsService.create(req.user.sub, createEventDto);
   }
 
+  @Get('pending-questionnaires')
+  async getPendingQuestionnaires(@Request() req: AuthRequest) {
+    return await this.eventsService.getPendingQuestionnaires(req.user.sub);
+  }
+
+  @Get('group/pending-questionnaires')
+  async getGroupPendingQuestionnaires(@Request() req: AuthRequest) {
+    return await this.eventsService.getPendingQuestionnaires(req.user.sub);
+  }
+
   @Get(':id')
   async findOne(@Request() req: AuthRequest, @Param('id') id: string) {
     return await this.eventsService.findOne(id, req.user.sub);

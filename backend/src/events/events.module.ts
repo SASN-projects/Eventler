@@ -10,9 +10,12 @@ import { Recommendation } from '../recommendations/entities/recommendation.entit
 import { SlidesModule } from 'src/slides/slides.module';
 import { RecommendationsModule } from '../recommendations/recommendations.module';
 
+import { EventResponse } from './entities/event-response.entity';
+import { Group } from '../groups/entities/group.entity';
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Event, EventType, GroupMember, Recommendation]),
+    TypeOrmModule.forFeature([Event, EventType, GroupMember, Recommendation, EventResponse, Group]),
     SlidesModule,
     forwardRef(() => RecommendationsModule),
   ],

@@ -22,6 +22,8 @@ import {
   ProfileIconButton,
 } from "./pages/slidingPages/profile.styles";
 
+import NotificationInbox from "./components/NotificationInbox";
+
 const AppContent: FunctionComponent = () => {
   const { isAuthenticated, loading, user } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
@@ -91,6 +93,21 @@ const AppContent: FunctionComponent = () => {
         element={
           <ProtectedRoute>
             <AppContainer>
+              {/* Top-screen Questionnaire Inbox Indicator */}
+              <div
+                style={{
+                  position: "fixed",
+                  top: 16,
+                  right: 16,
+                  zIndex: 1200,
+                }}
+              >
+                <NotificationInbox
+                  onSelectEvent={(eventId) => handleContinueEvent({ id: eventId })}
+                  refreshTrigger={resetKey}
+                />
+              </div>
+
               <MainContentArea>
                 {showProfile ? (
                   <ProfilePage

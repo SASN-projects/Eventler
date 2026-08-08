@@ -192,3 +192,29 @@ export const pollUntilRecommendationsReady = async (
   }
   return "timeout";
 };
+
+export interface PendingQuestionnaireItem {
+  eventId: string;
+  groupId: string;
+  title: string;
+  groupName: string;
+  status: string;
+  deadlineAt: string | null;
+  answeredMembersCount: number;
+  expectedMembersCount: number;
+  isCreator: boolean;
+}
+
+export interface PendingQuestionnairesResponse {
+  items: PendingQuestionnaireItem[];
+  count: number;
+}
+
+export const fetchPendingQuestionnaires = async (): Promise<PendingQuestionnairesResponse> => {
+  try {
+    const { data } = await api.get('/events/pending-questionnaires');
+    return data || { items: [], count: 0 };
+  } catch {
+    return { items: [], count: 0 };
+  }
+};
