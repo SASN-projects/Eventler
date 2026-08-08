@@ -41,13 +41,13 @@ export class Event {
   @Column({ name: 'event_type' })
     eventType: EventType;
 
-  @Column({ name: 'target_date', type: 'date' })
+  @Column({ name: 'target_date', type: 'timestamp' })
     targetDate: string;
 
-  @Column({ name: 'target_date_from', type: 'date' })
+  @Column({ name: 'target_date_from', type: 'timestamp' })
     targetDateFrom: string;
 
-  @Column({ name: 'target_date_to', type: 'date' })
+  @Column({ name: 'target_date_to', type: 'timestamp' })
     targetDateTo: string;
 
   @Column({ name: 'deadline_at', type: 'timestamp' })

@@ -22,7 +22,7 @@ import {
   pollUntilRecommendationsReady,
   submitAnswers,
 } from "./api";
-import { LOADING_SUBTITLE, LOADING_TITLE } from "./consts";
+import { LOADING_SUBTITLE, LOADING_TITLE, VIBE_OPTIONS, VIBE_QUESTION_LABEL } from "./consts";
 import {
   LoadingContainer,
   LoadingSubtitle,
@@ -43,7 +43,7 @@ type EventAnswer = {
 };
 
 const getErrorMessage = (error: unknown) => {
-  if (axios.isAxiosError<{ message?: string }>(error)) {
+  if (axios.isAxiosError<{ message?: string; }>(error)) {
     return error.response?.data?.message || error.message;
   }
 
@@ -53,7 +53,7 @@ const getErrorMessage = (error: unknown) => {
 };
 
 interface DecisionPageProps {
-  resumeEvent?: { eventId: string; mode: "slides" | "recommendations" } | null;
+  resumeEvent?: { eventId: string; mode: "slides" | "recommendations"; } | null;
   onFinalSelectionComplete?: () => void;
   onResumeConsumed?: () => void;
 }
@@ -89,7 +89,9 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setIsLoadingQuestions(true);
     try {
       const questions = await fetchSlidesQuestions();
-      setSlidersQuestions(questions);
+      if (!resumeEvent) {
+        setSlidersQuestions(questions);
+      }
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -109,7 +111,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
     setGenerationError("");
     setLastSubmittedAnswers(null);
     setSelectedVibe("");
-    setDecisionStep("sliding");
+    setDecisionStep("preferences-confirm");
     setEventId(id);
     await loadEventDetails(id);
     // Notify mailbox: new event created, may appear as pending action
@@ -151,8 +153,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       const nextRecommendations = Array.isArray(res?.data)
         ? res.data
         : Array.isArray(res?.recommendations)
-        ? res.recommendations
-        : [];
+          ? res.recommendations
+          : [];
 
       if (nextRecommendations.length !== 3) {
         setGenerationError("Recommendation options are being prepared. Click retry to refresh options.");
@@ -191,19 +193,11 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
       setGenerationError("Please answer all questions before generating recommendations.");
       return;
     }
-
-    const vibeQuestionLabel = slidersQuestions.find((question) => question.code === "vibe")?.label
-      ?? "What's your vibe?";
-    const vibeFromAnswers = answers[vibeQuestionLabel]?.trim() ?? "";
-    const vibe = selectedVibe.trim() || vibeFromAnswers;
+    const vibe = selectedVibe.trim();
 
     if (!vibe) {
       setGenerationError("Please choose a vibe before generating recommendations.");
       return;
-    }
-
-    if (vibe !== selectedVibe) {
-      setSelectedVibe(vibe);
     }
 
     setLastSubmittedAnswers(answers);
@@ -212,7 +206,7 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
 
     try {
       const finalAnswers = {
-        [vibeQuestionLabel]: vibe,
+        [VIBE_QUESTION_LABEL]: vibe,
         ...answers,
       };
 
@@ -458,18 +452,23 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
           return;
         }
 
-        // Status is OPEN / DRAFT — check member answers
-        const [questions, answers] = await Promise.all([
-          fetchSlidesQuestions(),
-          getEventAnswers(resumeEvent.eventId),
-        ]);
-
+        // Status is OPEN / DRAFT — check member answers.
+        // Fetch answers first so a group member joining/resuming after the creator
+        // can recover the already-chosen vibe and answer the SAME vibe-scoped
+        // question set as everyone else, rather than a generic unscoped one.
+        const answers = await getEventAnswers(resumeEvent.eventId);
         const eventAnswers = (answers || []) as EventAnswer[];
         const hasCurrentUserAnswered = Boolean(
           currentUserId &&
           eventAnswers.some((item) => item.userId === currentUserId),
         );
 
+        const groupVibe = eventAnswers.find((item) => item.question === VIBE_QUESTION_LABEL)?.answerValue;
+        if (groupVibe) {
+          setSelectedVibe(groupVibe);
+        }
+
+        const questions = await fetchSlidesQuestions(groupVibe || undefined);
         setSlidersQuestions(questions);
 
         if (hasCurrentUserAnswered) {
@@ -612,8 +611,8 @@ const DecisionPage: FunctionComponent<DecisionPageProps> = ({
         }}
       >
         <Slide
-          title="What's your vibe?"
-          options={["dining", "sightseeing", "active", "clubbing", "casual", "cultural"]}
+          title={VIBE_QUESTION_LABEL}
+          options={VIBE_OPTIONS}
           onNext={onVibeConfirm}
         />
       </FullSizeContainer>

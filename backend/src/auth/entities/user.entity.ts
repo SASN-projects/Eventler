@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToOne, OneToMany } from 'typeorm';
 import { UserPreferences } from '../../users/entities/user-preferences.entity';
+import { FavoriteVenue } from '../../venues/entities/favorite-venue.entity';
 
 @Entity('users')
 export class User {
@@ -41,4 +42,7 @@ export class User {
 
   @OneToOne(() => UserPreferences, (preferences) => preferences.user)
     preferences: UserPreferences;
+
+  @OneToMany(() => FavoriteVenue, (favorite) => favorite.user)
+    favoriteVenues: FavoriteVenue[];
 }

@@ -10,7 +10,7 @@ export class CreateGroupDto {
     description?: string;
 
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID('loose', { each: true })
   @IsOptional()
     memberIds?: string[];
 }

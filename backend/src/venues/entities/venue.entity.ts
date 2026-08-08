@@ -25,17 +25,29 @@ export class Venue {
   @Column({ length: 120 })
     country: string;
 
-  @Column({ name: 'price_level', type: 'smallint' })
-    priceLevel: number;
+  @Column({ name: 'price_level', type: 'smallint', nullable: true })
+    priceLevel: number | null;
 
-  @Column({ type: 'numeric', precision: 3, scale: 2 })
-    rating: number;
+  @Column({
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value === null ? null : parseFloat(value)),
+    },
+  })
+    rating: number | null;
 
-  @Column({ length: 100 })
-    source: string;
+  @Column({ type: 'varchar', length: 100, nullable: true })
+    source: string | null;
 
-  @Column({ name: 'external_source_id', length: 255 })
-    externalSourceId: string;
+  @Column({ name: 'external_source_id', type: 'varchar', length: 255, nullable: true })
+    externalSourceId: string | null;
+
+  @Column({ name: 'photo_reference', type: 'text', nullable: true })
+    photoReference: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

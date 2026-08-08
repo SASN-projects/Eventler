@@ -16,14 +16,11 @@ interface PreferencesConfirmProps {
 const PREF_MAP: Record<string, string> = {
   budget:          '💰 Budget',
   occasion:        '🎉 Occasion',
-  activity:        '🎯 Activity',
   setting:         '📍 Setting',
-  'time-of-day':   '⏰ Time of day',
   'food-drinks':   '🍽️ Food & drinks',
   'group-dynamic': '👥 Group',
   'energy-level':  '⚡ Energy',
   'must-have':     '✅ Must-haves',
-  vibe:            '✨ Vibe',
 };
 
 export const PreferencesConfirm = ({ onConfirm }: PreferencesConfirmProps) => {

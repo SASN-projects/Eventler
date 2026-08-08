@@ -29,7 +29,13 @@ export class SlidesService {
     private groupRepository: Repository<Group>,
     @Inject(forwardRef(() => GroupLifecycleService))
     private groupLifecycleService: GroupLifecycleService,
-  ) {}
+  ) { }
+
+  private static readonly RETIRED_SLIDE_CODES = new Set(['vibe', 'activity', 'time-of-day']);
+
+  private static readonly VALID_PREFERENCE_CODES = new Set([
+    'budget', 'occasion', 'setting', 'food-drinks', 'group-dynamic', 'energy-level', 'must-have',
+  ]);
 
   async getSlides(userId: string, vibes?: string[]): Promise<SliderQuestion[]> {
     // 1. Fetch user to get their preferences
@@ -39,116 +45,66 @@ export class SlidesService {
     });
 
     // 2. Fetch all questions from the database along with their options
-    const allQuestions = await this.sliderQuestionRepository
-      .createQueryBuilder('question')
-      .leftJoinAndSelect('question.options', 'option')
-      .orderBy('question.code', 'ASC')
-      .addOrderBy('option.value', 'ASC')
-      .getMany();
+    const allQuestions = (
+      await this.sliderQuestionRepository
+        .createQueryBuilder('question')
+        .leftJoinAndSelect('question.options', 'option')
+        .orderBy('question.code', 'ASC')
+        .addOrderBy('option.value', 'ASC')
+        .getMany()
+    ).filter(q => !SlidesService.RETIRED_SLIDE_CODES.has(q.code));
 
-    // 3. Find the vibe selector question (always shown first when no active vibes)
-    const vibeQuestion = allQuestions.find(q => q.code === 'vibe');
-
-    // 4. Build the set of preferred question codes from user preferences.
-    //    Map interest strings → new question codes (retired codes are intentionally absent).
-    const preferredCodes = new Set<string>();
-
-    const interestMapping: Record<string, string> = {
-      budget:        'budget',
-      cost:          'budget',
-      price:         'budget',
-      food:          'food-drinks',
-      drinks:        'food-drinks',
-      dining:        'activity',
-      outdoor:       'setting',
-      indoor:        'setting',
-      active:        'energy-level',
-      activity:      'activity',
-      occasion:      'occasion',
-      vibe:          'vibe',
-      group:         'group-dynamic',
-      social:        'group-dynamic',
-      accessibility: 'must-have',
-      musthave:      'must-have',
-    };
-
-    if (user?.preferences?.interests) {
-      user.preferences.interests.forEach(interest => {
-        const mappedCode = interestMapping[interest.toLowerCase()];
-        if (mappedCode) {
-          preferredCodes.add(mappedCode);
-        }
-      });
-    }
+    // 3. Build the set of preferred question codes directly from the user's stored
+    //    interests — PREFERENCE_OPTIONS on the frontend already emits exactly these codes.
+    const preferredCodes = new Set<string>(
+      (user?.preferences?.interests ?? []).filter(interest =>
+        SlidesService.VALID_PREFERENCE_CODES.has(interest),
+      ),
+    );
 
     // Auto-detect preference fields
     if (user?.preferences?.preferredBudgetMin !== undefined ||
-        user?.preferences?.preferredBudgetMax !== undefined) {
+      user?.preferences?.preferredBudgetMax !== undefined) {
       preferredCodes.add('budget');
     }
 
-    // Exclude vibe from preferredCodes — it is handled separately as the first question
-    preferredCodes.delete('vibe');
+    const preferredQuestions = allQuestions.filter(q => preferredCodes.has(q.code));
 
-    const preferredQuestions = allQuestions.filter(q =>
-      preferredCodes.has(q.code) && q.code !== 'vibe',
-    );
-
-    // 5. Determine active vibes for tag-based follow-up questions
+    // 4. Determine active vibes for tag-based follow-up questions
     const activeVibes: string[] = vibes ? [...vibes] : [];
     if (activeVibes.length === 0 && user?.preferences?.preferredVibe) {
       activeVibes.push(user.preferences.preferredVibe);
     }
 
-    const knownVibes = ['dining', 'sightseeing', 'active', 'clubbing', 'casual', 'cultural'];
-    if (activeVibes.length === 0 && user?.preferences?.interests) {
-      user.preferences.interests.forEach(interest => {
-        if (knownVibes.includes(interest.toLowerCase())) {
-          activeVibes.push(interest.toLowerCase());
-        }
-      });
-    }
-
-    // 6. Filter tag-based follow-up questions (not vibe, not already preferred)
+    // 5. Filter tag-based follow-up questions (not already preferred)
     let vibeFollowUpQuestions: SliderQuestion[] = [];
     if (activeVibes.length > 0) {
       vibeFollowUpQuestions = allQuestions.filter(q =>
-        q.code !== 'vibe' &&
         !preferredCodes.has(q.code) &&
         q.tags &&
         q.tags.some(tag => activeVibes.includes(tag)),
       );
     }
 
-    // Fallback: when no tag-based follow-ups found, use all remaining non-vibe non-preferred questions
+    // Fallback: when no tag-based follow-ups found, use all remaining non-preferred questions
     if (vibeFollowUpQuestions.length === 0) {
-      vibeFollowUpQuestions = allQuestions.filter(q =>
-        q.code !== 'vibe' &&
-        !preferredCodes.has(q.code),
-      );
+      vibeFollowUpQuestions = allQuestions.filter(q => !preferredCodes.has(q.code));
     }
 
-    // 7. Shuffle follow-up questions randomly for variety
+    // 6. Shuffle follow-up questions randomly for variety
     const shuffledFollowUps = [...vibeFollowUpQuestions].sort(() => Math.random() - 0.5);
 
-    // 8. Select follow-ups to fill up to 7 questions total
-    //    (vibe question counts as 1 if shown first)
-    const includeVibe = (vibeQuestion && (!vibes || vibes.length === 0)) ? 1 : 0;
+    // 7. Select follow-ups to fill up to 7 questions total
     const targetTotal = 7;
-    const needed = Math.max(0, targetTotal - includeVibe - preferredQuestions.length);
+    const needed = Math.max(0, targetTotal - preferredQuestions.length);
     const selectedFollowUps = shuffledFollowUps.slice(0, needed);
 
-    // 9. Assemble final list: vibe first (if applicable), then preferred, then follow-ups
-    const resultQuestions: SliderQuestion[] = [];
-    if (vibeQuestion && includeVibe) {
-      resultQuestions.push(vibeQuestion);
-    }
-    resultQuestions.push(...preferredQuestions);
-    resultQuestions.push(...selectedFollowUps);
+    // 8. Assemble final list: preferred first, then follow-ups
+    const resultQuestions: SliderQuestion[] = [...preferredQuestions, ...selectedFollowUps];
 
-    // 10. Sort options alphabetically within each question (vibe question options stay as-is)
+    // 9. Sort options alphabetically within each question
     for (const q of resultQuestions) {
-      if (q.options && q.code !== 'vibe') {
+      if (q.options) {
         q.options.sort((a, b) => a.value.localeCompare(b.value));
       }
     }

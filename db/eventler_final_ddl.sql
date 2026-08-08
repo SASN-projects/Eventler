@@ -69,9 +69,14 @@ CREATE TABLE IF NOT EXISTS venues (
     rating NUMERIC(3,2) CHECK (rating BETWEEN 0 AND 5),
     source VARCHAR(100),
     external_source_id VARCHAR(255),
+    photo_reference TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_venues_source_external_id
+    ON venues (source, external_source_id)
+    WHERE external_source_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS favorite_venues (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -80,9 +85,22 @@ CREATE TABLE IF NOT EXISTS favorite_venues (
     PRIMARY KEY (user_id, venue_id)
 );
 
+CREATE TABLE IF NOT EXISTS user_feed_items (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    score NUMERIC(10,4),
+    generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, venue_id)
+);
+
+CREATE INDEX IF NOT EXISTS index_user_feed_items_user_rank ON user_feed_items (user_id, rank);
+
+-- events and recommendations reference each other (events.recommendation_id <->
+-- recommendations.event_id), so the cycle is broken by creating recommendations
+-- without event_id first and adding that column back after events exists.
 CREATE TABLE IF NOT EXISTS recommendations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id UUID REFERENCES events(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     address TEXT NOT NULL,
@@ -97,9 +115,9 @@ CREATE TABLE IF NOT EXISTS events (
     status event_status_enum NOT NULL DEFAULT 'draft',
     created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
-    target_date DATE,
-    target_date_from DATE,
-    target_date_to DATE,
+    target_date TIMESTAMP,
+    target_date_from TIMESTAMP,
+    target_date_to TIMESTAMP,
     deadline_at TIMESTAMP,
     -- budget_min NUMERIC(10,2),
     -- budget_max NUMERIC(10,2),
@@ -120,6 +138,9 @@ CREATE TABLE IF NOT EXISTS events (
             (event_type IN ('individual', 'manual'))
         )
 );
+
+ALTER TABLE recommendations
+    ADD COLUMN IF NOT EXISTS event_id UUID REFERENCES events(id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS event_participants (
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
