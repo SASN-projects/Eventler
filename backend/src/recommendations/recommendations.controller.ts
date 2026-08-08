@@ -1,22 +1,21 @@
-import { Controller, Get, Post, Param, Body, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, Request, UseGuards } from '@nestjs/common';
 import { RecommendationsService } from './recommendations.service';
+import { FeedService } from './feed.service';
+import { FeedQueryDto } from './dto/feed-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthRequest } from '../auth/interfaces/auth-request.interface';
-// import { CreateRecommendationDto } from './dto/create-recommendation.dto';
 
 @Controller('recommendations')
 @UseGuards(JwtAuthGuard)
 export class RecommendationsController {
-  constructor(private readonly recommendationsService: RecommendationsService) {}
-
-  // @Get('for-event/:eventId')
-  // getEventRecommendations(@Param('eventId') eventId: string) {
-  //   return this.recommendationsService.getEventRecommendations(eventId);
-  // }
+  constructor(
+    private readonly recommendationsService: RecommendationsService,
+    private readonly feedService: FeedService,
+  ) {}
 
   @Get('feed')
-  getFeed() {
-    return this.recommendationsService.getFeed();
+  getFeed(@Request() req: AuthRequest, @Query() query: FeedQueryDto) {
+    return this.feedService.getFeed(req.user.sub, query);
   }
 
   @Post('events/:eventId/generate')
@@ -32,15 +31,4 @@ export class RecommendationsController {
   ) {
     return await this.recommendationsService.selectRecommendation(eventId, recommendationId, req.user.sub);
   }
-
-  // @Post('for-event/:eventId')
-  // async createForEvent(
-  //   @Param('eventId') eventId: string,
-  //   @Body() createRecommendationsDto: CreateRecommendationDto,
-  // ) {
-  //   return await this.recommendationsService.createForEvent(
-  //     eventId,
-  //     createRecommendationsDto,
-  //   );
-  // }
 }

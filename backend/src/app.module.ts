@@ -12,6 +12,7 @@ import { SlidesModule } from './slides/slides.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { LangfuseModule } from './langfuse/langfuse.module';
 import { GeminiModule } from './gemini/gemini.module';
+import { VenuesModule } from './venues/venues.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GeminiModule } from './gemini/gemini.module';
     RecommendationsModule,
     LangfuseModule,
     GeminiModule,
+    VenuesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

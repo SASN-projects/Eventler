@@ -30,6 +30,7 @@ import {
   HistorySignalSummary,
   HistoryScope,
 } from './recommendation-history.service';
+import { inferRegionCode } from './region-code.util';
 
 export interface RecommendationResult {
   id: string;
@@ -172,34 +173,6 @@ export class RecommendationsService {
 
   private getPromptName(): string {
     return this.configService.get<string>('LANGFUSE_PROMPT_NAME') || RECOMMENDATION_PROMPT_NAME;
-  }
-
-  getFeed() {
-    const mockRecommendations = [
-      {
-        id: '1',
-        title: 'Coffee Shop Meet-up',
-        score: 0.95,
-        rank: 1,
-      },
-      {
-        id: '2',
-        title: 'Beach Volleyball',
-        score: 0.88,
-        rank: 2,
-      },
-      {
-        id: '3',
-        title: 'Movie Night',
-        score: 0.82,
-        rank: 3,
-      },
-    ];
-
-    return {
-      recommendations: mockRecommendations,
-      count: mockRecommendations.length,
-    };
   }
 
   async generateRecommendation(eventId: string): Promise<GenerateRecommendationResponse> {
@@ -794,7 +767,7 @@ export class RecommendationsService {
           minRating: search.minRating,
           priceLevels: search.priceLevels,
           pageSize: 10,
-          regionCode: this.inferRegionCode(eventInput.locationCountry),
+          regionCode: inferRegionCode(eventInput.locationCountry),
         });
 
         allCandidates.push(
@@ -1096,14 +1069,6 @@ export class RecommendationsService {
     ]);
 
     return (priceLevels ?? []).filter((level) => allowed.has(level));
-  }
-
-  private inferRegionCode(country: string) {
-    const normalized = country.toLowerCase();
-    if (normalized.includes('israel')) return 'IL';
-    if (normalized.includes('united states') || normalized === 'usa') return 'US';
-    if (normalized.includes('united kingdom')) return 'GB';
-    return undefined;
   }
 
   private parseGeminiResponse(

@@ -7,9 +7,11 @@ import AddIcon from "@mui/icons-material/Add";
 import "./App.css";
 import DecisionPage from "./pages/slidingPages/DecisionPage";
 import ProfilePage from "./pages/ProfilePage";
+import HomeFeedPage from "./pages/homePage/HomeFeedPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import { AuthProvider } from "./contexts/AuthContext";
+import { FavoritesProvider } from "./contexts/FavoritesContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useAuth } from "./hooks/useAuth";
 import { useState, type FunctionComponent } from "react";
@@ -22,9 +24,11 @@ import {
   ProfileIconButton,
 } from "./pages/slidingPages/profile.styles";
 
+type AppView = "feed" | "create" | "profile";
+
 const AppContent: FunctionComponent = () => {
   const { isAuthenticated, loading, user } = useAuth();
-  const [showProfile, setShowProfile] = useState(false);
+  const [view, setView] = useState<AppView>("feed");
   const [resetKey, setResetKey] = useState(0);
   const [resumeEvent, setResumeEvent] = useState<{
     eventId: string;
@@ -36,15 +40,15 @@ const AppContent: FunctionComponent = () => {
   }
 
   const handleHomeClick = () => {
-    setShowProfile(false);
+    setView("feed");
   };
 
   const handleProfileClick = () => {
-    setShowProfile(true);
+    setView("profile");
   };
 
   const handlePlusClick = () => {
-    setShowProfile(false);
+    setView("create");
     setResumeEvent(null);
     setResetKey((prev) => prev + 1);
   };
@@ -62,7 +66,7 @@ const AppContent: FunctionComponent = () => {
       currentUserId && creatorId && creatorId === currentUserId,
     );
 
-    setShowProfile(false);
+    setView("create");
     setResumeEvent({
       eventId: event.id,
       mode:
@@ -91,26 +95,28 @@ const AppContent: FunctionComponent = () => {
           <ProtectedRoute>
             <AppContainer>
               <MainContentArea>
-                {showProfile ? (
+                {view === "profile" ? (
                   <ProfilePage
-                    onClose={() => setShowProfile(false)}
+                    onClose={() => setView("feed")}
                     onContinueEvent={handleContinueEvent}
                   />
-                ) : (
+                ) : view === "create" ? (
                   <DecisionPage
                     key={resetKey}
                     resumeEvent={resumeEvent}
                     onResumeConsumed={() => setResumeEvent(null)}
                   />
+                ) : (
+                  <HomeFeedPage />
                 )}
               </MainContentArea>
 
               <BottomNavPaper elevation={4}>
                 <HomeIconButton
                   onClick={handleHomeClick}
-                  $active={!showProfile}
+                  $active={view === "feed"}
                 >
-                  {!showProfile ? (
+                  {view === "feed" ? (
                     <HomeIcon sx={{ fontSize: 26 }} />
                   ) : (
                     <HomeOutlinedIcon sx={{ fontSize: 26 }} />
@@ -123,9 +129,9 @@ const AppContent: FunctionComponent = () => {
 
                 <ProfileIconButton
                   onClick={handleProfileClick}
-                  $active={showProfile}
+                  $active={view === "profile"}
                 >
-                  {showProfile ? (
+                  {view === "profile" ? (
                     <PersonIcon sx={{ fontSize: 26 }} />
                   ) : (
                     <PersonOutlineIcon sx={{ fontSize: 26 }} />
@@ -144,7 +150,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppContent />
+        <FavoritesProvider>
+          <AppContent />
+        </FavoritesProvider>
       </AuthProvider>
     </BrowserRouter>
   );

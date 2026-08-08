@@ -69,9 +69,14 @@ CREATE TABLE IF NOT EXISTS venues (
     rating NUMERIC(3,2) CHECK (rating BETWEEN 0 AND 5),
     source VARCHAR(100),
     external_source_id VARCHAR(255),
+    photo_reference TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_venues_source_external_id
+    ON venues (source, external_source_id)
+    WHERE external_source_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS favorite_venues (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -79,6 +84,17 @@ CREATE TABLE IF NOT EXISTS favorite_venues (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, venue_id)
 );
+
+CREATE TABLE IF NOT EXISTS user_feed_items (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    score NUMERIC(10,4),
+    generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, venue_id)
+);
+
+CREATE INDEX IF NOT EXISTS index_user_feed_items_user_rank ON user_feed_items (user_id, rank);
 
 CREATE TABLE IF NOT EXISTS recommendations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
