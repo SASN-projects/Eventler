@@ -27,7 +27,7 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const currentUserId = auth?.user?.id;
   const isEventCreator = Boolean(
     currentUserId &&
-      (event.createdById === currentUserId || event.creator?.id === currentUserId),
+    (event.createdById === currentUserId || event.creator?.id === currentUserId),
   );
   const title = hasRecommendation
     ? event.recommendation.title
@@ -44,23 +44,26 @@ const EventCard: FunctionComponent<EventCardProps> = ({
   const remainingParticipants = participantCount > 3 ? participantCount - 3 : 0;
   const canContinue =
     ["draft", "collecting_responses"].includes(normalizedStatus) ||
-    normalizedStatus === "recommended";
-  const hasAnsweredCurrentUser = Boolean(event.hasAnsweredCurrentUser);
+    normalizedStatus === "recommended" ||
+    normalizedStatus === "recommendations_ready";
   const isSlidingState = ["draft", "collecting_responses"].includes(
     normalizedStatus,
   );
   const isCreatorDecisionState =
     normalizedStatus === "recommended" && isEventCreator;
+  const isRecommendationReadyState = normalizedStatus === "recommendations_ready";
   const isWaitingForHostDecisionState =
-    normalizedStatus === "recommended" &&
-    !isEventCreator &&
-    hasAnsweredCurrentUser;
-  const showContinueButton = canContinue && !isWaitingForHostDecisionState;
+    isRecommendationReadyState && !isEventCreator;
+  const showContinueButton = canContinue;
   const continueButtonText = isSlidingState
     ? "Continue Sliding"
     : isCreatorDecisionState
       ? "Ready to Decide?"
-      : "Continue";
+      : isWaitingForHostDecisionState
+        ? "View Status"
+        : isRecommendationReadyState
+          ? "View Recommendations"
+          : "Continue";
   const showStatusChip =
     isWaitingForHostDecisionState ||
     !(isSlidingState || isCreatorDecisionState);
@@ -179,16 +182,20 @@ const EventCard: FunctionComponent<EventCardProps> = ({
               <Chip
                 label={
                   isWaitingForHostDecisionState
-                    ? "Waiting for host decision"
+                    ? "Waiting for the event creator to choose the final option."
                     : canContinue
-                    ? normalizedStatus === "recommended"
-                      ? "Ready to Answer"
-                      : "In Progress"
-                    : hasRecommendation
-                      ? "Recommendation Selected"
-                      : normalizedStatus === "recommended"
-                        ? "Shared Event"
-                        : "Created Event"
+                      ? normalizedStatus === "recommended"
+                        ? "Ready to Answer"
+                        : normalizedStatus === "recommendations_ready"
+                          ? isEventCreator
+                            ? "Recommendations Ready"
+                            : "Waiting for host decision"
+                          : "In Progress"
+                      : hasRecommendation
+                        ? "Recommendation Selected"
+                        : normalizedStatus === "recommended"
+                          ? "Shared Event"
+                          : "Created Event"
                 }
                 size="small"
                 sx={{
