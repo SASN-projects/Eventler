@@ -110,7 +110,7 @@ describe('RecommendationsService', () => {
 
     geminiServiceMock = {
       generateJsonContent: jest.fn(),
-      getDefaultModel: jest.fn().mockReturnValue('gemini-2.5-flash'),
+      getDefaultModel: jest.fn().mockReturnValue('gemini-3.6-flash'),
     };
 
     googlePlacesServiceMock = {
@@ -467,7 +467,7 @@ describe('RecommendationsService', () => {
       get: jest.fn((key: string) => {
         if (key === 'LANGFUSE_PROMPT_NAME') return 'event-recommendation-planner';
         if (key === 'GEMINI_MAX_RETRIES') return 2;
-        if (key === 'GEMINI_MODEL') return 'gemini-2.5-flash';
+        if (key === 'GEMINI_MODEL') return 'gemini-3.6-flash';
         if (key === 'GEMINI_FALLBACK_MODEL') return 'gemini-1.5-flash';
         return undefined;
       }),

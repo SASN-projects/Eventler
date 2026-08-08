@@ -19,14 +19,73 @@ export interface ClassifiedGeminiError {
   statusCode?: number;
   providerUnavailable: boolean;
   message: string;
+  retryAfterMs?: number;
+}
+
+export function parseRetryAfter(err: any): number | undefined {
+  // 1. Direct header on response
+  const rawHeader =
+    err?.response?.headers?.['retry-after'] ||
+    err?.headers?.['retry-after'] ||
+    err?.retryAfter;
+
+  if (rawHeader) {
+    const parsedSec = Number(rawHeader);
+    if (!Number.isNaN(parsedSec) && parsedSec > 0) {
+      return parsedSec * 1000;
+    }
+    const parsedDate = new Date(rawHeader).getTime();
+    if (!Number.isNaN(parsedDate) && parsedDate > Date.now()) {
+      return parsedDate - Date.now();
+    }
+  }
+
+  // 2. Retry delay hints in Google Generative AI error details
+  const message = String(err?.message || '');
+  const matchSec = message.match(/retry in ([0-9]+(?:\.[0-9]+)?)\s*s(?:ec|econds)?/i);
+  if (matchSec) {
+    const sec = parseFloat(matchSec[1]);
+    if (!Number.isNaN(sec) && sec > 0) {
+      return Math.round(sec * 1000);
+    }
+  }
+
+  const matchMs = message.match(/retry after ([0-9]+)\s*ms/i);
+  if (matchMs) {
+    const ms = parseInt(matchMs[1], 10);
+    if (!Number.isNaN(ms) && ms > 0) {
+      return ms;
+    }
+  }
+
+  return undefined;
 }
 
 export function classifyGeminiError(err: any): ClassifiedGeminiError {
   const status = err?.status || err?.statusCode || err?.response?.status;
   const message = String(err?.message || err || '');
   const lowerMsg = message.toLowerCase();
+  const retryAfterMs = parseRetryAfter(err);
 
-  // 1. 503 / High Demand / Service Unavailable / Overloaded
+  // 1. 404 / Model Not Found / No longer available (Non-retryable)
+  if (
+    status === 404 ||
+    lowerMsg.includes('404') ||
+    lowerMsg.includes('not found') ||
+    lowerMsg.includes('no longer available') ||
+    lowerMsg.includes('is not found')
+  ) {
+    return {
+      isRetryable: false,
+      errorCode: 'PROVIDER_MODEL_NOT_FOUND',
+      statusCode: 404,
+      providerUnavailable: false,
+      message: 'The requested AI model was not found or is no longer available. Please update the model configuration.',
+      retryAfterMs,
+    };
+  }
+
+  // 2. 503 / High Demand / Service Unavailable / Overloaded
   if (
     status === 503 ||
     lowerMsg.includes('503') ||
@@ -41,14 +100,16 @@ export function classifyGeminiError(err: any): ClassifiedGeminiError {
       statusCode: 503,
       providerUnavailable: true,
       message: 'The AI provider is currently experiencing high demand. Please try again later.',
+      retryAfterMs,
     };
   }
 
-  // 2. 429 / Rate Limit / Resource Exhausted
+  // 3. 429 / Rate Limit / Resource Exhausted
   if (
     status === 429 ||
     lowerMsg.includes('429') ||
     lowerMsg.includes('resource exhausted') ||
+    lowerMsg.includes('resource_exhausted') ||
     lowerMsg.includes('rate limit') ||
     lowerMsg.includes('quota')
   ) {
@@ -57,11 +118,12 @@ export function classifyGeminiError(err: any): ClassifiedGeminiError {
       errorCode: 'PROVIDER_RATE_LIMIT',
       statusCode: 429,
       providerUnavailable: true,
-      message: 'AI provider rate limit reached. Retrying...',
+      message: 'AI provider rate limit reached. Please try again in a few moments.',
+      retryAfterMs,
     };
   }
 
-  // 3. Network / Timeout / Transient Fetch Errors
+  // 4. Network / Timeout / Transient Fetch Errors
   if (
     lowerMsg.includes('timeout') ||
     lowerMsg.includes('etimedout') ||
@@ -74,26 +136,29 @@ export function classifyGeminiError(err: any): ClassifiedGeminiError {
       isRetryable: true,
       errorCode: 'PROVIDER_NETWORK_TIMEOUT',
       providerUnavailable: true,
-      message: 'Network timeout connecting to AI provider. Retrying...',
+      message: 'Network timeout connecting to AI provider. Please try again.',
+      retryAfterMs,
     };
   }
 
-  // 4. Other 5xx Server Errors
+  // 5. Other 5xx Server Errors
   if (typeof status === 'number' && status >= 500 && status < 600) {
     return {
       isRetryable: true,
       errorCode: 'PROVIDER_SERVER_ERROR',
       statusCode: status,
       providerUnavailable: true,
-      message: `AI provider returned server error (${status}). Retrying...`,
+      message: `AI provider returned server error (${status}). Please try again.`,
+      retryAfterMs,
     };
   }
 
-  // 5. Explicit Non-retryable errors (Auth 401/403, Invalid Request 400, Safety blocks)
+  // 6. Explicit Non-retryable errors (Auth 401/403, Invalid Request 400, Safety blocks)
   if (
     status === 401 ||
     status === 403 ||
     lowerMsg.includes('api_key') ||
+    lowerMsg.includes('api key not valid') ||
     lowerMsg.includes('unauthorized') ||
     lowerMsg.includes('forbidden')
   ) {
@@ -109,7 +174,8 @@ export function classifyGeminiError(err: any): ClassifiedGeminiError {
   if (
     status === 400 ||
     lowerMsg.includes('invalid argument') ||
-    lowerMsg.includes('bad request')
+    lowerMsg.includes('bad request') ||
+    lowerMsg.includes('invalid model')
   ) {
     return {
       isRetryable: false,
@@ -129,13 +195,14 @@ export function classifyGeminiError(err: any): ClassifiedGeminiError {
     };
   }
 
-  // 6. Generic/transient provider errors without explicit 4xx non-retryable status
+  // 7. Generic/transient provider errors without explicit 4xx non-retryable status
   return {
     isRetryable: true,
     errorCode: 'PROVIDER_TRANSIENT_ERROR',
     statusCode: typeof status === 'number' ? status : undefined,
     providerUnavailable: true,
-    message: 'A transient AI provider error occurred. Retrying...',
+    message: 'The AI provider is temporarily unavailable. Please try again.',
+    retryAfterMs,
   };
 }
 
@@ -147,7 +214,10 @@ export class GeminiService {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_API_KEY');
-    this.defaultModel = this.configService.get<string>('GOOGLE_GEMINI_MODEL') || 'gemini-2.5-flash';
+    this.defaultModel =
+      this.configService.get<string>('GEMINI_MODEL') ||
+      this.configService.get<string>('GOOGLE_GEMINI_MODEL') ||
+      'gemini-3.6-flash';
 
     if (apiKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);

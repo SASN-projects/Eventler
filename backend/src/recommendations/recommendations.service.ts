@@ -446,7 +446,8 @@ export class RecommendationsService {
     const maxDelayMs = Number(this.configService.get('GEMINI_RETRY_MAX_DELAY_MS')) || 15000;
     const primaryModel =
       this.configService.get<string>('GEMINI_MODEL') ||
-      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-2.5-flash');
+      this.configService.get<string>('GOOGLE_GEMINI_MODEL') ||
+      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-3.6-flash');
     const fallbackModel = this.configService.get<string>('GEMINI_FALLBACK_MODEL');
 
     let lastError: Error | null = null;
