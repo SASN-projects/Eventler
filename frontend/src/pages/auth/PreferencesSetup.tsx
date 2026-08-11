@@ -15,6 +15,7 @@ import {
 // step. 'time-of-day' is excluded — redundant with the event's chosen start time.
 export const PREFERENCE_OPTIONS = [
   { code: "budget", label: "Budget", icon: "💰" },
+  { code: "transportation", label: "Transportation", icon: "🚗" },
   { code: "occasion", label: "Occasion", icon: "🎉" },
   { code: "setting", label: "Setting", icon: "📍" },
   { code: "food-drinks", label: "Food & Drinks", icon: "🍽️" },

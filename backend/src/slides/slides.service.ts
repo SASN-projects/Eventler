@@ -34,7 +34,7 @@ export class SlidesService {
   private static readonly RETIRED_SLIDE_CODES = new Set(['vibe', 'activity', 'time-of-day']);
 
   private static readonly VALID_PREFERENCE_CODES = new Set([
-    'budget', 'occasion', 'setting', 'food-drinks', 'group-dynamic', 'energy-level', 'must-have',
+    'budget', 'transportation', 'occasion', 'setting', 'food-drinks', 'group-dynamic', 'energy-level', 'must-have',
   ]);
 
   async getSlides(userId: string, vibes?: string[]): Promise<SliderQuestion[]> {

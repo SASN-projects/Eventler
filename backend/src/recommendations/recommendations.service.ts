@@ -48,6 +48,12 @@ export interface GenerateRecommendationResponse {
   success: boolean;
   data?: RecommendationResult[];
   message?: string;
+  /**
+   * Which generation path produced this result. Exposed because the two strategies have
+   * materially different fit characteristics, and without this the caller (and any
+   * evaluation of output quality) can only guess at which one ran.
+   */
+  strategy?: 'google_places' | 'gemini_direct';
 }
 
 /**
@@ -343,8 +349,10 @@ export class RecommendationsService {
         const searchPlan = await this.generatePlacesSearchPlan(eventInput, eventAnswers, trace);
         const rankedRecommendations = await this.searchAndRankPlaces(searchPlan, eventInput, eventAnswers, trace);
 
-        if (rankedRecommendations.length >= 3) {
-          const topRecommendations = await this.attachPlacePhotos(rankedRecommendations.slice(0, 3));
+        const distinctRecommendations = this.pickDistinctTop(rankedRecommendations, 3);
+
+        if (distinctRecommendations.length >= 3) {
+          const topRecommendations = await this.attachPlacePhotos(distinctRecommendations);
           const persistSpan = trace.span({
             name: 'persist-google-places-recommendations',
             input: {
@@ -383,6 +391,7 @@ export class RecommendationsService {
 
             return {
               success: true,
+              strategy: 'google_places',
               data: savedRecommendations.map((savedRecommendation, index) => ({
                 id: savedRecommendation.id,
                 title: savedRecommendation.title,
@@ -420,7 +429,7 @@ export class RecommendationsService {
     const primaryModel =
       this.configService.get<string>('GEMINI_MODEL') ||
       this.configService.get<string>('GOOGLE_GEMINI_MODEL') ||
-      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-3.6-flash');
+      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-2.5-flash');
     const fallbackModel = this.configService.get<string>('GEMINI_FALLBACK_MODEL');
 
     let lastError: Error | null = null;
@@ -544,6 +553,7 @@ export class RecommendationsService {
 
         return {
           success: true,
+          strategy: 'gemini_direct',
           data: savedRecommendations.map((savedRecommendation) => ({
             id: savedRecommendation.id,
             title: savedRecommendation.title,
@@ -1076,20 +1086,74 @@ export class RecommendationsService {
     return priceLevel ? labels[priceLevel] : undefined;
   }
 
+  /**
+   * How much a full preference match is worth relative to the quality signals below it.
+   * Rating and popularity are deliberately compressed into a narrow tie-break band: a
+   * globally famous venue must not outrank a venue that actually matches what the user asked
+   * for, which is what happens when raw rating/review-count dominate the sum.
+   */
+  private static readonly PREFERENCE_WEIGHT = 60;
+
+  /**
+   * Selects the v1 ranking formula, in which rating and review count dominate the score.
+   * Available behind an environment flag (default off) so the two rankers can be compared on
+   * identical live inputs.
+   */
+  private useV1Ranking(): boolean {
+    return this.configService.get<string>('RECOMMENDATION_V1_RANKING') === 'true';
+  }
+
   private scorePlace(
     place: GooglePlaceCandidate & { planWeight: number },
     eventAnswers: any[],
     openingMatch: OpeningMatch = { status: 'unknown' },
   ) {
-    const ratingScore = (place.rating ?? 0) * 20;
-    const popularityScore = Math.log10((place.userRatingCount ?? 0) + 1) * 12;
-    const queryWeightScore = place.planWeight * 10;
-    const preferenceScore = this.scorePreferenceMatches(place, eventAnswers);
     const openingScore = openingMatch.status === 'open' ? 15 : openingMatch.status === 'closed' ? -35 : 0;
+    const queryWeightScore = place.planWeight * 10;
+
+    if (this.useV1Ranking()) {
+      const v1Preference = (eventAnswers ?? []).reduce((score: number, answer: any) => {
+        const value = String(answer?.answerValue ?? '').toLowerCase();
+        if (!value || value.length < 3) return score;
+        const haystack = [
+          place.displayName,
+          place.formattedAddress,
+          place.primaryType,
+          ...(place.types ?? []),
+          place.searchQuery,
+        ].join(' ').toLowerCase();
+        return haystack.includes(value) ? score + 8 : score;
+      }, 0);
+
+      return (
+        (place.rating ?? 0) * 20 +
+        Math.log10((place.userRatingCount ?? 0) + 1) * 12 +
+        queryWeightScore +
+        v1Preference +
+        openingScore
+      );
+    }
+
+    // Measured from a 3.5 baseline so the spread between a 4.2 and a 4.8 venue stays small
+    // next to preference fit, instead of the full 0..5 range being worth ~100 points.
+    const ratingScore = Math.max(0, (place.rating ?? 0) - 3.5) * 12;
+    const popularityScore = Math.log10((place.userRatingCount ?? 0) + 1) * 5;
+    const preferenceScore =
+      this.scorePreferenceMatches(place, eventAnswers) * RecommendationsService.PREFERENCE_WEIGHT;
 
     return ratingScore + popularityScore + queryWeightScore + preferenceScore + openingScore;
   }
 
+  /**
+   * Fraction of the user's answers this place plausibly satisfies, in [0, 1].
+   *
+   * Answer values are human-readable option labels ("Mediterranean or Middle Eastern",
+   * "Water activities"), while Places describes venues in its own vocabulary
+   * (`mediterranean_restaurant`, `beach`). Comparing the two as whole strings therefore
+   * almost never matches, so every candidate used to score identically here and ranking
+   * collapsed onto rating/popularity. Matching is done per concept token, expanded through
+   * PREFERENCE_SYNONYMS into the words Places actually uses.
+   */
   private scorePreferenceMatches(place: GooglePlaceCandidate, eventAnswers: any[]) {
     const haystack = [
       place.displayName,
@@ -1101,11 +1165,222 @@ export class RecommendationsService {
       .join(' ')
       .toLowerCase();
 
-    return eventAnswers.reduce((score, answer) => {
-      const value = String(answer.answerValue ?? '').toLowerCase();
-      if (!value || value.length < 3) return score;
-      return haystack.includes(value) ? score + 8 : score;
-    }, 0);
+    let scoreable = 0;
+    let matched = 0;
+
+    for (const answer of eventAnswers ?? []) {
+      const terms = this.preferenceSearchTerms(String(answer?.answerValue ?? ''));
+      if (terms.length === 0) continue;
+
+      scoreable += 1;
+      if (terms.some((term) => haystack.includes(term))) {
+        matched += 1;
+      }
+    }
+
+    return scoreable === 0 ? 0 : matched / scoreable;
+  }
+
+  /**
+   * Expands one option label into the set of lowercase terms that would indicate a match.
+   * Returns an empty array for labels that carry no venue signal (price bands, group sizes,
+   * "No preference"), so they neither count for nor against a candidate.
+   */
+  private preferenceSearchTerms(answerValue: string): string[] {
+    const tokens = answerValue
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter(
+        (token) =>
+          token.length >= 3 &&
+          !RecommendationsService.PREFERENCE_STOPWORDS.has(token),
+      );
+
+    const terms = new Set<string>();
+    for (const token of tokens) {
+      terms.add(token);
+      for (const synonym of RecommendationsService.PREFERENCE_SYNONYMS[token] ?? []) {
+        terms.add(synonym);
+      }
+    }
+
+    return [...terms];
+  }
+
+  /** Tokens that appear in option labels but describe no venue characteristic. */
+  private static readonly PREFERENCE_STOPWORDS = new Set([
+    'the', 'and', 'for', 'with', 'are', 'our', 'any', 'all', 'not', 'but', 'just', 'some',
+    'own', 'you', 'them', 'they', 'its', 'was', 'has', 'have', 'that', 'this', 'from',
+    'nis', 'open', 'anything', 'flexible', 'preference', 'strong', 'none', 'above', 'mix',
+    'both', 'come', 'main', 'point', 'nice', 'keep', 'separate', 'completely', 'very',
+    'more', 'less', 'over', 'under', 'about', 'real', 'great', 'good', 'important',
+    'importance', 'focus', 'will', 'eat', 'before', 'after', 'people', 'person', 'who',
+    'know', 'each', 'other', 'well', 'new', 'single', 'plan', 'planned', 'mostly',
+  ]);
+
+  /**
+   * Maps concepts used in the question bank's option labels to the vocabulary that appears
+   * in Google Places display names, primary types and type lists.
+   */
+  private static readonly PREFERENCE_SYNONYMS: Record<string, string[]> = {
+    // Cuisine
+    mediterranean: ['mediterranean', 'levantine', 'hummus', 'israeli', 'greek', 'turkish'],
+    middle: ['middle_eastern', 'levantine', 'hummus', 'shawarma'],
+    eastern: ['middle_eastern', 'levantine'],
+    asian: ['asian', 'japanese', 'chinese', 'thai', 'sushi', 'ramen', 'vietnamese', 'korean', 'noodle'],
+    italian: ['italian', 'pizza', 'pizzeria', 'pasta', 'trattoria'],
+    american: ['american', 'burger', 'steak', 'diner', 'barbecue'],
+    burgers: ['burger', 'american', 'diner'],
+    spicy: ['thai', 'indian', 'mexican', 'szechuan', 'spicy'],
+    healthy: ['healthy', 'salad', 'vegan', 'vegetarian', 'juice', 'poke'],
+    light: ['salad', 'juice', 'vegetarian', 'cafe'],
+    comfort: ['diner', 'bistro', 'grill', 'comfort'],
+    traditional: ['traditional', 'authentic', 'local'],
+    street: ['street_food', 'market', 'food_court', 'stall', 'falafel'],
+    food: ['restaurant', 'food'],
+    fine: ['fine_dining', 'gourmet', 'upscale'],
+    dining: ['restaurant', 'dining'],
+    // Venue form
+    restaurant: ['restaurant'],
+    bistro: ['bistro', 'restaurant', 'cafe'],
+    cafe: ['cafe', 'coffee', 'coffee_shop'],
+    coffee: ['cafe', 'coffee_shop'],
+    bar: ['bar', 'pub', 'lounge', 'wine_bar'],
+    pub: ['pub', 'bar', 'brewery'],
+    rooftop: ['rooftop', 'roof', 'sky', 'lounge'],
+    club: ['night_club', 'club', 'nightlife'],
+    speakeasy: ['bar', 'lounge', 'cocktail'],
+    karaoke: ['karaoke', 'bar'],
+    dive: ['bar', 'pub'],
+    lounge: ['lounge', 'bar'],
+    // Drinks
+    wine: ['wine', 'wine_bar', 'winery'],
+    cocktails: ['cocktail', 'bar', 'lounge'],
+    craft: ['brewery', 'beer', 'taproom', 'pub'],
+    beer: ['beer', 'brewery', 'pub', 'taproom'],
+    drafts: ['brewery', 'pub', 'beer'],
+    mocktails: ['juice', 'cafe', 'smoothie'],
+    juices: ['juice', 'smoothie', 'cafe'],
+    smoothies: ['smoothie', 'juice', 'ice_cream'],
+    ice: ['ice_cream', 'dessert', 'gelato'],
+    cream: ['ice_cream', 'gelato', 'dessert'],
+    // Water
+    water: ['beach', 'water_park', 'marina', 'surf', 'kayak', 'paddle', 'boat', 'swimming', 'water', 'sailing'],
+    boat: ['marina', 'boat', 'sailing', 'ferry', 'cruise'],
+    ferry: ['ferry', 'marina', 'port'],
+    waterfront: ['pier', 'waterfront', 'marina', 'port', 'harbor', 'promenade'],
+    pier: ['pier', 'marina', 'waterfront', 'port'],
+    beach: ['beach', 'promenade', 'shore'],
+    // Outdoor and nature
+    outdoors: ['park', 'garden', 'beach', 'trail', 'rooftop', 'promenade'],
+    outdoor: ['park', 'garden', 'beach', 'trail', 'hiking'],
+    nature: ['park', 'nature', 'trail', 'garden', 'forest', 'reserve'],
+    trails: ['trail', 'hiking', 'park', 'nature'],
+    hiking: ['hiking', 'trail', 'park', 'nature'],
+    park: ['park', 'garden', 'playground'],
+    picnic: ['park', 'garden', 'picnic'],
+    lawn: ['park', 'garden'],
+    // Active
+    adventure: ['adventure', 'climbing', 'hiking', 'kayak', 'surf'],
+    adrenaline: ['climbing', 'karting', 'skydiving', 'adventure', 'trampoline'],
+    biking: ['bike', 'cycling', 'trail'],
+    bike: ['bike', 'bicycle', 'cycling'],
+    bikes: ['bike', 'bicycle', 'cycling'],
+    scooters: ['scooter', 'bike'],
+    climbing: ['climbing', 'bouldering', 'gym'],
+    fitness: ['gym', 'fitness', 'yoga', 'studio'],
+    movement: ['gym', 'dance', 'studio', 'yoga'],
+    dance: ['dance', 'studio', 'night_club'],
+    gym: ['gym', 'fitness'],
+    sport: ['sports', 'stadium', 'court', 'arena'],
+    sports: ['sports', 'stadium', 'court', 'bowling', 'arena'],
+    team: ['sports', 'stadium', 'court'],
+    bowling: ['bowling', 'bowling_alley'],
+    escape: ['escape_room', 'amusement'],
+    arcade: ['arcade', 'amusement', 'game'],
+    walking: ['walking', 'trail', 'promenade', 'tour'],
+    walk: ['walking', 'trail', 'promenade', 'tour'],
+    // Culture
+    museum: ['museum', 'exhibition', 'gallery'],
+    museums: ['museum', 'exhibition', 'gallery'],
+    galleries: ['art_gallery', 'gallery', 'museum'],
+    gallery: ['art_gallery', 'gallery', 'museum'],
+    art: ['art_gallery', 'gallery', 'museum', 'art'],
+    historic: ['historical', 'landmark', 'heritage', 'monument', 'historical_place'],
+    historical: ['historical', 'landmark', 'heritage', 'monument', 'historical_place'],
+    heritage: ['historical', 'heritage', 'landmark', 'monument'],
+    sites: ['landmark', 'historical_place', 'tourist_attraction', 'monument'],
+    landmarks: ['landmark', 'monument', 'historical_place', 'tourist_attraction'],
+    architecture: ['architecture', 'landmark', 'historical_place', 'monument'],
+    scenic: ['viewpoint', 'scenic', 'observation', 'lookout', 'promenade'],
+    views: ['viewpoint', 'observation', 'lookout', 'scenic'],
+    skyline: ['viewpoint', 'observation', 'lookout', 'tower'],
+    sunset: ['viewpoint', 'beach', 'rooftop', 'promenade'],
+    markets: ['market', 'bazaar', 'flea', 'food_court'],
+    market: ['market', 'bazaar', 'flea', 'food_court'],
+    neighborhoods: ['neighborhood', 'market', 'promenade', 'historical'],
+    bookstore: ['book_store', 'bookshop'],
+    flea: ['flea', 'market', 'bazaar'],
+    tour: ['tour', 'tourist_attraction', 'guided'],
+    guided: ['tour', 'tourist_attraction'],
+    audio: ['tour', 'tourist_attraction', 'museum'],
+    workshop: ['workshop', 'studio', 'class'],
+    // Entertainment
+    theater: ['theater', 'performing_arts', 'movie_theater'],
+    performance: ['theater', 'performing_arts', 'concert', 'live_music'],
+    live: ['live_music', 'concert', 'performing_arts', 'theater'],
+    music: ['live_music', 'concert', 'night_club', 'music'],
+    movie: ['movie_theater', 'cinema'],
+    film: ['movie_theater', 'cinema'],
+    comedy: ['comedy_club', 'theater'],
+    board: ['board_game', 'cafe', 'game'],
+    game: ['game', 'arcade', 'board_game'],
+    games: ['game', 'arcade', 'bowling', 'board_game'],
+    card: ['board_game', 'game', 'cafe'],
+    puzzles: ['escape_room', 'board_game', 'game'],
+    // Genre
+    electronic: ['night_club', 'club', 'electronic'],
+    techno: ['night_club', 'club'],
+    hop: ['night_club', 'club', 'hip_hop'],
+    afrobeats: ['night_club', 'club'],
+    latin: ['night_club', 'salsa', 'club'],
+    reggaeton: ['night_club', 'club'],
+    pop: ['night_club', 'bar', 'club'],
+    throwbacks: ['night_club', 'bar'],
+    mega: ['night_club', 'club'],
+    // Accessibility and logistics
+    wheelchair: ['wheelchair', 'accessible'],
+    accessible: ['wheelchair', 'accessible'],
+    parking: ['parking'],
+    pet: ['pet', 'dog'],
+    friendly: ['friendly'],
+    kid: ['playground', 'family', 'amusement'],
+    indoors: ['restaurant', 'cafe', 'bar', 'museum', 'indoor'],
+    indoor: ['indoor', 'arcade', 'gym', 'museum'],
+  };
+
+  /**
+   * Takes the top `count` ranked venues, skipping any whose name repeats one already taken.
+   *
+   * Deduplication earlier in the pipeline keys on place id, so a venue that the venue index
+   * lists under two separate ids — a park with more than one registered entrance, for example
+   * — survives it and can occupy two of the three result slots. Recommending the same place
+   * twice is never useful, so the name is treated as the final constraint before results are
+   * kept.
+   */
+  private pickDistinctTop<T extends { title: string }>(ranked: T[], count: number): T[] {
+    const seen = new Set<string>();
+    const picked: T[] = [];
+
+    for (const candidate of ranked) {
+      const key = candidate.title.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      picked.push(candidate);
+      if (picked.length === count) break;
+    }
+
+    return picked;
   }
 
   private dedupePlaces<T extends GooglePlaceCandidate>(places: T[]) {

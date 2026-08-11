@@ -107,6 +107,7 @@ const FavoriteCardSubtitle = styled(Typography)({
 
 const PREF_MAP: Record<string, string> = {
   budget: "💰 Budget",
+  transportation: "🚗 Transportation",
   occasion: "🎉 Occasion",
   setting: "📍 Setting",
   "food-drinks": "🍽️ Food & Drinks",
