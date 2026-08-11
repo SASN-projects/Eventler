@@ -429,7 +429,7 @@ export class RecommendationsService {
     const primaryModel =
       this.configService.get<string>('GEMINI_MODEL') ||
       this.configService.get<string>('GOOGLE_GEMINI_MODEL') ||
-      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-2.5-flash');
+      (this.geminiService.getDefaultModel ? this.geminiService.getDefaultModel() : 'gemini-3.6-flash');
     const fallbackModel = this.configService.get<string>('GEMINI_FALLBACK_MODEL');
 
     let lastError: Error | null = null;
