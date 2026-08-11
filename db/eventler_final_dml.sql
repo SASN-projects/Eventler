@@ -171,6 +171,30 @@ VALUES
     ('ffffffff-9999-9999-9999-999999999906', 'ffffffff-9999-9999-9999-999999999999', 'None of the above')
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO slider_questions (id, code, label, description, answer_mode, image_url)
+VALUES
+    ('dddddddd-3333-3333-3333-333333333333', 'transportation',
+     'How do you plan to get there?', '', 'options',
+     'https://images.unsplash.com/photo-1522199710521-72d69614c702?auto=format&fit=crop&w=1400&q=80')
+ON CONFLICT (code) DO UPDATE
+    SET label     = EXCLUDED.label,
+        image_url = EXCLUDED.image_url;
+
+DELETE FROM question_options
+WHERE question_id IN (SELECT id FROM slider_questions WHERE code = 'transportation');
+
+INSERT INTO question_options (id, question_id, value)
+SELECT o.id, q.id, o.value
+FROM slider_questions q
+CROSS JOIN (VALUES
+    ('dddddddd-3333-3333-3333-333333333301'::uuid, 'Walk'),
+    ('dddddddd-3333-3333-3333-333333333302'::uuid, 'Car'),
+    ('dddddddd-3333-3333-3333-333333333303'::uuid, 'Public transportation'),
+    ('dddddddd-3333-3333-3333-333333333304'::uuid, 'Bike')
+) AS o(id, value)
+WHERE q.code = 'transportation'
+ON CONFLICT (id) DO NOTHING;
+
 -- Cuisine options (dining vibe follow-up)
 INSERT INTO question_options (id, question_id, value)
 VALUES
@@ -241,6 +265,7 @@ UPDATE slider_questions SET tags = ARRAY['dining','casual']          WHERE code 
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'group-dynamic';
 UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'must-have';
 UPDATE slider_questions SET tags = ARRAY['active','casual','sightseeing'] WHERE code = 'setting';
+UPDATE slider_questions SET tags = ARRAY['preference']               WHERE code = 'transportation';
 
 -- Activity-specific follow-up tags — align with the vibe-select options
 -- (dining, sightseeing, active, clubbing, casual, cultural).

@@ -103,17 +103,51 @@ export interface RecommendationPromptContextOptions {
  * RecommendationsService — which precomputes this summary early for reuse in judge metadata —
  * and RecommendationPromptContextBuilder share a single source of truth and cannot drift apart.
  */
+/**
+ * Option labels that state an absence of preference rather than a preference.
+ * Normalised before comparison because the question bank writes these with an em dash
+ * ("Flexible — open to anything") and casing varies between seeds.
+ */
+const INDIFFERENT_ANSWERS = new Set([
+  'open to anything',
+  'no preference',
+  'no strong preference',
+  'completely open',
+  'none of the above',
+  'flexible open to anything',
+  'flexible',
+]);
+
+export function isIndifferentAnswer(answerValue: string): boolean {
+  const normalized = answerValue
+    .toLowerCase()
+    .replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return INDIFFERENT_ANSWERS.has(normalized);
+}
+
 export function buildGroupConsensusSummary(eventAnswers: RecommendationSlideAnswer[] = []): string {
   if (!eventAnswers || eventAnswers.length === 0) {
     return 'No current group member answers were provided.';
   }
 
   const groupedAnswers = new Map<string, Map<string, number>>();
+  const abstentionsByQuestion = new Map<string, number>();
 
   for (const answer of eventAnswers) {
     const question = answer?.question?.trim();
     const answerValue = answer?.answerValue?.trim();
     if (!question || !answerValue) {
+      continue;
+    }
+
+    if (isIndifferentAnswer(answerValue)) {
+      abstentionsByQuestion.set(question, (abstentionsByQuestion.get(question) ?? 0) + 1);
+      if (!groupedAnswers.has(question)) {
+        groupedAnswers.set(question, new Map<string, number>());
+      }
       continue;
     }
 
@@ -134,11 +168,21 @@ export function buildGroupConsensusSummary(eventAnswers: RecommendationSlideAnsw
     const distribution = [...answersByQuestion.entries()].sort(
       (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
     );
+    const abstentions = abstentionsByQuestion.get(question) ?? 0;
+    const abstentionNote = abstentions > 0 ? ` (${abstentions} member(s) expressed no preference)` : '';
+
+    if (distribution.length === 0) {
+      lines.push(`- ${question}: no member expressed a preference — treat as unconstrained.`);
+      continue;
+    }
+
     const totalResponses = distribution.reduce((sum, [, count]) => sum + count, 0);
     const [topAnswer, topCount] = distribution[0];
 
     if (distribution.length === 1) {
-      lines.push(`- ${question}: unanimous — all ${topCount}/${totalResponses} responses chose "${topAnswer}".`);
+      lines.push(
+        `- ${question}: unanimous among members who expressed a preference — all ${topCount}/${totalResponses} chose "${topAnswer}"${abstentionNote}.`,
+      );
       continue;
     }
 
@@ -151,13 +195,15 @@ export function buildGroupConsensusSummary(eventAnswers: RecommendationSlideAnsw
         .map(([value, count]) => `"${value}" (${count}/${totalResponses})`)
         .join(', ');
       lines.push(
-        `- ${question}: majority prefers "${topAnswer}" (${topCount}/${totalResponses}), but this is NOT unanimous — other member(s) preferred ${otherAnswersText}.`,
+        `- ${question}: majority prefers "${topAnswer}" (${topCount}/${totalResponses}), but this is NOT unanimous — other member(s) preferred ${otherAnswersText}${abstentionNote}.`,
       );
     } else {
       const allOptionsText = distribution
         .map(([value, count]) => `"${value}" (${count}/${totalResponses})`)
         .join(', ');
-      lines.push(`- ${question}: no clear majority — group is evenly split between ${allOptionsText}.`);
+      lines.push(
+        `- ${question}: no clear majority — group is evenly split between ${allOptionsText}${abstentionNote}.`,
+      );
     }
   }
 

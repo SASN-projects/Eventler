@@ -15,11 +15,14 @@ jest.mock('langfuse', () => ({
 }));
 
 const mockGenerateContent = jest.fn();
+/** Model names passed to getGenerativeModel, in call order. */
+const requestedModels: string[] = [];
 
 jest.mock('@google/generative-ai', () => ({
   GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
-    getGenerativeModel: jest.fn().mockReturnValue({
-      generateContent: mockGenerateContent,
+    getGenerativeModel: jest.fn(({ model }: { model: string }) => {
+      requestedModels.push(model);
+      return { generateContent: mockGenerateContent };
     }),
   })),
 }));
@@ -38,13 +41,20 @@ const successfulApiResponse = (jsonPayload: object) => ({
   },
 });
 
-const mockConfigService = (apiKey?: string) => ({
+const mockConfigService = (apiKey?: string, fallbackModel?: string) => ({
   get: jest.fn((key: string) => {
     if (key === 'GOOGLE_API_KEY') return apiKey;
     if (key === 'GOOGLE_GEMINI_MODEL') return 'gemini-2.5-flash';
+    if (key === 'GEMINI_FALLBACK_MODEL') return fallbackModel;
     return undefined;
   }),
 });
+
+/** A 429 shaped like the quota errors the Gemini API actually returns. */
+const rateLimitError = () =>
+  Object.assign(new Error('[429] Quota exceeded for metric: generate_content_free_tier_requests'), {
+    status: 429,
+  });
 
 const createMockTrace = (): ILangfuseTrace => {
   const generationMock: ILangfuseGeneration = {
@@ -59,11 +69,11 @@ const createMockTrace = (): ILangfuseTrace => {
   } as any;
 };
 
-async function buildService(apiKey?: string): Promise<GeminiService> {
+async function buildService(apiKey?: string, fallbackModel?: string): Promise<GeminiService> {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       GeminiService,
-      { provide: ConfigService, useValue: mockConfigService(apiKey) },
+      { provide: ConfigService, useValue: mockConfigService(apiKey, fallbackModel) },
     ],
   }).compile();
   return module.get<GeminiService>(GeminiService);
@@ -75,6 +85,74 @@ async function buildService(apiKey?: string): Promise<GeminiService> {
 describe('GeminiService', () => {
   beforeEach(() => {
     mockGenerateContent.mockReset();
+    requestedModels.length = 0;
+  });
+
+  // -------------------------------------------------------------------------
+  // Model fallback
+  //
+  // Regression cover: the Places search plan and the home feed call this method
+  // without pinning a model. Before the fallback existed here, one quota-exhausted
+  // model took both of those paths down completely.
+  // -------------------------------------------------------------------------
+  describe('model fallback', () => {
+    it('retries on the fallback model when the default model is rate limited', async () => {
+      mockGenerateContent
+        .mockRejectedValueOnce(rateLimitError())
+        .mockResolvedValueOnce(successfulApiResponse({ queries: [{ textQuery: 'sushi' }] }));
+
+      const service = await buildService('fake-api-key', 'gemini-2.5-flash-lite');
+
+      const response = await service.generateJsonContent<{ queries: any[] }>({
+        prompt: 'plan searches',
+        responseSchema: {} as any,
+      });
+
+      expect(response.queries).toHaveLength(1);
+      expect(requestedModels).toEqual(['gemini-2.5-flash', 'gemini-2.5-flash-lite']);
+    });
+
+    it('does not fall back when the caller pinned an explicit model', async () => {
+      mockGenerateContent.mockRejectedValue(rateLimitError());
+
+      const service = await buildService('fake-api-key', 'gemini-2.5-flash-lite');
+
+      await expect(
+        service.generateJsonContent({
+          prompt: 'judge this',
+          responseSchema: {} as any,
+          modelName: 'gemini-2.5-flash-lite',
+        }),
+      ).rejects.toThrow(/Quota exceeded/);
+
+      expect(requestedModels).toEqual(['gemini-2.5-flash-lite']);
+    });
+
+    it('does not fall back on a non-retryable error', async () => {
+      mockGenerateContent.mockRejectedValue(
+        Object.assign(new Error('API key not valid'), { status: 400 }),
+      );
+
+      const service = await buildService('fake-api-key', 'gemini-2.5-flash-lite');
+
+      await expect(
+        service.generateJsonContent({ prompt: 'x', responseSchema: {} as any }),
+      ).rejects.toThrow('API key not valid');
+
+      expect(requestedModels).toEqual(['gemini-2.5-flash']);
+    });
+
+    it('propagates the error when no fallback model is configured', async () => {
+      mockGenerateContent.mockRejectedValue(rateLimitError());
+
+      const service = await buildService('fake-api-key');
+
+      await expect(
+        service.generateJsonContent({ prompt: 'x', responseSchema: {} as any }),
+      ).rejects.toThrow(/Quota exceeded/);
+
+      expect(requestedModels).toEqual(['gemini-2.5-flash']);
+    });
   });
 
   // -------------------------------------------------------------------------

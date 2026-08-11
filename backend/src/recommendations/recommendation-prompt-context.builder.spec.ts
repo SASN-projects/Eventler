@@ -2,6 +2,8 @@ import {
   RecommendationPromptContextBuilder,
   RecommendationEventInput,
   RecommendationSlideAnswer,
+  buildGroupConsensusSummary,
+  isIndifferentAnswer,
 } from './recommendation-prompt-context.builder';
 import { HistorySignalSummary } from './recommendation-history.service';
 
@@ -475,5 +477,85 @@ describe('RecommendationPromptContextBuilder', () => {
       expect(userPreferencesSummary).toContain('What is the occasion for this event?');
       expect(userPreferencesSummary).toContain('Birthday or milestone');
     });
+  });
+});
+
+describe('buildGroupConsensusSummary — abstentions', () => {
+  const QUESTION = 'What kind of activity?';
+
+  it('treats "Open to anything" as an abstention rather than a competing vote', () => {
+    const summary = buildGroupConsensusSummary([
+      { question: QUESTION, answerValue: 'Water activities' },
+      { question: QUESTION, answerValue: 'Open to anything' },
+    ]);
+
+    // Previously this produced a bogus 1-1 tie ('no clear majority') and the only real
+    // preference in the group could be dropped entirely.
+    expect(summary).toContain('unanimous among members who expressed a preference');
+    expect(summary).toContain('Water activities');
+    expect(summary).toContain('1 member(s) expressed no preference');
+    expect(summary).not.toContain('evenly split');
+  });
+
+  it('does not raise a CONFLICT NOTICE when the only disagreement is an abstention', () => {
+    const summary = buildGroupConsensusSummary([
+      { question: QUESTION, answerValue: 'Water activities' },
+      { question: QUESTION, answerValue: 'No preference' },
+    ]);
+
+    expect(summary).not.toContain('CONFLICT NOTICE');
+  });
+
+  it('still reports a genuine split between two real preferences', () => {
+    const summary = buildGroupConsensusSummary([
+      { question: QUESTION, answerValue: 'Water activities' },
+      { question: QUESTION, answerValue: 'Museums and galleries' },
+    ]);
+
+    expect(summary).toContain('evenly split');
+    expect(summary).toContain('CONFLICT NOTICE');
+  });
+
+  it('reports a question as unconstrained when every member abstained', () => {
+    const summary = buildGroupConsensusSummary([
+      { question: QUESTION, answerValue: 'Open to anything' },
+      { question: QUESTION, answerValue: 'No strong preference' },
+    ]);
+
+    expect(summary).toContain('no member expressed a preference');
+  });
+
+  it('keeps a majority intact while noting abstainers', () => {
+    const summary = buildGroupConsensusSummary([
+      { question: QUESTION, answerValue: 'Water activities' },
+      { question: QUESTION, answerValue: 'Water activities' },
+      { question: QUESTION, answerValue: 'Museums and galleries' },
+      { question: QUESTION, answerValue: 'Open to anything' },
+    ]);
+
+    expect(summary).toContain('majority prefers "Water activities" (2/3)');
+    expect(summary).toContain('1 member(s) expressed no preference');
+  });
+});
+
+describe('isIndifferentAnswer', () => {
+  it.each([
+    'Open to anything',
+    'No preference',
+    'No strong preference',
+    'Completely open',
+    'None of the above',
+    'Flexible — open to anything',
+  ])('treats %s as indifferent', (value) => {
+    expect(isIndifferentAnswer(value)).toBe(true);
+  });
+
+  it.each([
+    'Water activities',
+    'Museums and galleries',
+    'No drinks',
+    'Outdoors — park, rooftop, beach',
+  ])('treats %s as a real preference', (value) => {
+    expect(isIndifferentAnswer(value)).toBe(false);
   });
 });

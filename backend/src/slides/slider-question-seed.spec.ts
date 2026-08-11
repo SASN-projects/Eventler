@@ -96,6 +96,14 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
     constraintType: 'hard',
     tags: ['preference'],
   },
+  {
+    code: 'transportation',
+    label: 'How do you plan to get there?',
+    answerMode: AnswerMode.OPTIONS,
+    minOptions: 2,
+    constraintType: 'soft',
+    tags: ['preference'],
+  },
   // ── Activity-specific follow-ups ──────────────────────────────────────────
   // Only surfaced once a vibe/activity category is known (frontend vibe-select
   // step), filtered in via tag match against the selected vibe.
@@ -159,7 +167,6 @@ const EXPECTED_QUESTIONS: QuestionConfig[] = [
  * time is already chosen in the base event-creation step.
  */
 const RETIRED_CODES: string[] = [
-  'transportation',
   'location-type',
   'evening-structure',
   'crowd',
@@ -223,6 +230,11 @@ const ALL_OPTION_VALUES: string[] = [
   'Wheelchair accessible',
   'Private or semi-private space',
   'None of the above',
+  // transportation
+  'Walk',
+  'Car',
+  'Public transportation',
+  'Bike',
   // cuisine
   'Italian',
   'Asian',
@@ -266,8 +278,8 @@ const ALL_OPTION_VALUES: string[] = [
 describe('SliderQuestion seed validation', () => {
   // ── Question count and structure ──────────────────────────────────────────
 
-  it('defines exactly 13 expected questions', () => {
-    expect(EXPECTED_QUESTIONS).toHaveLength(13);
+  it('defines exactly 14 expected questions', () => {
+    expect(EXPECTED_QUESTIONS).toHaveLength(14);
   });
 
   it('has no duplicate codes in the expected question set', () => {
@@ -375,8 +387,8 @@ describe('SliderQuestion seed validation', () => {
     expect(violations).toHaveLength(0);
   });
 
-  it('total option count is at least 2 per question (>=26 total for 13 questions)', () => {
-    expect(ALL_OPTION_VALUES.length).toBeGreaterThanOrEqual(26);
+  it('total option count is at least 2 per question (>=28 total for 14 questions)', () => {
+    expect(ALL_OPTION_VALUES.length).toBeGreaterThanOrEqual(28);
   });
 
   // ── Alphabetical ordering (getSlides() sorts by code ASC) ────────────────
