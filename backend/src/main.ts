@@ -13,6 +13,7 @@ async function bootstrap() {
     // comma-separated list of allowed origins; falls back to '*' for local dev
     origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : '*',
   });
+  app.setGlobalPrefix('api');
   app.enableShutdownHooks();
 
   app.useGlobalPipes(
