@@ -8,7 +8,11 @@ dotenv.config();
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: false });
 
-  app.enableCors();
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.enableCors({
+    // comma-separated list of allowed origins; falls back to '*' for local dev
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : '*',
+  });
   app.enableShutdownHooks();
 
   app.useGlobalPipes(
